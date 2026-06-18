@@ -30,7 +30,7 @@ class HistoryController extends Controller
         $readings = $query->paginate(15)->withQueryString()->through(function ($reading) {
             return [
                 'id' => $reading->id,
-                'timestamp' => $reading->created_at->format('Y-m-d H:i:s'),
+                'timestamp' => $reading->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'),
                 'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
                 'temperature' => $reading->temperature,
                 'status' => $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal'),
@@ -62,7 +62,7 @@ class HistoryController extends Controller
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json($query->get()->map(function ($reading) {
                 return [
-                    'timestamp' => $reading->created_at->format('Y-m-d H:i:s'),
+                    'timestamp' => $reading->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'),
                     'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
                     'temperature' => $reading->temperature,
                     'status' => $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal'),

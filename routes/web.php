@@ -28,3 +28,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 require __DIR__.'/auth.php';
+
+// API Endpoint for Sensor
+Route::post('/api/sensor', [\App\Http\Controllers\Api\SensorController::class, 'store'])->name('api.sensor');

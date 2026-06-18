@@ -19,7 +19,7 @@ export default function MonitoringRealtime({ temperature, isOnline, serverStatus
 
     // Gauge Chart Data
     const maxTemp = 150;
-    const currentTemp = temperature || 0;
+    const currentTemp = parseFloat(temperature) || 0;
     const remainingTemp = maxTemp - currentTemp > 0 ? maxTemp - currentTemp : 0;
     
     // Determine color based on temperature (Normal: < 110, Warning: 110-120, Critical: > 120)

@@ -24,11 +24,11 @@ class DashboardController extends Controller
         // Stats
         $currentTemperature = $latestReading ? $latestReading->temperature : 0;
         $machineStatus = $machine ? $machine->status : 'Offline';
-        $isOnline = $machine ? $machine->last_heartbeat_at?->diffInMinutes(now()) < 5 : false;
+        $isOnline = $machine ? $machine->last_heartbeat_at?->diffInMinutes(now()) < 1 : false;
         
         $totalDataToday = $machine ? SensorReading::where('machine_id', $machine->id)->whereDate('created_at', $today)->count() : 0;
         $totalAlarmsToday = $machine ? Alarm::where('machine_id', $machine->id)->whereDate('created_at', $today)->count() : 0;
-        $lastUpdate = $latestReading ? $latestReading->created_at->format('Y-m-d H:i:s') : 'N/A';
+        $lastUpdate = $latestReading ? $latestReading->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : 'N/A';
 
         // Recent Activity
         $recentActivities = ActivityLog::with('user')
@@ -41,13 +41,13 @@ class DashboardController extends Controller
                 'id' => $log->id,
                 'description' => $log->description,
                 'user' => $log->user ? $log->user->name : 'System',
-                'created_at' => $log->created_at->format('Y-m-d H:i:s'),
+                'created_at' => $log->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'),
                 'properties' => $log->properties,
             ];
         });
 
-        // Generate mock chart data for 24 hours if no real data
-        $chartData = $this->getTemperatureChartData();
+        // Generate chart data using actual sensor readings
+        $chartData = $this->getTemperatureChartData($machine);
         $alarmStats = $this->getAlarmStats($machine);
 
         return Inertia::render('Dashboard', [
@@ -66,17 +66,22 @@ class DashboardController extends Controller
         ]);
     }
 
-    private function getTemperatureChartData()
+    private function getTemperatureChartData($machine)
     {
-        // For demonstration, returning mock data if real data isn't enough
         $labels = [];
         $data = [];
-        $now = now();
         
-        for ($i = 23; $i >= 0; $i--) {
-            $labels[] = $now->copy()->subHours($i)->format('H:i');
-            // Random temp between 100 and 125 for Retort
-            $data[] = rand(100, 125) + (rand(0, 9) / 10);
+        if ($machine) {
+            $readings = SensorReading::where('machine_id', $machine->id)
+                ->latest()
+                ->take(24)
+                ->get()
+                ->reverse();
+                
+            foreach ($readings as $reading) {
+                $labels[] = $reading->created_at->timezone('Asia/Jakarta')->format('H:i');
+                $data[] = $reading->temperature;
+            }
         }
 
         return [
@@ -97,9 +102,9 @@ class DashboardController extends Controller
         return [
             'labels' => ['Suhu Tinggi', 'Sensor Offline', 'Koneksi Server'],
             'data' => [
-                Alarm::where('machine_id', $machine->id)->where('type', Alarm::TYPE_HIGH_TEMPERATURE)->count() ?: rand(1, 5),
-                Alarm::where('machine_id', $machine->id)->where('type', Alarm::TYPE_SENSOR_OFFLINE)->count() ?: rand(0, 2),
-                Alarm::where('machine_id', $machine->id)->where('type', 'connection_lost')->count() ?: rand(0, 1),
+                Alarm::where('machine_id', $machine->id)->where('type', Alarm::TYPE_HIGH_TEMPERATURE)->count(),
+                Alarm::where('machine_id', $machine->id)->where('type', Alarm::TYPE_SENSOR_OFFLINE)->count(),
+                Alarm::where('machine_id', $machine->id)->where('type', 'connection_lost')->count(),
             ],
         ];
     }

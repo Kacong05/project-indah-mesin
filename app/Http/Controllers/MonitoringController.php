@@ -17,9 +17,9 @@ class MonitoringController extends Controller
         return Inertia::render('Monitoring/Index', [
             'temperature' => $latestReading ? $latestReading->temperature : 0,
             'pressure' => $latestReading ? $latestReading->pressure : 0,
-            'isOnline' => $machine ? $machine->last_heartbeat_at?->diffInMinutes(now()) < 5 : false,
+            'isOnline' => $machine ? $machine->last_heartbeat_at?->diffInMinutes(now()) < 1 : false,
             'serverStatus' => 'Online', // Always online if this page loads
-            'lastReadingTime' => $latestReading ? $latestReading->created_at->format('Y-m-d H:i:s') : 'N/A',
+            'lastReadingTime' => $latestReading ? $latestReading->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : 'N/A',
             'machineName' => $machine ? $machine->name : 'Unknown Machine',
         ]);
     }

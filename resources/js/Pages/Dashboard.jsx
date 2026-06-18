@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import {
     Thermometer,
     Power,
@@ -35,6 +36,17 @@ ChartJS.register(
 );
 
 export default function Dashboard({ stats, recentActivities, chartData, alarmStats, machineName }) {
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            router.reload({ 
+                only: ['stats', 'chartData', 'alarmStats', 'recentActivities'],
+                preserveState: true,
+                preserveScroll: true 
+            });
+        }, 2000);
+        return () => clearInterval(interval);
+    }, []);
 
     const lineChartOptions = {
         responsive: true,
