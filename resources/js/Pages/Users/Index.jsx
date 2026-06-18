@@ -1,6 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Users, UserPlus, Mail, Shield, Pencil, Trash2, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { Users, UserPlus, Mail, Shield, Pencil, Trash2, CheckCircle, XCircle, AlertTriangle, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function UserIndex({ users }) {
@@ -93,7 +93,8 @@ export default function UserIndex({ users }) {
                                 <tr>
                                     <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Pengguna</th>
                                     <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Kontak</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Role</th>
+                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
+                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Mesin Retort</th>
                                     <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Bergabung</th>
                                     {isAdmin && (
                                         <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider">Aksi</th>
@@ -122,13 +123,18 @@ export default function UserIndex({ users }) {
                                                         {user.email}
                                                     </div>
                                                 </td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-sm">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${badge.cls}`}>
-                                                        <Shield className="w-3 h-3 mr-1" />
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${badge.cls}`}>
+                                                        {user.role === 'admin' ? <Shield className="w-3.5 h-3.5 mr-1" /> : <User className="w-3.5 h-3.5 mr-1" />}
                                                         {badge.label}
                                                     </span>
                                                 </td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-400">
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className="text-sm text-slate-300">
+                                                        {user.machine_name}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-400">
                                                     {user.created_at}
                                                 </td>
                                                 {isAdmin && (

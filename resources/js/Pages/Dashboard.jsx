@@ -34,7 +34,7 @@ ChartJS.register(
     Filler
 );
 
-export default function Dashboard({ stats, recentActivities, chartData, alarmStats }) {
+export default function Dashboard({ stats, recentActivities, chartData, alarmStats, machineName }) {
 
     const lineChartOptions = {
         responsive: true,
@@ -107,7 +107,7 @@ export default function Dashboard({ stats, recentActivities, chartData, alarmSta
     };
 
     return (
-        <AuthenticatedLayout header="Dashboard Utama">
+        <AuthenticatedLayout header={`Dashboard Utama — ${machineName}`}>
             <Head title="Dashboard" />
 
             <div className="space-y-6">

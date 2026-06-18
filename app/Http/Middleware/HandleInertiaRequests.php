@@ -36,11 +36,14 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'notifications' => function () use ($request) {
-                if (! $request->user()) {
+                if (! $request->user() || $request->user()->isAdmin()) {
                     return ['items' => [], 'unread_count' => 0];
                 }
 
+                $machineId = $request->user()->machine_id;
+
                 $alarms = Alarm::with('machine')
+                    ->where('machine_id', $machineId)
                     ->where('status', Alarm::STATUS_ACTIVE)
                     ->latest('triggered_at')
                     ->take(5)
@@ -54,7 +57,9 @@ class HandleInertiaRequests extends Middleware
                         'triggered_at' => $alarm->triggered_at?->diffForHumans() ?? '-',
                     ]);
 
-                $unreadCount = Alarm::where('status', Alarm::STATUS_ACTIVE)->count();
+                $unreadCount = Alarm::where('machine_id', $machineId)
+                    ->where('status', Alarm::STATUS_ACTIVE)
+                    ->count();
 
                 return [
                     'items'        => $alarms,

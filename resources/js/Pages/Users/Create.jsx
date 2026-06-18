@@ -6,7 +6,7 @@ import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 
-export default function UserCreate() {
+export default function UserCreate({ machines }) {
     const [showPassword, setShowPassword] = useState(false);
     const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
 
@@ -14,6 +14,7 @@ export default function UserCreate() {
         name: '',
         email: '',
         role: 'operator',
+        machine_id: '',
         password: '',
         password_confirmation: '',
     });

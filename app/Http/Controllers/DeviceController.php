@@ -8,9 +8,10 @@ use Inertia\Inertia;
 
 class DeviceController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $devices = RetortMachine::latest()->paginate(10)->through(function ($machine) {
+        $machineId = $request->user()->machine_id;
+        $devices = RetortMachine::where('id', $machineId)->latest()->paginate(10)->through(function ($machine) {
             $isOnline = $machine->last_heartbeat_at?->diffInMinutes(now()) < 5;
             
             return [

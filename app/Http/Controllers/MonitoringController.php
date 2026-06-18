@@ -9,10 +9,10 @@ use Inertia\Inertia;
 
 class MonitoringController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $machine = RetortMachine::first();
-        $latestReading = SensorReading::latest()->first();
+        $machine = $request->user()->machine;
+        $latestReading = $machine ? SensorReading::where('machine_id', $machine->id)->latest()->first() : null;
 
         return Inertia::render('Monitoring/Index', [
             'temperature' => $latestReading ? $latestReading->temperature : 0,

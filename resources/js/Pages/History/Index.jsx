@@ -1,7 +1,33 @@
 import { useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
-import { Download, Filter, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Download, Filter, Search, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Line } from 'react-chartjs-2';
+import {
+    Chart as ChartJS,
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend,
+    Filler
+} from 'chart.js';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { useRef } from 'react';
+
+ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend,
+    Filler
+);
 
 export default function HistoryIndex({ readings, machines, filters }) {
     const [filterData, setFilterData] = useState({
@@ -14,6 +40,8 @@ export default function HistoryIndex({ readings, machines, filters }) {
         setFilterData({ ...filterData, [e.target.name]: e.target.value });
     };
 
+    const chartRef = useRef(null);
+
     const applyFilters = () => {
         router.get(route('history'), filterData, {
             preserveState: true,
@@ -21,9 +49,68 @@ export default function HistoryIndex({ readings, machines, filters }) {
         });
     };
 
-    const exportCsv = () => {
+    const exportExcel = async () => {
         const queryParams = new URLSearchParams(filterData).toString();
-        window.location.href = `${route('history.export')}?${queryParams}`;
+        const response = await fetch(`${route('history.export')}?${queryParams}`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await response.json();
+
+        const chartBase64 = chartRef.current.toBase64Image();
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Riwayat Data');
+
+        const imageId = workbook.addImage({
+            base64: chartBase64,
+            extension: 'png',
+        });
+        worksheet.addImage(imageId, {
+            tl: { col: 6, row: 1 },
+            ext: { width: 600, height: 300 }
+        });
+
+        worksheet.columns = [
+            { header: 'Timestamp', key: 'timestamp', width: 22 },
+            { header: 'Nama Mesin', key: 'machine_name', width: 20 },
+            { header: 'Suhu (°C)', key: 'temperature', width: 15 },
+            { header: 'Status Device', key: 'status', width: 15 },
+            { header: 'Status Sinkronisasi', key: 'sync_status', width: 20 },
+        ];
+
+        worksheet.getRow(1).font = { bold: true };
+
+        data.forEach(item => worksheet.addRow(item));
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer]), `Laporan_Riwayat_${new Date().getTime()}.xlsx`);
+    };
+
+    // Prepare Chart Data
+    const chartReadings = [...readings.data].reverse();
+    const chartData = {
+        labels: chartReadings.map(r => r.timestamp.split(' ')[1] || r.timestamp),
+        datasets: [
+            {
+                fill: true,
+                label: 'Suhu (°C)',
+                data: chartReadings.map(r => r.temperature),
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                borderWidth: 2,
+                pointBackgroundColor: '#6366f1',
+                pointRadius: 2,
+            }
+        ]
+    };
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: { ticks: { color: '#94a3b8' } },
+            x: { ticks: { color: '#94a3b8' } }
+        }
     };
 
     return (
@@ -80,10 +167,10 @@ export default function HistoryIndex({ readings, machines, filters }) {
                                 <Filter className="w-4 h-4" /> Filter
                             </button>
                             <button
-                                onClick={exportCsv}
+                                onClick={exportExcel}
                                 className="flex-1 flex justify-center items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors"
                             >
-                                <Download className="w-4 h-4" /> CSV
+                                <FileText className="w-4 h-4" /> Export Excel
                             </button>
                         </div>
                     </div>
@@ -91,48 +178,68 @@ export default function HistoryIndex({ readings, machines, filters }) {
 
                 {/* Data Table */}
                 <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg">
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-white/10">
-                            <thead className="bg-white/5">
-                                <tr>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Timestamp</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Nama Mesin</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Suhu (°C)</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Status Device</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Status Sinkronisasi</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/10">
-                                {readings.data.length > 0 ? (
-                                    readings.data.map((item) => (
-                                        <tr key={item.id} className="hover:bg-white/5 transition-colors">
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-300">{item.timestamp}</td>
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-white">{item.machine_name}</td>
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-300">
-                                                <span className={`px-2 py-1 rounded-md text-xs font-medium ${item.temperature >= 120 ? 'bg-red-500/20 text-red-400' : (item.temperature >= 110 ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400')}`}>
-                                                    {item.temperature}
-                                                </span>
-                                            </td>
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.status === 'Normal' ? 'bg-green-500/20 text-green-400' : (item.status === 'Warning' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400')}`}>
-                                                    {item.status}
-                                                </span>
-                                            </td>
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm text-emerald-400 flex items-center gap-2">
-                                                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                                {item.sync_status}
+                    {/* Report Container */}
+                    <div className="p-4 bg-slate-900 rounded-xl">
+                        
+                        {/* Header for PDF */}
+                        <div className="mb-6 hidden print-header">
+                            <h2 className="text-2xl font-bold text-white mb-2">Laporan Riwayat Data Retort</h2>
+                            <p className="text-slate-400">Dicetak pada: {new Date().toLocaleString()}</p>
+                        </div>
+
+                        {/* Chart Area */}
+                        {readings.data.length > 0 && (
+                            <div className="mb-8 overflow-hidden rounded-xl bg-white/5 border border-white/10 shadow-lg p-4">
+                                <h3 className="text-sm font-medium text-slate-300 mb-4">Grafik Suhu</h3>
+                                <div className="h-64 w-full">
+                                    <Line ref={chartRef} data={chartData} options={chartOptions} />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="overflow-x-auto rounded-xl bg-white/5 border border-white/10">
+                            <table className="min-w-full divide-y divide-white/10">
+                                <thead className="bg-white/5">
+                                    <tr>
+                                        <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Timestamp</th>
+                                        <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Nama Mesin</th>
+                                        <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Suhu (°C)</th>
+                                        <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Status Device</th>
+                                        <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Status Sinkronisasi</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/10">
+                                    {readings.data.length > 0 ? (
+                                        readings.data.map((item) => (
+                                            <tr key={item.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-300">{item.timestamp}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-white">{item.machine_name}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-300">
+                                                    <span className={`px-2 py-1 rounded-md text-xs font-medium ${item.temperature >= 120 ? 'bg-red-500/20 text-red-400' : (item.temperature >= 110 ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400')}`}>
+                                                        {item.temperature}
+                                                    </span>
+                                                </td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-sm">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.status === 'Normal' ? 'bg-green-500/20 text-green-400' : (item.status === 'Warning' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400')}`}>
+                                                        {item.status}
+                                                    </span>
+                                                </td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-sm text-emerald-400 flex items-center gap-2">
+                                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                                    {item.sync_status}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan="5" className="whitespace-nowrap px-6 py-8 text-center text-sm text-slate-500">
+                                                Tidak ada data ditemukan untuk filter ini.
                                             </td>
                                         </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan="5" className="whitespace-nowrap px-6 py-8 text-center text-sm text-slate-500">
-                                            Tidak ada data ditemukan untuk filter ini.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                     
                     {/* Pagination */}

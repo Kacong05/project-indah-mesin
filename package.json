@@ -23,6 +23,9 @@
     },
     "dependencies": {
         "chart.js": "^4.5.1",
+        "exceljs": "^4.4.0",
+        "file-saver": "^2.0.5",
+        "html2pdf.js": "^0.14.0",
         "lucide-react": "^1.21.0",
         "react-chartjs-2": "^5.3.1"
     }

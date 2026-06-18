@@ -10,7 +10,8 @@ class AlarmController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Alarm::with(['machine', 'acknowledgedBy'])->latest();
+        $machineId = $request->user()->machine_id;
+        $query = Alarm::with(['machine', 'acknowledgedBy'])->where('machine_id', $machineId)->latest();
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);

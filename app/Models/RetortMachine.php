@@ -84,4 +84,12 @@ class RetortMachine extends Model
     {
         return $this->hasMany(Alarm::class, 'machine_id')->where('status', 'active');
     }
+
+    /**
+     * Get the user (owner/operator) assigned to this machine.
+     */
+    public function owner(): HasOne
+    {
+        return $this->hasOne(User::class, 'machine_id');
+    }
 }

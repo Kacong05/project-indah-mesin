@@ -12,12 +12,8 @@ class HistoryController extends Controller
 {
     public function index(Request $request)
     {
-        $query = SensorReading::with('machine')->latest();
-
-        // Filter by Machine
-        if ($request->filled('machine_id')) {
-            $query->where('machine_id', $request->machine_id);
-        }
+        $machineId = $request->user()->machine_id;
+        $query = SensorReading::with('machine')->where('machine_id', $machineId)->latest();
 
         // Filter by Date Range
         if ($request->filled('start_date') && $request->filled('end_date')) {
@@ -42,28 +38,37 @@ class HistoryController extends Controller
             ];
         });
 
-        $machines = RetortMachine::select('id', 'name')->get();
+        $machines = $request->user()->machine ? [$request->user()->machine] : [];
 
         return Inertia::render('History/Index', [
             'readings' => $readings,
             'machines' => $machines,
-            'filters' => $request->only(['machine_id', 'start_date', 'end_date'])
+            'filters' => $request->only(['start_date', 'end_date'])
         ]);
     }
 
     public function export(Request $request)
     {
-        $query = SensorReading::with('machine')->latest();
-
-        if ($request->filled('machine_id')) {
-            $query->where('machine_id', $request->machine_id);
-        }
+        $machineId = $request->user()->machine_id;
+        $query = SensorReading::with('machine')->where('machine_id', $machineId)->latest();
 
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $query->whereBetween('created_at', [
                 $request->start_date . ' 00:00:00',
                 $request->end_date . ' 23:59:59'
             ]);
+        }
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json($query->get()->map(function ($reading) {
+                return [
+                    'timestamp' => $reading->created_at->format('Y-m-d H:i:s'),
+                    'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
+                    'temperature' => $reading->temperature,
+                    'status' => $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal'),
+                    'sync_status' => 'Synced'
+                ];
+            }));
         }
 
         $response = new StreamedResponse(function() use ($query) {

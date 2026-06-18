@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\RetortMachine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
@@ -14,13 +15,14 @@ class UserController extends Controller
     {
         $this->authorizeAdmin();
 
-        $users = User::paginate(10)->through(function ($user) {
+        $users = User::with('machine')->paginate(10)->through(function ($user) {
             return [
-                'id'         => $user->id,
-                'name'       => $user->name,
-                'email'      => $user->email,
-                'role'       => $user->role,
-                'created_at' => $user->created_at->format('Y-m-d H:i'),
+                'id'           => $user->id,
+                'name'         => $user->name,
+                'email'        => $user->email,
+                'role'         => $user->role,
+                'machine_name' => $user->machine ? $user->machine->name : '-',
+                'created_at'   => $user->created_at->format('Y-m-d H:i'),
             ];
         });
 
@@ -33,7 +35,9 @@ class UserController extends Controller
     {
         $this->authorizeAdmin();
 
-        return Inertia::render('Users/Create');
+        return Inertia::render('Users/Create', [
+            'machines' => RetortMachine::select('id', 'name')->get(),
+        ]);
     }
 
     public function store(Request $request)
@@ -43,15 +47,17 @@ class UserController extends Controller
         $validated = $request->validate([
             'name'     => ['required', 'string', 'max:255'],
             'email'    => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'role'     => ['required', 'string', 'in:admin,operator'],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'role'       => ['required', 'string', 'in:admin,operator'],
+            'machine_id' => ['nullable', 'exists:retort_machines,id'],
+            'password'   => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
         User::create([
-            'name'     => $validated['name'],
-            'email'    => $validated['email'],
-            'role'     => $validated['role'],
-            'password' => Hash::make($validated['password']),
+            'name'       => $validated['name'],
+            'email'      => $validated['email'],
+            'role'       => $validated['role'],
+            'machine_id' => $validated['role'] === 'operator' ? ($validated['machine_id'] ?? null) : null,
+            'password'   => Hash::make($validated['password']),
         ]);
 
         return redirect()->route('users')->with('success', 'Pengguna berhasil ditambahkan.');
@@ -63,11 +69,13 @@ class UserController extends Controller
 
         return Inertia::render('Users/Edit', [
             'user' => [
-                'id'    => $user->id,
-                'name'  => $user->name,
-                'email' => $user->email,
-                'role'  => $user->role,
-            ]
+                'id'         => $user->id,
+                'name'       => $user->name,
+                'email'      => $user->email,
+                'role'       => $user->role,
+                'machine_id' => $user->machine_id,
+            ],
+            'machines' => RetortMachine::select('id', 'name')->get(),
         ]);
     }
 
@@ -76,9 +84,10 @@ class UserController extends Controller
         $this->authorizeAdmin();
 
         $rules = [
-            'name'  => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'role'  => ['required', 'string', 'in:admin,operator'],
+            'name'       => ['required', 'string', 'max:255'],
+            'email'      => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'role'       => ['required', 'string', 'in:admin,operator'],
+            'machine_id' => ['nullable', 'exists:retort_machines,id'],
         ];
 
         if ($request->filled('password')) {
@@ -87,9 +96,10 @@ class UserController extends Controller
 
         $validated = $request->validate($rules);
 
-        $user->name  = $validated['name'];
-        $user->email = $validated['email'];
-        $user->role  = $validated['role'];
+        $user->name       = $validated['name'];
+        $user->email      = $validated['email'];
+        $user->role       = $validated['role'];
+        $user->machine_id = $validated['role'] === 'operator' ? ($validated['machine_id'] ?? null) : null;
 
         if ($request->filled('password')) {
             $user->password = Hash::make($validated['password']);

@@ -15,13 +15,14 @@ export default function Sidebar({ open, setOpen }) {
     const { url, props } = usePage();
     const isAdmin = props.auth?.user?.role === 'admin';
 
-    const menuItems = [
+    const menuItems = isAdmin ? [
+        { name: 'Manajemen Pengguna', icon: Users, href: route('users'), active: url.startsWith('/users') }
+    ] : [
         { name: 'Dashboard', icon: LayoutDashboard, href: route('dashboard'), active: url.startsWith('/dashboard') },
         { name: 'Monitoring Realtime', icon: Activity, href: route('monitoring'), active: url.startsWith('/monitoring') },
         { name: 'Riwayat Data', icon: History, href: route('history'), active: url.startsWith('/history') },
         { name: 'Perangkat', icon: Cpu, href: route('devices'), active: url.startsWith('/devices') },
         { name: 'Alarm & Notifikasi', icon: Bell, href: route('alarms'), active: url.startsWith('/alarms') },
-        ...(isAdmin ? [{ name: 'Manajemen Pengguna', icon: Users, href: route('users'), active: url.startsWith('/users') }] : []),
     ];
 
     return (

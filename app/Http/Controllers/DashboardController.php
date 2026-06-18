@@ -12,26 +12,31 @@ use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $machine = RetortMachine::first(); // Assuming single machine for now or getting the main one
+        $machine = $request->user()->machine;
         
         $today = Carbon::today();
         
         // Latest Reading
-        $latestReading = SensorReading::latest()->first();
+        $latestReading = $machine ? SensorReading::where('machine_id', $machine->id)->latest()->first() : null;
         
         // Stats
         $currentTemperature = $latestReading ? $latestReading->temperature : 0;
         $machineStatus = $machine ? $machine->status : 'Offline';
         $isOnline = $machine ? $machine->last_heartbeat_at?->diffInMinutes(now()) < 5 : false;
         
-        $totalDataToday = SensorReading::whereDate('created_at', $today)->count();
-        $totalAlarmsToday = Alarm::whereDate('created_at', $today)->count();
+        $totalDataToday = $machine ? SensorReading::where('machine_id', $machine->id)->whereDate('created_at', $today)->count() : 0;
+        $totalAlarmsToday = $machine ? Alarm::where('machine_id', $machine->id)->whereDate('created_at', $today)->count() : 0;
         $lastUpdate = $latestReading ? $latestReading->created_at->format('Y-m-d H:i:s') : 'N/A';
 
         // Recent Activity
-        $recentActivities = ActivityLog::with('user')->latest()->take(5)->get()->map(function($log) {
+        $recentActivities = ActivityLog::with('user')
+            ->where('user_id', $request->user()->id)
+            ->latest()
+            ->take(5)
+            ->get()
+            ->map(function($log) {
             return [
                 'id' => $log->id,
                 'description' => $log->description,
@@ -43,9 +48,10 @@ class DashboardController extends Controller
 
         // Generate mock chart data for 24 hours if no real data
         $chartData = $this->getTemperatureChartData();
-        $alarmStats = $this->getAlarmStats();
+        $alarmStats = $this->getAlarmStats($machine);
 
         return Inertia::render('Dashboard', [
+            'machineName' => $machine ? $machine->name : 'Mesin Belum Ditetapkan',
             'stats' => [
                 'currentTemperature' => $currentTemperature,
                 'machineStatus' => $machineStatus,
@@ -79,14 +85,21 @@ class DashboardController extends Controller
         ];
     }
 
-    private function getAlarmStats()
+    private function getAlarmStats($machine)
     {
+        if (!$machine) {
+            return [
+                'labels' => ['Suhu Tinggi', 'Sensor Offline', 'Koneksi Server'],
+                'data' => [0, 0, 0],
+            ];
+        }
+
         return [
             'labels' => ['Suhu Tinggi', 'Sensor Offline', 'Koneksi Server'],
             'data' => [
-                Alarm::where('type', Alarm::TYPE_HIGH_TEMPERATURE)->count() ?: rand(1, 5),
-                Alarm::where('type', Alarm::TYPE_SENSOR_OFFLINE)->count() ?: rand(0, 2),
-                Alarm::where('type', 'connection_lost')->count() ?: rand(0, 1),
+                Alarm::where('machine_id', $machine->id)->where('type', Alarm::TYPE_HIGH_TEMPERATURE)->count() ?: rand(1, 5),
+                Alarm::where('machine_id', $machine->id)->where('type', Alarm::TYPE_SENSOR_OFFLINE)->count() ?: rand(0, 2),
+                Alarm::where('machine_id', $machine->id)->where('type', 'connection_lost')->count() ?: rand(0, 1),
             ],
         ];
     }

@@ -6,7 +6,7 @@ import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 
-export default function UserEdit({ user }) {
+export default function UserEdit({ user, machines }) {
     const [showPassword, setShowPassword] = useState(false);
     const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
 
@@ -14,6 +14,7 @@ export default function UserEdit({ user }) {
         name: user.name,
         email: user.email,
         role: user.role,
+        machine_id: user.machine_id || '',
         password: '',
         password_confirmation: '',
     });
