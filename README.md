@@ -1,58 +1,112 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Retort Monitor - Web Monitoring Mesin Retort Berbasis IoT
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplikasi berbasis web untuk memantau suhu dan tekanan pada mesin retort sterilisasi makanan secara real-time. Proyek ini dibangun dengan framework **Laravel** (Backend), **Inertia.js & React** (Frontend), dan **Tailwind CSS** (Styling).
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 🛠️ Tech Stack & Dependencies
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+*   **Backend Framework**: [Laravel 11](https://laravel.com) (PHP >= 8.2)
+*   **Frontend Library**: [React 18](https://reactjs.org) & [Inertia.js](https://inertiajs.com)
+*   **CSS Framework**: [Tailwind CSS v4](https://tailwindcss.com)
+*   **Visualisasi Grafik**: [Chart.js](https://www.chartjs.org) & [react-chartjs-2](https://react-chartjs-2.js.org)
+*   **Ekspor Data**: [ExcelJS](https://github.com/exceljs/exceljs) & [file-saver](https://github.com/eligrey/FileSaver.js)
+*   **Simulasi Sensor (Client IoT)**: Python 3 dengan pustaka `requests`
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 📋 Fitur Utama Aplikasi
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Aplikasi ini memiliki sistem otentikasi dan otorisasi berbasis peran (**Role-Based Access Control / RBAC**) yang membagi akses menjadi dua peranan utama: **Admin** dan **Operator**.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### 1. Peran Operator (Operator Area)
+*   **Dashboard Pemantauan Real-time**:
+    *   **Live Reloading**: Melakukan sinkronisasi data sensor secara otomatis setiap 2 detik tanpa *refresh* halaman.
+    *   **Gauge Suhu Interaktif**: Visualisasi radial/doughnut suhu terkini dengan indikator warna dinamis sesuai status (Merah: Bahaya/Kritis, Hijau: Rentang Target Normal 121°C ± 5°C, Jingga: Fase Pemanasan, Abu-abu: Offline/Dingin).
+    *   **Grafik Suhu Real-time**: Grafik garis tren suhu dalam 24 pembacaan terakhir.
+    *   **Status Koneksi IoT**: Deteksi apakah mesin *Online* atau *Offline* berdasarkan detak jantung (*heartbeat*) sensor (< 1 menit).
+    *   **Statistik Harian**: Menampilkan jumlah data yang masuk hari ini, kecepatan transfer data (interval dalam milidetik), dan jumlah alarm terpicu hari ini.
+    *   **Notifikasi Alarm Toast**: Alarm aktif akan muncul secara langsung berupa popup *toast* melayang di pojok kanan atas.
+    *   **Log Aktivitas Terbaru**: Menampilkan log 5 aktivitas terakhir operator bersangkutan.
+*   **Riwayat Data & Grafik Historis**:
+    *   Melihat tabel riwayat pembacaan sensor lengkap dengan penanda status suhu dan status sinkronisasi.
+    *   Filter data berdasarkan **Rentang Tanggal** (Mulai & Selesai).
+    *   **Ekspor Excel (.xlsx)**: Mengunduh data historis ke file Excel menggunakan *ExcelJS*. Fitur istimewa di sini adalah **menyematkan visualisasi grafik tren suhu langsung ke dalam sheet Excel** berupa gambar PNG base64.
+*   **Manajemen Alarm & Notifikasi**:
+    *   Menampilkan daftar alarm abnormal yang terjadi pada mesin retort bersangkutan.
+    *   Filter alarm berdasarkan status (`active`, `acknowledged`, `resolved`).
+    *   Fitur **Tandai Dibaca (Acknowledge)** untuk satu atau semua alarm secara sekaligus sebagai bukti konfirmasi operator.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+### 2. Peran Administrator (Admin Area)
+*   **Manajemen Pengguna (CRUD Pengguna)**:
+    *   Membuat, mengubah, mencari, dan menghapus akun pengguna (Admin atau Operator).
+    *   **Auto-Provisioning Mesin**: Saat membuat/memperbarui pengguna dengan peran Operator, Admin dapat menuliskan kode mesin (*machine code*). Jika mesin dengan kode tersebut belum ada di database, sistem secara otomatis akan membuat record mesin retort baru.
 
-## Agentic Development
+### 3. Detektor & Logika Alarm Cerdas (Smart Alarm Logic)
+Sistem memiliki detektor anomali suhu sterilisasi retort dengan target normal **121.0°C** dan batas toleransi **±5.0°C** (Rentang aman: 116.0°C s.d 126.0°C):
+*   **Fase Warm-up Safe-skip**: Sistem mendeteksi apabila mesin masih dalam fase pemanasan awal (suhu belum pernah mencapai batas warm-up 100°C), sehingga alarm "suhu terlalu rendah" tidak akan terpicu secara salah (*false alarm*).
+*   **Auto-Trigger Alarm**:
+    *   Suhu melebihi 126.0°C -> Peringatan Suhu Tinggi (`high_temperature`), menjadi tingkat *Kritis* jika melebihi 131.0°C.
+    *   Suhu di bawah 116.0°C (setelah fase pemanasan) -> Peringatan Suhu Rendah (`low_temperature`).
+*   **Auto-Resolve Alarm**: Ketika suhu kembali masuk dalam rentang normal (116°C s.d 126°C), alarm aktif terkait akan otomatis ditandai sebagai *Resolved* oleh sistem.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+### 4. Logger Aktivitas Pengguna (Audit Trail)
+Mencatat setiap aksi penting pengguna seperti login, logout, penambahan/pengubahan data, ekspor riwayat sensor, dan konfirmasi alarm untuk audit keamanan dan produktivitas.
 
+### 5. Simulator Mesin IoT (Client Simulator)
+Terdapat file `worker.py` yang ditulis dalam bahasa Python untuk mensimulasikan pengiriman data sensor dari perangkat keras ke server lokal melalui REST API:
+*   Menerima input kode mesin yang ingin disimulasikan.
+*   Mengirimkan payload JSON berisi `machine_code`, `temperature`, `pressure`, dan `process_status` setiap 5 detik sekali ke endpoint `/api/sensor`.
+
+---
+
+## 🚀 Cara Menjalankan Project
+
+### 1. Prasyarat (Prerequisites)
+Pastikan Anda sudah menginstal:
+*   PHP >= 8.2
+*   Composer
+*   Node.js & NPM
+*   Python 3 (opsional, untuk menjalankan simulator sensor)
+*   Laragon / XAMPP (untuk database MySQL)
+
+### 2. Instalasi Dependensi
+Jalankan perintah berikut di direktori proyek:
 ```bash
-composer require laravel/boost --dev
+# Instal dependensi backend PHP
+composer install
 
-php artisan boost:install
+# Instal dependensi frontend Node.js
+npm install
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### 3. Konfigurasi Environment & Migrasi Database
+1.  Salin file `.env.example` menjadi `.env` dan atur konfigurasi database Anda.
+2.  Jalankan migrasi database dan pengisian data sampel (*seeder*):
+    ```bash
+    php artisan migrate --seed
+    ```
+    *Seeder akan membuat akun bawaan:*
+    *   **Administrator**: `admin@retort.com` | Password: `password`
+    *   **Operator**: `operator@retort.com` | Password: `password` (terhubung ke mesin `RT-001`)
 
-## Contributing
+### 4. Jalankan Aplikasi
+Jalankan server backend Laravel dan compiler aset Vite secara bersamaan:
+```bash
+# Terminal 1: Menjalankan Laravel server
+php artisan serve
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+# Terminal 2: Menjalankan Vite Development server
+npm run dev
+```
+Buka peramban (browser) dan akses alamat `http://127.0.0.1:8000`.
 
-## Code of Conduct
+### 5. Menjalankan Simulator IoT (Worker)
+Untuk melihat data bergerak secara real-time pada dashboard operator:
+1.  Pastikan dependensi Python terpasang (jika belum): `pip install requests`
+2.  Jalankan script simulator:
+    ```bash
+    python worker.py
+    ```
+3.  Masukkan kode mesin yang disimulasikan (misal: `RT-001` untuk mesin bawaan operator, atau buat kode mesin baru).
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
