@@ -354,7 +354,13 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                                             <td className="whitespace-nowrap px-6 py-4 text-sm text-white">{activity.description}</td>
                                             <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-300">{activity.user}</td>
                                             <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-400">
-                                                {activity.properties ? JSON.stringify(activity.properties) : '-'}
+                                                {activity.properties
+                                                    ? Object.entries(activity.properties)
+                                                        .map(([k, v]) =>
+                                                            `${k.replace(/_/g, ' ')}: ${v}`
+                                                        )
+                                                        .join(', ')
+                                                    : '-'}
                                             </td>
                                         </tr>
                                     ))
