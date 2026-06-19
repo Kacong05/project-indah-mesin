@@ -36,7 +36,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'notifications' => function () use ($request) {
-                if (! $request->user() || $request->user()->isAdmin()) {
+                if (!$request->user() || $request->user()->isAdmin()) {
                     return ['items' => [], 'unread_count' => 0];
                 }
 
@@ -44,25 +44,25 @@ class HandleInertiaRequests extends Middleware
 
                 $alarms = Alarm::with('machine')
                     ->where('machine_id', $machineId)
-                    ->where('status', Alarm::STATUS_ACTIVE)
+                    ->whereNull('acknowledged_by')
                     ->latest('triggered_at')
                     ->take(5)
                     ->get()
-                    ->map(fn ($alarm) => [
-                        'id'           => $alarm->id,
+                    ->map(fn($alarm) => [
+                        'id' => $alarm->id,
                         'machine_name' => $alarm->machine?->name ?? 'Unknown',
-                        'message'      => $alarm->message,
-                        'severity'     => $alarm->severity,
-                        'type'         => ucwords(str_replace('_', ' ', $alarm->type)),
+                        'message' => $alarm->message,
+                        'severity' => $alarm->severity,
+                        'type' => ucwords(str_replace('_', ' ', $alarm->type)),
                         'triggered_at' => $alarm->triggered_at?->diffForHumans() ?? '-',
                     ]);
 
                 $unreadCount = Alarm::where('machine_id', $machineId)
-                    ->where('status', Alarm::STATUS_ACTIVE)
+                    ->whereNull('acknowledged_by')
                     ->count();
 
                 return [
-                    'items'        => $alarms,
+                    'items' => $alarms,
                     'unread_count' => $unreadCount,
                 ];
             },

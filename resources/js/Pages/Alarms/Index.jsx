@@ -89,15 +89,17 @@ export default function AlarmIndex({ alarms, filters }) {
                                             <td className="whitespace-nowrap px-6 py-4 text-sm">
                                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                                     alarm.status === 'active' ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse' : 
-                                                    (alarm.status === 'acknowledged' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400')
+                                                    (alarm.status === 'acknowledged' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400')
                                                 }`}>
                                                     {alarm.status.toUpperCase()}
                                                 </span>
                                             </td>
                                             <td className="whitespace-nowrap px-6 py-4 text-sm text-right">
-                                                {alarm.status === 'active' && (
-                                                    <button className="inline-flex items-center gap-1 rounded bg-indigo-500/20 px-2 py-1 text-xs font-semibold text-indigo-400 hover:bg-indigo-500 hover:text-white transition-colors border border-indigo-500/30">
-                                                        <CheckCircle2 className="w-3 h-3" /> Acknowledge
+                                                {alarm.status !== 'acknowledged' && (
+                                                    <button 
+                                                        onClick={() => router.post(route('alarms.acknowledge', alarm.id), {}, { preserveScroll: true })}
+                                                        className="inline-flex items-center gap-1 rounded bg-indigo-500/20 px-2 py-1 text-xs font-semibold text-indigo-400 hover:bg-indigo-500 hover:text-white transition-colors border border-indigo-500/30">
+                                                        <CheckCircle2 className="w-3 h-3" /> Tandai Dibaca
                                                     </button>
                                                 )}
                                             </td>

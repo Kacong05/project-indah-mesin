@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { usePage, Link } from '@inertiajs/react';
-import { Bell, AlertTriangle, AlertCircle, Info, ArrowRight, CheckCheck, Clock } from 'lucide-react';
+import { usePage, Link, router } from '@inertiajs/react';
+import { Bell, AlertTriangle, AlertCircle, Info, ArrowRight, CheckCheck, Clock, Check } from 'lucide-react';
 
 export default function NotificationPanel() {
     const { notifications } = usePage().props;
@@ -87,7 +87,15 @@ export default function NotificationPanel() {
                                     </span>
                                 )}
                             </div>
-                            {unreadCount === 0 && (
+                            {unreadCount > 0 ? (
+                                <button
+                                    onClick={() => router.post(route('alarms.acknowledge-all'), {}, { preserveScroll: true })}
+                                    className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-emerald-400 transition-colors"
+                                    title="Tandai semua sudah dibaca"
+                                >
+                                    <CheckCheck className="h-4 w-4" />
+                                </button>
+                            ) : (
                                 <CheckCheck className="h-4 w-4 text-emerald-400" />
                             )}
                         </div>
@@ -135,6 +143,15 @@ export default function NotificationPanel() {
                                                     </span>
                                                 </div>
                                             </div>
+
+                                            {/* Action */}
+                                            <button
+                                                onClick={() => router.post(route('alarms.acknowledge', item.id), {}, { preserveScroll: true })}
+                                                className="mt-0.5 flex-shrink-0 p-1.5 rounded-lg text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                                                title="Tandai sudah dibaca"
+                                            >
+                                                <Check className="h-4 w-4" />
+                                            </button>
                                         </div>
                                     );
                                 })

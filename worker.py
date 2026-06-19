@@ -5,7 +5,7 @@ import datetime
 
 # Konfigurasi
 API_URL = "http://127.0.0.1:8000/api/sensor"
-MACHINE_CODE = "RT-001"  # Sesuaikan dengan kode mesin di database
+MACHINE_CODE = "RT-002"  # Sesuaikan dengan kode mesin di database
 
 def send_data():
     while True:
@@ -36,9 +36,20 @@ def send_data():
         time.sleep(5)
 
 if __name__ == "__main__":
+    import sys
+    
     print("=" * 40)
     print("WORKER SIMULASI MESIN RETORT")
     print("=" * 40)
+    
+    # Ambil dari argument command line, atau minta input jika kosong
+    if len(sys.argv) > 1:
+        MACHINE_CODE = sys.argv[1]
+    else:
+        user_input = input(f"Masukkan Kode/Seri Mesin [Default: {MACHINE_CODE}]: ").strip()
+        if user_input:
+            MACHINE_CODE = user_input.toUpperCase() if hasattr(user_input, 'toUpperCase') else user_input.upper()
+
     print(f"Mesin Code : {MACHINE_CODE}")
     print(f"Target API : {API_URL}")
     print("Tekan Ctrl+C untuk berhenti.\n")

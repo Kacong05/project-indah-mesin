@@ -35,9 +35,7 @@ class UserController extends Controller
     {
         $this->authorizeAdmin();
 
-        return Inertia::render('Users/Create', [
-            'machines' => RetortMachine::select('id', 'name')->get(),
-        ]);
+        return Inertia::render('Users/Create');
     }
 
     public function store(Request $request)
@@ -45,18 +43,31 @@ class UserController extends Controller
         $this->authorizeAdmin();
 
         $validated = $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'email'    => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'role'       => ['required', 'string', 'in:admin,operator'],
-            'machine_id' => ['nullable', 'exists:retort_machines,id'],
-            'password'   => ['required', 'confirmed', Rules\Password::defaults()],
+            'name'         => ['required', 'string', 'max:255'],
+            'email'        => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'role'         => ['required', 'string', 'in:admin,operator'],
+            'machine_code' => ['nullable', 'string', 'max:50'],
+            'password'     => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
+
+        $machineId = null;
+        if ($validated['role'] === 'operator' && !empty($validated['machine_code'])) {
+            $machine = RetortMachine::firstOrCreate(
+                ['machine_code' => strtoupper(trim($validated['machine_code']))],
+                [
+                    'name'     => 'Mesin ' . strtoupper(trim($validated['machine_code'])),
+                    'location' => '-',
+                    'status'   => 'offline',
+                ]
+            );
+            $machineId = $machine->id;
+        }
 
         User::create([
             'name'       => $validated['name'],
             'email'      => $validated['email'],
             'role'       => $validated['role'],
-            'machine_id' => $validated['role'] === 'operator' ? ($validated['machine_id'] ?? null) : null,
+            'machine_id' => $machineId,
             'password'   => Hash::make($validated['password']),
         ]);
 
@@ -69,13 +80,12 @@ class UserController extends Controller
 
         return Inertia::render('Users/Edit', [
             'user' => [
-                'id'         => $user->id,
-                'name'       => $user->name,
-                'email'      => $user->email,
-                'role'       => $user->role,
-                'machine_id' => $user->machine_id,
+                'id'           => $user->id,
+                'name'         => $user->name,
+                'email'        => $user->email,
+                'role'         => $user->role,
+                'machine_code' => $user->machine ? $user->machine->machine_code : '',
             ],
-            'machines' => RetortMachine::select('id', 'name')->get(),
         ]);
     }
 
@@ -84,10 +94,10 @@ class UserController extends Controller
         $this->authorizeAdmin();
 
         $rules = [
-            'name'       => ['required', 'string', 'max:255'],
-            'email'      => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'role'       => ['required', 'string', 'in:admin,operator'],
-            'machine_id' => ['nullable', 'exists:retort_machines,id'],
+            'name'         => ['required', 'string', 'max:255'],
+            'email'        => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'role'         => ['required', 'string', 'in:admin,operator'],
+            'machine_code' => ['nullable', 'string', 'max:50'],
         ];
 
         if ($request->filled('password')) {
@@ -96,10 +106,23 @@ class UserController extends Controller
 
         $validated = $request->validate($rules);
 
+        $machineId = null;
+        if ($validated['role'] === 'operator' && !empty($validated['machine_code'])) {
+            $machine = RetortMachine::firstOrCreate(
+                ['machine_code' => strtoupper(trim($validated['machine_code']))],
+                [
+                    'name'     => 'Mesin ' . strtoupper(trim($validated['machine_code'])),
+                    'location' => '-',
+                    'status'   => 'offline',
+                ]
+            );
+            $machineId = $machine->id;
+        }
+
         $user->name       = $validated['name'];
         $user->email      = $validated['email'];
         $user->role       = $validated['role'];
-        $user->machine_id = $validated['role'] === 'operator' ? ($validated['machine_id'] ?? null) : null;
+        $user->machine_id = $machineId;
 
         if ($request->filled('password')) {
             $user->password = Hash::make($validated['password']);

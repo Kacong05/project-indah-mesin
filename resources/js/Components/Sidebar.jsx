@@ -3,11 +3,8 @@ import {
     LayoutDashboard,
     Activity,
     History,
-    Cpu,
     Bell,
-    FileText,
     Users,
-    User,
     LogOut
 } from 'lucide-react';
 
@@ -19,9 +16,7 @@ export default function Sidebar({ open, setOpen }) {
         { name: 'Manajemen Pengguna', icon: Users, href: route('users'), active: url.startsWith('/users') }
     ] : [
         { name: 'Dashboard', icon: LayoutDashboard, href: route('dashboard'), active: url.startsWith('/dashboard') },
-        { name: 'Monitoring Realtime', icon: Activity, href: route('monitoring'), active: url.startsWith('/monitoring') },
         { name: 'Riwayat Data', icon: History, href: route('history'), active: url.startsWith('/history') },
-        { name: 'Perangkat', icon: Cpu, href: route('devices'), active: url.startsWith('/devices') },
         { name: 'Alarm & Notifikasi', icon: Bell, href: route('alarms'), active: url.startsWith('/alarms') },
     ];
 

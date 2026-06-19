@@ -1,12 +1,12 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, Link } from '@inertiajs/react';
-import { UserCog, ArrowLeft, User, Mail, Lock, Shield, Eye, EyeOff } from 'lucide-react';
+import { UserCog, ArrowLeft, User, Mail, Lock, Shield, Eye, EyeOff, Cpu } from 'lucide-react';
 import { useState } from 'react';
 import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 
-export default function UserEdit({ user, machines }) {
+export default function UserEdit({ user }) {
     const [showPassword, setShowPassword] = useState(false);
     const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
 
@@ -14,7 +14,7 @@ export default function UserEdit({ user, machines }) {
         name: user.name,
         email: user.email,
         role: user.role,
-        machine_id: user.machine_id || '',
+        machine_code: user.machine_code || '',
         password: '',
         password_confirmation: '',
     });
@@ -144,6 +144,28 @@ export default function UserEdit({ user, machines }) {
                                 </div>
                                 <InputError message={errors.role} className="mt-1.5" />
                             </div>
+
+                            {/* Machine Selection */}
+                            {data.role === 'operator' && (
+                                <div className="pt-2 border-t border-white/5">
+                                    <InputLabel htmlFor="machine_code" value="Nomer Seri Mesin" className="text-slate-300 mb-1.5" />
+                                    <div className="relative">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                            <Cpu className="h-4 w-4 text-slate-500" />
+                                        </div>
+                                        <TextInput
+                                            id="machine_code"
+                                            name="machine_code"
+                                            value={data.machine_code}
+                                            onChange={(e) => setData('machine_code', e.target.value.toUpperCase())}
+                                            className="block w-full pl-10 bg-white/5 border-white/10 text-white placeholder-slate-500 rounded-xl focus:border-indigo-500 focus:ring-indigo-500"
+                                            placeholder="Contoh: RT-001, SN-002..."
+                                        />
+                                    </div>
+                                    <p className="mt-1.5 text-xs text-slate-400">Masukkan nomer seri yang tertera pada mesin. Mesin akan otomatis terdaftar ke sistem.</p>
+                                    <InputError message={errors.machine_code} className="mt-1.5" />
+                                </div>
+                            )}
                         </div>
 
                         {/* Section: Password */}

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\RetortMachine;
 use App\Models\SensorReading;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -59,6 +60,11 @@ class HistoryController extends Controller
             ]);
         }
 
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'Mengunduh data riwayat sensor',
+        ]);
+
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json($query->get()->map(function ($reading) {
                 return [
@@ -71,13 +77,13 @@ class HistoryController extends Controller
             }));
         }
 
-        $response = new StreamedResponse(function() use ($query) {
+        $response = new StreamedResponse(function () use ($query) {
             $handle = fopen('php://output', 'w');
-            
+
             // Add CSV headers
             fputcsv($handle, ['Timestamp', 'Nama Mesin', 'Suhu (C)', 'Status Device', 'Status Sinkronisasi']);
 
-            $query->chunk(500, function($readings) use ($handle) {
+            $query->chunk(500, function ($readings) use ($handle) {
                 foreach ($readings as $reading) {
                     $status = $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal');
                     fputcsv($handle, [

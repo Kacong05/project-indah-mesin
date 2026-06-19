@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Alarm;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -35,6 +36,45 @@ class AlarmController extends Controller
             'alarms' => $alarms,
             'filters' => $request->only('status'),
         ]);
+    }
+
+    public function acknowledge(Request $request, Alarm $alarm)
+    {
+        if ($alarm->machine_id !== $request->user()->machine_id) {
+            abort(403);
+        }
+
+        $alarm->update([
+            'status' => Alarm::STATUS_ACKNOWLEDGED,
+            'acknowledged_by' => $request->user()->id,
+        ]);
+
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'Menandai alarm sebagai sudah dibaca',
+            'loggable_type' => Alarm::class,
+            'loggable_id' => $alarm->id,
+            'properties' => ['type' => $alarm->type],
+        ]);
+
+        return back();
+    }
+
+    public function acknowledgeAll(Request $request)
+    {
+        Alarm::where('machine_id', $request->user()->machine_id)
+            ->whereNull('acknowledged_by')
+            ->update([
+                'status' => Alarm::STATUS_ACKNOWLEDGED,
+                'acknowledged_by' => $request->user()->id,
+            ]);
+
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'Menandai semua alarm sebagai sudah dibaca',
+        ]);
+
+        return back();
     }
 
     private function formatType($type)
