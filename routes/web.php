@@ -14,6 +14,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/alarms', [\App\Http\Controllers\AlarmController::class, 'index'])->name('alarms');
         Route::post('/alarms/acknowledge-all', [\App\Http\Controllers\AlarmController::class, 'acknowledgeAll'])->name('alarms.acknowledge-all');
         Route::post('/alarms/{alarm}/acknowledge', [\App\Http\Controllers\AlarmController::class, 'acknowledge'])->name('alarms.acknowledge');
+        Route::get('/retort-monitor', fn () => inertia('RetortMonitor'))->name('retort.monitor');
     });
     
     // Admin Routes

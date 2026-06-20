@@ -51,7 +51,6 @@ class DatabaseSeeder extends Seeder
                 'process_status' => 'running',
                 'recorded_at' => $now->copy()->subHours($i),
                 'created_at' => $now->copy()->subHours($i),
-                'updated_at' => $now->copy()->subHours($i),
             ]);
         }
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import {
@@ -11,7 +11,7 @@ import {
     X,
     Activity,
 } from 'lucide-react';
-import { Line, Doughnut } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -21,9 +21,11 @@ import {
     Title,
     Tooltip,
     Legend,
-    ArcElement,
     Filler
 } from 'chart.js';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Environment, Grid, Html } from '@react-three/drei';
+import RetortModel from '@/Components/RetortModel';
 
 ChartJS.register(
     CategoryScale,
@@ -33,7 +35,6 @@ ChartJS.register(
     Title,
     Tooltip,
     Legend,
-    ArcElement,
     Filler
 );
 
@@ -46,12 +47,10 @@ function AlarmPopups({ alarms }) {
     const [dismissed, setDismissed] = useState([]);
     const prevIds = useRef([]);
 
-    // Auto-show new alarms when list changes
     useEffect(() => {
         const currentIds = alarms.map(a => a.id);
         const newIds = currentIds.filter(id => !prevIds.current.includes(id));
         if (newIds.length) {
-            // Remove newly appeared alarms from dismissed list so they show again
             setDismissed(d => d.filter(id => !newIds.includes(id)));
         }
         prevIds.current = currentIds;
@@ -65,7 +64,7 @@ function AlarmPopups({ alarms }) {
             {visible.map(alarm => (
                 <div
                     key={alarm.id}
-                    className={`flex items-start gap-3 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl animate-[slideIn_0.3s_ease] ${
+                    className={`flex items-start gap-3 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl ${
                         alarm.severity === 'critical'
                             ? 'bg-red-900/80 border-red-500/60 text-red-100'
                             : 'bg-amber-900/80 border-amber-500/60 text-amber-100'
@@ -94,58 +93,117 @@ function AlarmPopups({ alarms }) {
     );
 }
 
-// ─── Temperature Gauge Component ─────────────────────────────────────────────
-function TempGauge({ temperature, isOnline }) {
-    const maxTemp     = 150;
-    const currentTemp = parseFloat(temperature) || 0;
-    const remaining   = Math.max(0, maxTemp - currentTemp);
+// ─── 3D Canvas loading fallback (rendered inside Canvas via drei Html) ─────────
+function ModelLoader() {
+    return (
+        <Html center>
+            <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                color: '#94a3b8', fontSize: 11, fontFamily: 'sans-serif',
+                background: 'rgba(15,23,42,0.9)', padding: '12px 18px',
+                borderRadius: 8, border: '1px solid #1e293b', whiteSpace: 'nowrap',
+            }}>
+                <div style={{
+                    width: 22, height: 22,
+                    border: '2px solid #1e293b',
+                    borderTop: '2px solid #22d3ee',
+                    borderRadius: '50%',
+                    animation: 'r3f-spin 0.9s linear infinite',
+                }} />
+                <style>{`@keyframes r3f-spin{to{transform:rotate(360deg)}}`}</style>
+                Memuat model 3D…
+            </div>
+        </Html>
+    );
+}
 
-    let color = 'rgba(148,163,184,1)'; // slate (cold/off)
-    if (!isOnline)                    color = 'rgba(148,163,184,1)'; // slate for offline
-    else if (currentTemp >= TEMP_HIGH) color = 'rgba(239,68,68,1)';   // red
-    else if (currentTemp >= TEMP_LOW)  color = 'rgba(34,197,94,1)';   // green
-    else if (currentTemp >= 10)        color = 'rgba(245,158,11,1)';  // amber (warming)
+// ─── Retort 3D Viewer Card (embedded in dashboard) ───────────────────────────
+function Retort3DCard({ temperature, processStatus }) {
+    const tempLabel =
+        temperature > 121 ? 'Kritis' :
+        temperature > 115 ? 'Panas Tinggi' :
+        temperature >= 100 ? 'Suhu Proses' : 'Ambient';
 
-    const gaugeData = {
-        datasets: [{
-            data: [currentTemp, remaining],
-            backgroundColor: [color, 'rgba(255,255,255,0.05)'],
-            borderColor: ['transparent', 'transparent'],
-            circumference: 270,
-            rotation: 225,
-            cutout: '80%',
-            borderRadius: 5,
-        }]
-    };
+    const statusColor =
+        processStatus === 'running' ? '#22c55e' :
+        processStatus === 'error'   ? '#ef4444' : '#eab308';
+
+    const statusLabel =
+        processStatus === 'running' ? 'Running' :
+        processStatus === 'error'   ? 'Error' : 'Standby';
 
     return (
-        <div className="flex flex-col items-center justify-center h-full py-4">
-            <h3 className="text-base font-medium text-slate-300 mb-2">Suhu Saat Ini</h3>
-            <div className="relative w-52 h-52 flex items-center justify-center">
-                <Doughnut
-                    data={gaugeData}
-                    options={{
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: { tooltip: { enabled: false } },
-                        animation: { animateRotate: false, animateScale: false },
-                    }}
-                />
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-8">
-                    <span className="text-4xl font-bold text-white tracking-tighter">
-                        {currentTemp.toFixed(1)}
-                    </span>
-                    <span className="text-base text-slate-400 font-medium">°C</span>
+        <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg flex flex-col" style={{ minHeight: 340 }}>
+            {/* Card header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
+                <h3 className="text-sm font-semibold text-white">Model 3D Retort</h3>
+                <div className="flex items-center gap-1.5">
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block', boxShadow: `0 0 6px ${statusColor}` }} />
+                    <span className="text-xs text-slate-400">{statusLabel}</span>
                 </div>
             </div>
-            <div className="mt-2 flex gap-4 text-[11px]">
-                <span className="text-blue-400">↓ {TEMP_LOW}°C</span>
-                <span className="text-slate-300 font-semibold">Target {TARGET_TEMP}°C</span>
-                <span className="text-red-400">↑ {TEMP_HIGH}°C</span>
-            </div>
-            <div className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">
-                <Activity className="w-3.5 h-3.5 animate-pulse" />
-                <span className="text-[11px] font-medium tracking-wider uppercase">Live Active</span>
+
+            {/* Canvas area — MUST have explicit width+height */}
+            <div style={{ flex: 1, position: 'relative', minHeight: 280 }}>
+                <Canvas
+                    style={{ width: '100%', height: '100%', display: 'block', position: 'absolute', inset: 0 }}
+                    camera={{ position: [0, 0.5, 3], fov: 50, near: 0.01, far: 500 }}
+                    gl={{ antialias: true }}
+                    shadows
+                >
+                    <ambientLight intensity={0.6} />
+                    <directionalLight castShadow position={[4, 6, 4]} intensity={2} />
+                    <pointLight position={[-2, 2, -2]} intensity={0.7} color="#4488ff" />
+                    <pointLight position={[2, -1, 2]}  intensity={0.4} color="#ff8844" />
+
+                    <Environment preset="warehouse" />
+
+                    <Grid
+                        receiveShadow
+                        position={[0, -0.8, 0]}
+                        args={[6, 6]}
+                        cellSize={0.2}
+                        cellThickness={0.4}
+                        cellColor="#1e293b"
+                        sectionSize={1}
+                        sectionThickness={0.8}
+                        sectionColor="#334155"
+                        fadeDistance={5}
+                        fadeStrength={1}
+                        infiniteGrid
+                    />
+
+                    <Suspense fallback={<ModelLoader />}>
+                        <RetortModel temperature={temperature} processStatus={processStatus} />
+                    </Suspense>
+
+                    <OrbitControls
+                        target={[0, 0, 0]}
+                        enableDamping
+                        dampingFactor={0.07}
+                        minDistance={1}
+                        maxDistance={8}
+                        enablePan={false}
+                        autoRotate={processStatus !== 'running'}
+                        autoRotateSpeed={0.5}
+                    />
+                </Canvas>
+
+                {/* Temp overlay badge — bottom-left of canvas */}
+                <div style={{
+                    position: 'absolute', bottom: 10, left: 10, zIndex: 10,
+                    background: 'rgba(15,23,42,0.85)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8, padding: '4px 10px',
+                    display: 'flex', alignItems: 'baseline', gap: 4,
+                    backdropFilter: 'blur(8px)',
+                }}>
+                    <span style={{ fontSize: 20, fontWeight: 700, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
+                        {typeof temperature === 'number' ? temperature.toFixed(1) : '—'}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>°C</span>
+                    <span style={{ fontSize: 10, color: '#64748b', marginLeft: 4 }}>{tempLabel}</span>
+                </div>
             </div>
         </div>
     );
@@ -205,11 +263,17 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
         }],
     };
 
+    // Derive processStatus from stats
+    const currentTemp   = parseFloat(stats.currentTemperature) || 0;
+    const processStatus = !stats.isOnline ? 'standby'
+                        : currentTemp > TEMP_HIGH ? 'error'
+                        : currentTemp >= 10 ? 'running'
+                        : 'standby';
+
     return (
         <AuthenticatedLayout header={`Dashboard Utama — ${machineName}`}>
             <Head title="Dashboard" />
 
-            {/* Alarm Popups */}
             <AlarmPopups alarms={activeAlarms ?? []} />
 
             <style>{`
@@ -314,7 +378,7 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                     </div>
                 </div>
 
-                {/* Charts Area */}
+                {/* Charts + 3D Model Row */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
                     {/* Line Chart */}
@@ -325,10 +389,8 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                         </div>
                     </div>
 
-                    {/* Temperature Gauge (menggantikan Statistik Alarm) */}
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg flex items-center justify-center">
-                        <TempGauge temperature={stats.currentTemperature} isOnline={stats.isOnline} />
-                    </div>
+                    {/* 3D Retort Model Card */}
+                    <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
                 </div>
 
                 {/* Recent Activity Table */}
@@ -356,9 +418,7 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                                             <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-400">
                                                 {activity.properties
                                                     ? Object.entries(activity.properties)
-                                                        .map(([k, v]) =>
-                                                            `${k.replace(/_/g, ' ')}: ${v}`
-                                                        )
+                                                        .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
                                                         .join(', ')
                                                     : '-'}
                                             </td>
