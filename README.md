@@ -110,3 +110,27 @@ Untuk melihat data bergerak secara real-time pada dashboard operator:
     ```
 3.  Masukkan kode mesin yang disimulasikan (misal: `RT-001` untuk mesin bawaan operator, atau buat kode mesin baru).
 
+### 6. Firmware Retort Logger (ESP32-S3)
+Telah ditambahkan modul firmware di folder [`/RetortLogger`](file:///d:/laragon/www/project-indah-mesin/RetortLogger) dengan spesifikasi:
+- Kode Arduino IDE (.ino) modular tanpa class/.cpp/.h.
+- Fitur aktif: Preferences (NVS), WiFi STA, AP Mode + Captive Portal, MQTT (JSON data & cmd handler), dan Simulasi retort 3 fase (heating, holding, cooling).
+- Fitur nonaktif (flag `#define` siap dialihkan ke hardware asli): Modbus RTU, RTC DS3231M, MicroSD (CSV log + auto-rotation + replay data), dan ArduinoOTA.
+- Dilengkapi dengan [`README.md`](file:///d:/laragon/www/project-indah-mesin/RetortLogger/README.md) lokal dan petunjuk integrasi di [`CONFIGURATION.md`](file:///d:/laragon/www/project-indah-mesin/RetortLogger/CONFIGURATION.md).
+
+---
+
+## Catatan Perubahan (2026-06-20)
+
+*   **Pembaruan Dashboard & Integrasi Model 3D**:
+    *   Mengintegrasikan visualisasi model 3D retort (`public/models/retort.glb`) ke dalam Dashboard Operator menggunakan React Three Fiber & Drei.
+    *   Menambahkan animasi uap dinamis di atas retort yang intensitasnya menyesuaikan suhu sensor.
+    *   Menambahkan perubahan warna indikator body retort secara dinamis: Hijau (<100°C), Jingga (100–115°C), Merah (>115°C), dan Merah Terang (>121°C).
+    *   Menambahkan efek pulsasi halus dan perputaran pompa saat `process_status` bernilai `running`.
+    *   Menambahkan lampu indikator status: Hijau (`running`), Kuning (`standby`), dan Merah berkedip (`error` / `stopped`).
+*   **Halaman Pemantauan Khusus (Retort Monitor)**:
+    *   Membuat halaman mandiri `/retort-monitor` yang menampilkan model 3D visual secara penuh bersandingan dengan panel informasi sensor detail (`StatusPanel.jsx`).
+*   **Perbaikan Simulator IoT (`worker.py`)**:
+    *   Memperbaiki struktur kode, sintaksis indentasi, dan penanganan encoding UTF-8 pada script simulator.
+    *   Menambahkan simulasi logika 3 fase yang lebih realistis (Pemanasan, Penahanan Suhu/Holding dengan pembatasan suhu, dan Pendinginan).
+*   **Instalasi Dependensi Frontend**:
+    *   Menginstal `@react-three/fiber`, `@react-three/drei`, dan `three` untuk mendukung visualisasi 3D pada React 18.
