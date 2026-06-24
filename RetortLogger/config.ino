@@ -1,84 +1,110 @@
 // ============================================================
-//  config.ino  –  Preferences load/save + default values
+//  config.ino  –  Preferences (NVS) load/save
 // ============================================================
 
-#include <Preferences.h>
-
-// Keys match CONFIGURATION.md §Preferences
-#define PREF_NS          "retort"
-#define KEY_WIFI_SSID    "wifi_ssid"
-#define KEY_WIFI_PASS    "wifi_pass"
-#define KEY_MQTT_HOST    "mqtt_host"
-#define KEY_MQTT_PORT    "mqtt_port"
-#define KEY_MQTT_USER    "mqtt_user"
-#define KEY_MQTT_PASS    "mqtt_pass"
-#define KEY_MQTT_PUB     "mqtt_pub"
-#define KEY_MQTT_CMD     "mqtt_cmd"
-#define KEY_DEVICE_ID    "device_id"
-#define KEY_SAMPLE_MS    "sample_ms"
-#define KEY_HEAT_SP      "heat_sp"
-#define KEY_HOLD_DUR     "hold_dur"
-#define KEY_COOL_THR     "cool_thr"
-
-// Declared in RetortLogger.ino
-extern AppConfig cfg;
+extern AppConfig   cfg;
 extern Preferences prefs;
+
+#define PREF_NS       "retort"
+#define K_SSID        "wf_ssid"
+#define K_WPASS       "wf_pass"
+#define K_MQTT_HOST   "mq_host"
+#define K_MQTT_PORT   "mq_port"
+#define K_MQTT_USER   "mq_user"
+#define K_MQTT_PASS   "mq_pass"
+#define K_MQTT_PUB    "mq_pub"
+#define K_MQTT_CMD    "mq_cmd"
+#define K_TTEMP       "tgt_temp"
+#define K_HOLD_SEC    "hold_sec"
+#define K_HEAT_RATE   "heat_rate"
+#define K_COOL_RATE   "cool_rate"
+#define K_MACHINE_ID  "machine_id"
+#define K_PASS_HASH   "pass_hash"
+
+// Default password hash: SHA256("retort123")
+static const char DEFAULT_PASS_HASH[] =
+  "e5b1fc40362a7df203a27e457de2ec78792b8990f10a2afaeb0976b7996c8516";
 
 void loadConfig() {
   prefs.begin(PREF_NS, true);  // read-only
 
-  prefs.getString(KEY_WIFI_SSID, cfg.wifiSSID, sizeof(cfg.wifiSSID));
-  prefs.getString(KEY_WIFI_PASS, cfg.wifiPass, sizeof(cfg.wifiPass));
-  prefs.getString(KEY_MQTT_HOST, cfg.mqttHost, sizeof(cfg.mqttHost));
-  cfg.mqttPort = prefs.getUShort(KEY_MQTT_PORT, 1883);
-  prefs.getString(KEY_MQTT_USER, cfg.mqttUser, sizeof(cfg.mqttUser));
-  prefs.getString(KEY_MQTT_PASS, cfg.mqttPass, sizeof(cfg.mqttPass));
+  prefs.getString(K_SSID,      cfg.wifiSSID,     sizeof(cfg.wifiSSID));
+  prefs.getString(K_WPASS,     cfg.wifiPass,     sizeof(cfg.wifiPass));
+  prefs.getString(K_MQTT_HOST, cfg.mqttBroker,   sizeof(cfg.mqttBroker));
+  cfg.mqttPort = prefs.getUShort(K_MQTT_PORT, 1883);
+  prefs.getString(K_MQTT_USER, cfg.mqttUser,     sizeof(cfg.mqttUser));
+  prefs.getString(K_MQTT_PASS, cfg.mqttPass,     sizeof(cfg.mqttPass));
+  prefs.getString(K_MQTT_PUB,  cfg.mqttPubTopic, sizeof(cfg.mqttPubTopic));
+  prefs.getString(K_MQTT_CMD,  cfg.mqttCmdTopic, sizeof(cfg.mqttCmdTopic));
 
-  // Defaults for MQTT topics
-  prefs.getString(KEY_MQTT_PUB, cfg.mqttTopicPub, sizeof(cfg.mqttTopicPub));
-  if (cfg.mqttTopicPub[0] == '\0')
-    strncpy(cfg.mqttTopicPub, "retort/data", sizeof(cfg.mqttTopicPub));
+  // Default topics
+  if (cfg.mqttPubTopic[0] == '\0')
+    strncpy(cfg.mqttPubTopic, "retort/data", sizeof(cfg.mqttPubTopic) - 1);
+  if (cfg.mqttCmdTopic[0] == '\0')
+    strncpy(cfg.mqttCmdTopic, "retort/cmd", sizeof(cfg.mqttCmdTopic) - 1);
 
-  prefs.getString(KEY_MQTT_CMD, cfg.mqttTopicCmd, sizeof(cfg.mqttTopicCmd));
-  if (cfg.mqttTopicCmd[0] == '\0')
-    strncpy(cfg.mqttTopicCmd, "retort/cmd", sizeof(cfg.mqttTopicCmd));
+  // Retort parameters
+  cfg.targetTemp    = prefs.getFloat(K_TTEMP,    121.0f);
+  cfg.holdingTimeSec = prefs.getUInt(K_HOLD_SEC, 1200);  // 20 menit
+  cfg.heatingRate   = prefs.getFloat(K_HEAT_RATE, 1.5f);
+  cfg.coolingRate   = prefs.getFloat(K_COOL_RATE, 0.8f);
 
-  prefs.getString(KEY_DEVICE_ID, cfg.deviceID, sizeof(cfg.deviceID));
-  if (cfg.deviceID[0] == '\0') {
-    uint8_t mac[6];
-    WiFi.macAddress(mac);
-    snprintf(cfg.deviceID, sizeof(cfg.deviceID),
-             "retort_%02X%02X%02X", mac[3], mac[4], mac[5]);
-  }
+  // Machine identity
+  prefs.getString(K_MACHINE_ID, cfg.machineId, sizeof(cfg.machineId));
+  if (cfg.machineId[0] == '\0')
+    strncpy(cfg.machineId, "RETORT-001", sizeof(cfg.machineId) - 1);
 
-  cfg.sampleIntervalMs = prefs.getUShort(KEY_SAMPLE_MS, 1000);
-  cfg.heatSetpoint     = prefs.getFloat(KEY_HEAT_SP,    121.0f);
-  cfg.holdDurationMs   = prefs.getUInt(KEY_HOLD_DUR,    1200000UL); // 20 min
-  cfg.coolThresholdC   = prefs.getFloat(KEY_COOL_THR,    40.0f);
+  prefs.getString(K_PASS_HASH, cfg.passHash, sizeof(cfg.passHash));
+  if (cfg.passHash[0] == '\0')
+    strncpy(cfg.passHash, DEFAULT_PASS_HASH, sizeof(cfg.passHash) - 1);
 
   prefs.end();
 
-  Serial.printf("[CFG] SSID=%s MQTT=%s:%d DevID=%s\n",
-                cfg.wifiSSID, cfg.mqttHost, cfg.mqttPort, cfg.deviceID);
+  Serial.printf("[CFG] Machine=%s  SSID=%s  MQTT=%s:%d\n",
+                cfg.machineId, cfg.wifiSSID, cfg.mqttBroker, cfg.mqttPort);
 }
 
 void saveConfig() {
   prefs.begin(PREF_NS, false);  // read-write
-
-  prefs.putString(KEY_WIFI_SSID, cfg.wifiSSID);
-  prefs.putString(KEY_WIFI_PASS, cfg.wifiPass);
-  prefs.putString(KEY_MQTT_HOST, cfg.mqttHost);
-  prefs.putUShort(KEY_MQTT_PORT, cfg.mqttPort);
-  prefs.putString(KEY_MQTT_USER, cfg.mqttUser);
-  prefs.putString(KEY_MQTT_PASS, cfg.mqttPass);
-  prefs.putString(KEY_MQTT_PUB,  cfg.mqttTopicPub);
-  prefs.putString(KEY_MQTT_CMD,  cfg.mqttTopicCmd);
-  prefs.putString(KEY_DEVICE_ID, cfg.deviceID);
-  prefs.putUShort(KEY_SAMPLE_MS, cfg.sampleIntervalMs);
-  prefs.putFloat(KEY_HEAT_SP,    cfg.heatSetpoint);
-  prefs.putUInt(KEY_HOLD_DUR,    cfg.holdDurationMs);
-  prefs.putFloat(KEY_COOL_THR,   cfg.coolThresholdC);
-
+  prefs.putString(K_SSID,      cfg.wifiSSID);
+  prefs.putString(K_WPASS,     cfg.wifiPass);
+  prefs.putString(K_MQTT_HOST, cfg.mqttBroker);
+  prefs.putUShort(K_MQTT_PORT, cfg.mqttPort);
+  prefs.putString(K_MQTT_USER, cfg.mqttUser);
+  prefs.putString(K_MQTT_PASS, cfg.mqttPass);
+  prefs.putString(K_MQTT_PUB,  cfg.mqttPubTopic);
+  prefs.putString(K_MQTT_CMD,  cfg.mqttCmdTopic);
+  prefs.putFloat(K_TTEMP,      cfg.targetTemp);
+  prefs.putUInt(K_HOLD_SEC,    cfg.holdingTimeSec);
+  prefs.putFloat(K_HEAT_RATE,  cfg.heatingRate);
+  prefs.putFloat(K_COOL_RATE,  cfg.coolingRate);
+  prefs.putString(K_MACHINE_ID, cfg.machineId);
+  prefs.putString(K_PASS_HASH, cfg.passHash);
   prefs.end();
-  Serial.println(F("[CFG] Saved to Preferences."));
+  Serial.println(F("[CFG] Saved."));
+}
+
+// Overloaded helpers for saving individual fields
+void saveConfigField(const char* key, const char* val) {
+  prefs.begin(PREF_NS, false);
+  prefs.putString(key, val);
+  prefs.end();
+}
+
+void saveConfigField(const char* key, uint16_t val) {
+  prefs.begin(PREF_NS, false);
+  prefs.putUShort(key, val);
+  prefs.end();
+}
+
+void saveConfigField(const char* key, float val) {
+  prefs.begin(PREF_NS, false);
+  prefs.putFloat(key, val);
+  prefs.end();
+}
+
+void saveConfigField(const char* key, uint32_t val) {
+  prefs.begin(PREF_NS, false);
+  prefs.putUInt(key, val);
+  prefs.end();
 }

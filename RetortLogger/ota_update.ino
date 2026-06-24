@@ -1,7 +1,7 @@
 // ============================================================
-//  ota_update.ino  –  OTA firmware update (disabled by default)
-//  Active when USE_OTA = true
-//  Uses ArduinoOTA (built-in ESP32 Arduino core)
+//  ota_update.ino  –  OTA firmware update
+//  Aktif jika USE_OTA = true
+//  Library: ArduinoOTA (built-in)
 // ============================================================
 
 #if USE_OTA
@@ -10,25 +10,21 @@
 
 extern AppConfig cfg;
 
-void otaSetup() {
-  ArduinoOTA.setHostname(cfg.deviceID);
-  // TODO(security): Set a strong OTA password; do not ship with default.
-  // In production, use cfg.deviceID-derived password or a stored secret.
-  ArduinoOTA.setPassword("retort-ota-change-me");
+void setupOTA() {
+  ArduinoOTA.setHostname(cfg.machineId);
+  // TODO(security): Ganti password OTA dengan nilai yang lebih kuat di produksi
+  ArduinoOTA.setPassword("retort-ota-secure");
 
   ArduinoOTA.onStart([]() {
     String type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
     Serial.println("[OTA] Start: " + type);
   });
-
   ArduinoOTA.onEnd([]() {
-    Serial.println(F("\n[OTA] End. Rebooting..."));
+    Serial.println(F("\n[OTA] Done. Rebooting..."));
   });
-
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Serial.printf("[OTA] %u%%\r", (progress * 100) / total);
   });
-
   ArduinoOTA.onError([](ota_error_t error) {
     Serial.printf("[OTA] Error[%u]: ", error);
     if      (error == OTA_AUTH_ERROR)    Serial.println(F("Auth Failed"));
@@ -39,16 +35,16 @@ void otaSetup() {
   });
 
   ArduinoOTA.begin();
-  Serial.printf("[OTA] Ready. Host=%s\n", cfg.deviceID);
+  Serial.printf("[OTA] Ready. Host=%s\n", cfg.machineId);
 }
 
-void otaLoop() {
+void loopOTA() {
   ArduinoOTA.handle();
 }
 
 #else  // USE_OTA = false – stubs
 
-void otaSetup() {}
-void otaLoop()  {}
+void setupOTA() {}
+void loopOTA()  {}
 
 #endif

@@ -1,101 +1,115 @@
 // ============================================================
-//  retort_sim.ino  –  Fake sensor + retort phase simulation
-//  Active when USE_FAKE_SENSOR = true
-//  Phases: 0=idle  1=heating  2=holding  3=cooling
+//  retort_sim.ino  –  Simulasi heating/holding/cooling
+//  Aktif jika USE_FAKE_SENSOR = true
 // ============================================================
 
-extern RetortState retort;
-extern AppConfig   cfg;
+#if USE_FAKE_SENSOR
 
-// Rate constants (°C per second)
-#define SIM_HEAT_RATE_C_PER_S    1.5f   // heating rise
-#define SIM_COOL_RATE_C_PER_S    0.8f   // cooling fall
-#define SIM_OVERSHOOT_RANGE_C    2.0f   // random overshoot band
-#define SIM_NOISE_C              0.1f   // sensor noise amplitude
+extern AppConfig   cfg;
+extern RetortState state;
+
+static const float SIM_NOISE = 0.15f;
+static unsigned long lastSimMs = 0;
+static const unsigned long SIM_INTERVAL_MS = 500;
 
 static float simNoise() {
-  // Simple LCG pseudo-random noise ±SIM_NOISE_C
-  return ((float)(rand() % 100) / 100.0f - 0.5f) * 2.0f * SIM_NOISE_C;
+  return ((float)(esp_random() % 200) / 1000.0f - 0.1f) * SIM_NOISE;
 }
 
-// ---- Update called every sample interval ------------------
-void simUpdate(RetortState* s, AppConfig* c) {
-  if (!s->running) return;
+void setupRetortSim() {
+  Serial.println(F("[SIM] Fake sensor mode active."));
+}
 
-  float dt = (float)c->sampleIntervalMs / 1000.0f;  // seconds per tick
-  uint32_t now     = millis();
-  uint32_t elapsed = now - s->phaseStartMs;
+void loopRetortSim() {
+  unsigned long now = millis();
+  if (now - lastSimMs < SIM_INTERVAL_MS) return;
+  lastSimMs = now;
 
-  switch (s->phase) {
-    // ------ HEATING ----------------------------------------
-    case 1: {
-      float target = c->heatSetpoint + SIM_OVERSHOOT_RANGE_C;
-      s->setpoint  = c->heatSetpoint;
-      if (s->tempC < target) {
-        s->tempC += SIM_HEAT_RATE_C_PER_S * dt;
-        if (s->tempC > target) s->tempC = target;
-      }
-      s->tempC += simNoise();
-      // Transition: temp reached setpoint
-      if (s->tempC >= c->heatSetpoint) {
+  if (state.phase == PHASE_IDLE) return;
+
+  float dt = (float)SIM_INTERVAL_MS / 1000.0f;
+  unsigned long elapsed = now - state.phaseStartMs;
+
+  switch (state.phase) {
+    case PHASE_HEATING: {
+      state.temperature += cfg.heatingRate * dt + simNoise();
+      // Simulasi tekanan naik seiring suhu
+      state.pressure = 1.013f + (state.temperature - 25.0f) * 0.01f;
+      if (state.temperature >= cfg.targetTemp) {
+        state.temperature = cfg.targetTemp;
+        state.phase = PHASE_HOLDING;
+        state.phaseStartMs = now;
         Serial.println(F("[SIM] -> HOLDING"));
-        s->phase        = 2;
-        s->phaseStartMs = now;
       }
       break;
     }
-
-    // ------ HOLDING ----------------------------------------
-    case 2: {
-      s->setpoint = c->heatSetpoint;
-      // Slight oscillation around setpoint
-      float err = c->heatSetpoint - s->tempC;
-      s->tempC  += err * 0.1f * dt + simNoise();
-      // Transition: hold time elapsed
-      if (elapsed >= c->holdDurationMs) {
+    case PHASE_HOLDING: {
+      // Osilasi kecil di sekitar target
+      float err = cfg.targetTemp - state.temperature;
+      state.temperature += err * 0.1f * dt + simNoise();
+      state.pressure = 1.013f + (state.temperature - 25.0f) * 0.01f;
+      if (elapsed >= (unsigned long)cfg.holdingTimeSec * 1000UL) {
+        state.phase = PHASE_COOLING;
+        state.phaseStartMs = now;
         Serial.println(F("[SIM] -> COOLING"));
-        s->phase        = 3;
-        s->phaseStartMs = now;
       }
       break;
     }
-
-    // ------ COOLING ----------------------------------------
-    case 3: {
-      s->setpoint = c->coolThresholdC;
-      if (s->tempC > c->coolThresholdC) {
-        s->tempC -= SIM_COOL_RATE_C_PER_S * dt;
-        if (s->tempC < c->coolThresholdC) s->tempC = c->coolThresholdC;
-      }
-      s->tempC += simNoise();
-      // Transition: cooled to threshold
-      if (s->tempC <= c->coolThresholdC) {
-        Serial.println(F("[SIM] -> IDLE (process complete)"));
-        simStopProcess(s);
+    case PHASE_COOLING: {
+      state.temperature -= cfg.coolingRate * dt;
+      state.temperature += simNoise();
+      state.pressure = 1.013f + (state.temperature - 25.0f) * 0.01f;
+      if (state.pressure < 1.013f) state.pressure = 1.013f;
+      if (state.temperature <= 40.0f) {
+        state.temperature = 40.0f;
+        state.phase = PHASE_IDLE;
+        state.phaseStartMs = 0;
+        Serial.println(F("[SIM] -> IDLE (complete)"));
       }
       break;
     }
-
-    case 0:
     default:
       break;
   }
 }
 
-void simStartProcess(RetortState* s) {
-  if (s->running) {
+void startProcess() {
+  if (state.phase != PHASE_IDLE) {
     Serial.println(F("[SIM] Already running."));
     return;
   }
-  s->running      = true;
-  s->phase        = 1;   // start heating
-  s->phaseStartMs = millis();
-  s->tempC        = 25.0f;
-  Serial.println(F("[SIM] Process STARTED -> HEATING"));
+  state.phase = PHASE_HEATING;
+  state.phaseStartMs = millis();
+  state.temperature = 25.0f;
+  state.pressure = 1.013f;
+  Serial.println(F("[SIM] START -> HEATING"));
 }
 
-void simStopProcess(RetortState* s) {
-  s->running = false;
-  s->phase   = 0;
-  Serial.println(F("[SIM] Process STOPPED."));
+void stopProcess() {
+  state.phase = PHASE_IDLE;
+  state.phaseStartMs = 0;
+  Serial.println(F("[SIM] STOPPED."));
 }
+
+#else  // Stubs jika USE_FAKE_SENSOR = false
+
+void setupRetortSim() {}
+void loopRetortSim() {}
+
+// startProcess dan stopProcess akan disediakan oleh modbus_hw.ino
+// jika USE_MODBUS = true dan USE_FAKE_SENSOR = false
+
+#if !USE_MODBUS
+void startProcess() {
+  state.phase = PHASE_HEATING;
+  state.phaseStartMs = millis();
+  Serial.println(F("[RETORT] START"));
+}
+void stopProcess() {
+  state.phase = PHASE_IDLE;
+  state.phaseStartMs = 0;
+  Serial.println(F("[RETORT] STOP"));
+}
+#endif
+
+#endif

@@ -1,30 +1,35 @@
 // ============================================================
-//  modbus_hw.ino  –  RS485 Modbus RTU (disabled by default)
-//  Active when USE_MODBUS = true
+//  modbus_hw.ino  –  RS485 Modbus RTU
+//  Aktif jika USE_MODBUS = true
 //  Library: ModbusMaster (Doc Walker)
-//  Hardware: ESP32-S3 UART1 -> MAX485 -> Slave device
 // ============================================================
 
 #if USE_MODBUS
 
 #include <ModbusMaster.h>
 
-// ---- Pin definitions (see CONFIGURATION.md) ----------------
-#define MB_RX_PIN    18   // UART1 RX
-#define MB_TX_PIN    17   // UART1 TX
-#define MB_DE_RE_PIN 16   // DE+RE of MAX485 (active HIGH = transmit)
+extern AppConfig   cfg;
+extern RetortState state;
+
+// Pin definitions – sesuaikan dengan hardware
+#define MB_RX_PIN    18
+#define MB_TX_PIN    17
+#define MB_DE_RE_PIN 16
 #define MB_BAUD      9600
 #define MB_SLAVE_ID  1
 
-// Modbus register map (adjust for your sensor/PLC)
-#define MB_REG_TEMP   0x0000  // Holding register: temperature x10 (e.g. 1213 = 121.3°C)
+// Register map (sesuaikan dengan PLC/sensor)
+#define MB_REG_TEMP     0x0000  // Temperature x10
+#define MB_REG_PRESSURE 0x0001  // Pressure x1000
 
 static ModbusMaster modbus;
+static unsigned long lastModbusRead = 0;
+static const unsigned long MODBUS_INTERVAL_MS = 1000;
 
 static void preTransmit()  { digitalWrite(MB_DE_RE_PIN, HIGH); }
 static void postTransmit() { digitalWrite(MB_DE_RE_PIN, LOW);  }
 
-void modbusSetup() {
+void setupModbus() {
   pinMode(MB_DE_RE_PIN, OUTPUT);
   digitalWrite(MB_DE_RE_PIN, LOW);
 
@@ -36,24 +41,46 @@ void modbusSetup() {
   Serial.println(F("[MODBUS] Initialized."));
 }
 
-float modbusReadTemp() {
+void loopModbus() {
+  unsigned long now = millis();
+  if (now - lastModbusRead < MODBUS_INTERVAL_MS) return;
+  lastModbusRead = now;
+
+  // Read temperature
   uint8_t result = modbus.readHoldingRegisters(MB_REG_TEMP, 1);
   if (result == modbus.ku8MBSuccess) {
     uint16_t raw = modbus.getResponseBuffer(0);
-    return (float)raw / 10.0f;
+    state.temperature = (float)raw / 10.0f;
   }
-  Serial.printf("[MODBUS] Read error: 0x%02X\n", result);
-  return -1.0f;  // sentinel: read failed
+
+  // Read pressure
+  result = modbus.readHoldingRegisters(MB_REG_PRESSURE, 1);
+  if (result == modbus.ku8MBSuccess) {
+    uint16_t raw = modbus.getResponseBuffer(0);
+    state.pressure = (float)raw / 1000.0f;
+  }
 }
 
-void modbusLoop() {
-  // Placeholder for polling multiple registers / writing outputs
+#if !USE_FAKE_SENSOR
+void startProcess() {
+  if (state.phase != PHASE_IDLE) return;
+  state.phase = PHASE_HEATING;
+  state.phaseStartMs = millis();
+  Serial.println(F("[MODBUS] START -> HEATING"));
+  // TODO(hardware): Kirim command start ke PLC via Modbus write
 }
 
-#else  // USE_MODBUS = false – provide stub bodies
+void stopProcess() {
+  state.phase = PHASE_IDLE;
+  state.phaseStartMs = 0;
+  Serial.println(F("[MODBUS] STOP"));
+  // TODO(hardware): Kirim command stop ke PLC via Modbus write
+}
+#endif
 
-void modbusSetup() {}
-float modbusReadTemp() { return 0.0f; }
-void modbusLoop() {}
+#else  // USE_MODBUS = false – stubs
+
+void setupModbus() {}
+void loopModbus() {}
 
 #endif

@@ -1,184 +1,251 @@
 // ============================================================
-//  RetortLogger.ino  –  Industrial Retort Logger (ESP32-S3)
-//  Main entry point
+//  RetortLogger.ino  –  Entry point, feature flags, setup(), loop()
+//  Industrial Retort Logger berbasis ESP32
+//  Menggunakan ESPAsyncWebServer + DNSServer (Captive Portal)
 // ============================================================
-
-// ---- FEATURE FLAGS -----------------------------------------
-// Set to true when the hardware is physically present.
-#define USE_FAKE_SENSOR true   // Simulated retort temperature
-#define USE_MODBUS      false  // RS485 Modbus RTU slave/master
-#define USE_RTC         false  // DS3231M real-time clock
-#define USE_SD          false  // MicroSD card logging
-#define USE_OTA         false  // Over-the-air firmware update
-// ------------------------------------------------------------
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <DNSServer.h>
+#include <ESPAsyncWebServer.h>
 #include <Preferences.h>
+#include <ArduinoJson.h>
+#include "mbedtls/sha256.h"
 
-// ---- GLOBAL SHARED STATE -----------------------------------
-Preferences prefs;
+// --- Feature Flags ---
+#define USE_FAKE_SENSOR true   // Gunakan sensor simulasi
+#define USE_MODBUS      true   // RS485 Modbus RTU
+#define USE_RTC         true   // DS3231M RTC
+#define USE_SD          true   // MicroSD logging
+#define USE_OTA         true  // OTA update
 
-// Retort process state
-typedef struct {
-  float    tempC;          // Current temperature °C
-  float    setpoint;       // Target setpoint for current phase
-  uint8_t  phase;          // 0=idle 1=heating 2=holding 3=cooling
-  uint32_t phaseStartMs;   // millis() when phase began
-  uint32_t totalLoggedMs;  // total process time accumulated
-  bool     running;        // process active flag
-  char     timestamp[20];  // "YYYY-MM-DD HH:MM:SS"
-} RetortState;
+// --- Constants ---
+#define SESSION_TIMEOUT_MS   600000UL  // 10 menit auto logout
+#define DASHBOARD_POLL_MS    2000      // Update dashboard setiap 2 detik
 
-RetortState retort = {0};
-
-// Config loaded from Preferences / AP portal
-typedef struct {
-  char wifiSSID[64];
-  char wifiPass[64];
-  char mqttHost[64];
+// --- Data Structures ---
+struct AppConfig {
+  // WiFi
+  char wifiSSID[33];
+  char wifiPass[65];
+  // MQTT
+  char mqttBroker[65];
   uint16_t mqttPort;
-  char mqttUser[32];
-  char mqttPass[32];
-  char mqttTopicPub[64];
-  char mqttTopicCmd[64];
-  char deviceID[32];
-  uint16_t sampleIntervalMs;   // default 1000
-  float heatSetpoint;          // default 121.0 °C
-  uint32_t holdDurationMs;     // default 20 min
-  float coolThresholdC;        // default 40.0 °C
-} AppConfig;
+  char mqttUser[33];
+  char mqttPass[65];
+  char mqttPubTopic[65];
+  char mqttCmdTopic[65];
+  // Retort Parameters
+  float targetTemp;       // Target temperature (°C)
+  uint32_t holdingTimeSec; // Holding time (detik)
+  float heatingRate;      // Heating rate (°C/s)
+  float coolingRate;      // Cooling rate (°C/s)
+  // Machine Identity
+  char machineId[33];
+  char passHash[65];      // SHA256 hex string
+};
 
-AppConfig cfg = {0};
+enum RetortPhase : uint8_t {
+  PHASE_IDLE = 0,
+  PHASE_HEATING,
+  PHASE_HOLDING,
+  PHASE_COOLING
+};
 
-// ---- TIMING ------------------------------------------------
-static uint32_t lastSampleMs  = 0;
-static uint32_t lastMqttMs    = 0;
-static uint32_t lastStatusMs  = 0;
+struct RetortState {
+  RetortPhase phase;
+  float temperature;
+  float pressure;
+  unsigned long phaseStartMs;
+  bool wifiConnected;
+  bool mqttConnected;
+  bool sdReady;
+};
 
-// ---- FORWARD DECLARATIONS (defined in other .ino tabs) -----
-// config.ino
+// --- Globals ---
+AppConfig   cfg;
+RetortState state;
+Preferences prefs;
+DNSServer   dnsServer;
+AsyncWebServer server(80);
+
+// Session management
+char sessionToken[65]       = {0};
+unsigned long sessionStart  = 0;
+
+// --- Utility: SHA256 hash ke hex string ---
+void sha256Hex(const char* input, char* output) {
+  unsigned char hash[32];
+  mbedtls_sha256_context ctx;
+  mbedtls_sha256_init(&ctx);
+  mbedtls_sha256_starts(&ctx, 0);
+  mbedtls_sha256_update(&ctx, (const unsigned char*)input, strlen(input));
+  mbedtls_sha256_finish(&ctx, hash);
+  mbedtls_sha256_free(&ctx);
+  for (int i = 0; i < 32; i++) {
+    sprintf(output + (i * 2), "%02x", hash[i]);
+  }
+  output[64] = '\0';
+}
+
+// --- Utility: Generate random session token ---
+void generateSession() {
+  uint32_t r1 = esp_random();
+  uint32_t r2 = esp_random();
+  uint32_t r3 = esp_random();
+  uint32_t r4 = esp_random();
+  char raw[64];
+  snprintf(raw, sizeof(raw), "%08lx%08lx%08lx%08lx%lu",
+           (unsigned long)r1, (unsigned long)r2,
+           (unsigned long)r3, (unsigned long)r4, millis());
+  sha256Hex(raw, sessionToken);
+  sessionStart = millis();
+}
+
+// --- Utility: Validate session token ---
+bool isSessionValid(AsyncWebServerRequest* request) {
+  if (sessionToken[0] == '\0') return false;
+  if (millis() - sessionStart > SESSION_TIMEOUT_MS) {
+    sessionToken[0] = '\0';
+    return false;
+  }
+  if (!request->hasHeader("Cookie")) return false;
+  String cookie = request->header("Cookie");
+  // Cari "session=<token>"
+  int idx = cookie.indexOf("session=");
+  if (idx < 0) return false;
+  String val = cookie.substring(idx + 8);
+  int semi = val.indexOf(';');
+  if (semi > 0) val = val.substring(0, semi);
+  val.trim();
+  if (val.equals(sessionToken)) {
+    sessionStart = millis();  // Refresh timeout
+    return true;
+  }
+  return false;
+}
+
+// --- Utility: Redirect ke login ---
+void redirectToLogin(AsyncWebServerRequest* request) {
+  request->redirect("/login");
+}
+
+// --- Utility: Phase name ---
+const char* phaseName(RetortPhase p) {
+  switch (p) {
+    case PHASE_HEATING: return "HEATING";
+    case PHASE_HOLDING: return "HOLDING";
+    case PHASE_COOLING: return "COOLING";
+    default:            return "IDLE";
+  }
+}
+
+// --- Forward declarations (dari file .ino lain) ---
 void loadConfig();
 void saveConfig();
+void saveConfigField(const char* key, const char* val);
+void saveConfigField(const char* key, uint16_t val);
+void saveConfigField(const char* key, float val);
+void saveConfigField(const char* key, uint32_t val);
 
-// wifi_ap.ino
-void wifiApSetup();
-void wifiStaConnect();
-void wifiLoop();
-bool wifiConnected();
+void setupWiFiAP();
+void loopWiFiAP();
 
-// mqtt_client.ino
-void mqttSetup();
-void mqttLoop();
-void mqttPublish(const RetortState* s);
-void mqttHandleCommand(const char* topic, const char* payload);
+void setupMQTT();
+void loopMQTT();
+void mqttPublishState();
 
-// retort_sim.ino
-void simUpdate(RetortState* s, AppConfig* c);
-void simStartProcess(RetortState* s);
-void simStopProcess(RetortState* s);
+void setupRetortSim();
+void loopRetortSim();
+void startProcess();
+void stopProcess();
 
-// modbus_hw.ino
-void modbusSetup();
-float modbusReadTemp();
-void modbusLoop();
+void setupModbus();
+void loopModbus();
 
-// rtc_hw.ino
-void rtcSetup();
-void rtcGetTimestamp(char* buf, size_t len);
+void setupRTC();
+void loopRTC();
+void getTimestamp(char* buf, size_t len);
 
-// sd_logger.ino
-void sdSetup();
-void sdLog(const RetortState* s);
-void sdReplay(uint32_t offsetMs);
+void setupSDLogger();
+void loopSDLogger();
+void sdLogEntry();
 
-// ota_update.ino
-void otaSetup();
-void otaLoop();
+void setupOTA();
+void loopOTA();
+
+void setupWebAuth();
+void setupWebDashboard();
+void setupWebSettings();
+void setupWebLogs();
+void setupWebStorage();
 
 // ============================================================
 void setup() {
   Serial.begin(115200);
-  delay(200);
-  Serial.println(F("\n[BOOT] RetortLogger v1.0"));
+  delay(500);
+  Serial.println(F("\n=== Industrial Retort Logger ==="));
+
+  // Init state
+  state.phase       = PHASE_IDLE;
+  state.temperature  = 25.0f;
+  state.pressure     = 1.013f;
+  state.phaseStartMs = 0;
+  state.wifiConnected = false;
+  state.mqttConnected = false;
+  state.sdReady       = false;
 
   loadConfig();
+  setupWiFiAP();
 
-#if USE_RTC
-  rtcSetup();
+  // Web server routes
+  setupWebAuth();
+  setupWebDashboard();
+  setupWebSettings();
+  setupWebLogs();
+  setupWebStorage();
+  server.begin();
+  Serial.println(F("[WEB] AsyncWebServer started."));
+
+  setupMQTT();
+
+#if USE_FAKE_SENSOR
+  setupRetortSim();
 #endif
-
 #if USE_MODBUS
-  modbusSetup();
+  setupModbus();
 #endif
-
+#if USE_RTC
+  setupRTC();
+#endif
 #if USE_SD
-  sdSetup();
+  setupSDLogger();
 #endif
-
-  wifiApSetup();       // always start AP for captive portal
-  wifiStaConnect();    // attempt STA connection
-
 #if USE_OTA
-  otaSetup();
+  setupOTA();
 #endif
 
-  mqttSetup();
-
-  retort.phase   = 0;
-  retort.running = false;
-  retort.tempC   = 25.0f;
-
-  Serial.println(F("[BOOT] Setup complete."));
+  Serial.println(F("=== Setup Complete ==="));
 }
 
 // ============================================================
 void loop() {
-  uint32_t now = millis();
-
-  wifiLoop();
-
-#if USE_OTA
-  otaLoop();
-#endif
-
-  mqttLoop();
-
-  // Sample sensor at configured interval
-  if (now - lastSampleMs >= cfg.sampleIntervalMs) {
-    lastSampleMs = now;
-
-#if USE_RTC
-    rtcGetTimestamp(retort.timestamp, sizeof(retort.timestamp));
-#else
-    // Fallback: elapsed seconds since boot
-    uint32_t sec = now / 1000;
-    snprintf(retort.timestamp, sizeof(retort.timestamp),
-             "00:00:%02lu:%02lu:%02lu",
-             sec / 3600, (sec % 3600) / 60, sec % 60);
-#endif
+  loopWiFiAP();
+  loopMQTT();
 
 #if USE_FAKE_SENSOR
-    simUpdate(&retort, &cfg);
+  loopRetortSim();
 #endif
-
 #if USE_MODBUS
-    retort.tempC = modbusReadTemp();
-    modbusLoop();
+  loopModbus();
 #endif
-
+#if USE_RTC
+  loopRTC();
+#endif
 #if USE_SD
-    sdLog(&retort);
+  loopSDLogger();
 #endif
-
-    mqttPublish(&retort);
-
-    // Serial status every 5 s
-    if (now - lastStatusMs >= 5000) {
-      lastStatusMs = now;
-      Serial.printf("[STATUS] Phase=%d Temp=%.1f°C SP=%.1f ts=%s\n",
-                    retort.phase, retort.tempC,
-                    retort.setpoint, retort.timestamp);
-    }
-  }
+#if USE_OTA
+  loopOTA();
+#endif
 }
