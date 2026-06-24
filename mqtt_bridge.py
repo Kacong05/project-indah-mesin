@@ -22,8 +22,29 @@ MQTT_TOPIC = os.getenv("MQTT_TOPIC", "retort/data")
 MQTT_USER = os.getenv("MQTT_USER", "")
 MQTT_PASS = os.getenv("MQTT_PASS", "")
 
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8080/api/sensor")
-SENSOR_API_TOKEN = os.getenv("SENSOR_API_TOKEN", "")
+
+def _read_laravel_env() -> dict:
+    """Fallback: baca .env jika variabel tidak di-set systemd/shell."""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.isfile(env_path):
+        return {}
+    out = {}
+    with open(env_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            out[key.strip()] = val.strip().strip('"').strip("'")
+    return out
+
+
+_laravel_env = _read_laravel_env()
+
+# Default port 8080 (deploy.sh APP_PORT); override via Environment= di systemd
+_default_api = "http://127.0.0.1:8080/api/sensor"
+API_URL = os.getenv("API_URL") or _laravel_env.get("MQTT_BRIDGE_API_URL") or _default_api
+SENSOR_API_TOKEN = os.getenv("SENSOR_API_TOKEN") or _laravel_env.get("SENSOR_API_TOKEN", "")
 
 
 def api_headers():
