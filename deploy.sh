@@ -340,8 +340,16 @@ systemctl reload nginx   # reload, bukan restart — lebih aman untuk site lain
 # 10. MQTT bridge + queue worker (systemd)
 # ─────────────────────────────────────────────────────────────
 info "10/10 MQTT bridge + queue worker..."
-apt-get install -y -qq python3-pip
-pip3 install -q paho-mqtt requests 2>/dev/null || pip3 install paho-mqtt requests
+# Ubuntu 24+ memblokir pip global (PEP 668) — pakai virtualenv di project
+apt-get install -y -qq python3-venv python3-pip
+if [ ! -d "${APP_DIR}/.venv" ]; then
+    python3 -m venv "${APP_DIR}/.venv"
+fi
+"${APP_DIR}/.venv/bin/pip" install -q --upgrade pip
+"${APP_DIR}/.venv/bin/pip" install -q paho-mqtt requests
+chown -R www-data:www-data "${APP_DIR}/.venv"
+
+PYTHON_VENV="${APP_DIR}/.venv/bin/python3"
 
 cat > /etc/systemd/system/mqtt-bridge.service << BRIDGECONF
 [Unit]
@@ -356,7 +364,7 @@ Environment=MQTT_TOPIC=retort/data
 Environment=MQTT_USER=${MQTT_BRIDGE_USER}
 Environment=MQTT_PASS=${MQTT_BRIDGE_PASS}
 Environment=SENSOR_API_TOKEN=${SENSOR_API_TOKEN}
-ExecStart=/usr/bin/python3 ${APP_DIR}/mqtt_bridge.py
+ExecStart=${PYTHON_VENV} ${APP_DIR}/mqtt_bridge.py
 Restart=always
 RestartSec=5
 

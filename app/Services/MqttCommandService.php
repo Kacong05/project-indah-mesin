@@ -29,7 +29,10 @@ class MqttCommandService
 
         $payload = $command.':'.$machine->machine_code;
         $script = base_path('scripts/mqtt_publish.py');
-        $python = PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3';
+        $venvPython = base_path('.venv/bin/python3');
+        $python = (PHP_OS_FAMILY !== 'Windows' && is_file($venvPython))
+            ? $venvPython
+            : (PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3');
 
         $process = new Process([$python, $script, $payload], base_path(), [
             'MQTT_HOST' => config('mqtt.host'),
