@@ -13,6 +13,9 @@ static const unsigned long STA_RETRY_MS = 30000;
 
 void setupWiFiAP() {
   WiFi.mode(WIFI_AP_STA);
+  // Turunkan daya pancar radio untuk mengurangi panas (jarak tetap memadai
+  // untuk ruangan). Naikkan kembali bila jangkauan kurang.
+  WiFi.setTxPower(WIFI_POWER_11dBm);
   WiFi.softAPConfig(AP_IP, AP_IP, AP_MASK);
   WiFi.softAP("RetortLogger-Config");  // Open AP for captive portal
   
