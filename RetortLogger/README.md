@@ -112,7 +112,7 @@ Untuk sementara dengan **ESP32 DevKit** gunakan board `ESP32 Dev Module`.
 
 1. Hubungkan ke WiFi `RetortLogger-Config` (AP terbuka)
 2. Browser otomatis diarahkan ke halaman login
-3. Login (default `RETORT-001` / `retort123`) → buka **Settings**
+3. Login (default `RT-001` / `retort123`) → buka **Settings**
 4. Isi SSID, password WiFi, broker MQTT, dan parameter
 5. Simpan (restart otomatis jika WiFi/MQTT berubah)
 

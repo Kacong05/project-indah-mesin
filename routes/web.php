@@ -30,5 +30,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 require __DIR__.'/auth.php';
 
-// API Endpoint for Sensor
-Route::post('/api/sensor', [\App\Http\Controllers\Api\SensorController::class, 'store'])->name('api.sensor');
+// API Endpoint for Sensor (wajib token — lihat SENSOR_API_TOKEN di .env)
+Route::post('/api/sensor', [\App\Http\Controllers\Api\SensorController::class, 'store'])
+    ->middleware('sensor.token')
+    ->name('api.sensor');

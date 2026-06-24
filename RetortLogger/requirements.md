@@ -23,7 +23,7 @@ Field:
 
 Default:
 
-Nomor Mesin : RETORT-001
+Nomor Mesin : RT-001
 
 Password : retort123
 

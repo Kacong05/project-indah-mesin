@@ -152,10 +152,14 @@ void setupWebStorage() {
 
     uint64_t tot = SD.totalBytes();
     uint64_t usd = SD.usedBytes();
-    String json = "{\"sd\":true,\"total\":" + String((unsigned long)tot) +
-      ",\"used\":" + String((unsigned long)usd) +
-      ",\"free\":" + String((unsigned long)(tot - usd)) +
-      ",\"files\":[";
+    // Gunakan %llu (64-bit). Cast ke unsigned long (32-bit) membuat kartu
+    // > 4GB terpotong / wrap-around (mis. 16GB tampil ~2GB).
+    char cap[128];
+    snprintf(cap, sizeof(cap),
+      "{\"sd\":true,\"total\":%llu,\"used\":%llu,\"free\":%llu,\"files\":[",
+      (unsigned long long)tot, (unsigned long long)usd,
+      (unsigned long long)(tot - usd));
+    String json = cap;
 
     File dir = SD.open(path);
     bool first = true;

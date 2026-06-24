@@ -25,6 +25,16 @@ extern Preferences prefs;
 static const char DEFAULT_PASS_HASH[] =
   "e5b1fc40362a7df203a27e457de2ec78792b8990f10a2afaeb0976b7996c8516";
 
+// ============================================================
+//  MQTT credentials & topics — SET MANUAL DI SINI sebelum flash.
+//  Harus sama dengan user Mosquitto di VPS (retort_esp).
+//  (Broker & Port tetap diatur lewat halaman Settings / web.)
+// ============================================================
+#define MQTT_USER       "retort_esp"
+#define MQTT_PASS       "GANTI_PASSWORD_MQTT_VPS"
+#define MQTT_PUB_TOPIC  "retort/data"
+#define MQTT_CMD_TOPIC  "retort/cmd"
+
 void loadConfig() {
   prefs.begin(PREF_NS, true);  // read-only
 
@@ -32,16 +42,12 @@ void loadConfig() {
   prefs.getString(K_WPASS,     cfg.wifiPass,     sizeof(cfg.wifiPass));
   prefs.getString(K_MQTT_HOST, cfg.mqttBroker,   sizeof(cfg.mqttBroker));
   cfg.mqttPort = prefs.getUShort(K_MQTT_PORT, 1883);
-  prefs.getString(K_MQTT_USER, cfg.mqttUser,     sizeof(cfg.mqttUser));
-  prefs.getString(K_MQTT_PASS, cfg.mqttPass,     sizeof(cfg.mqttPass));
-  prefs.getString(K_MQTT_PUB,  cfg.mqttPubTopic, sizeof(cfg.mqttPubTopic));
-  prefs.getString(K_MQTT_CMD,  cfg.mqttCmdTopic, sizeof(cfg.mqttCmdTopic));
 
-  // Default topics
-  if (cfg.mqttPubTopic[0] == '\0')
-    strncpy(cfg.mqttPubTopic, "retort/data", sizeof(cfg.mqttPubTopic) - 1);
-  if (cfg.mqttCmdTopic[0] == '\0')
-    strncpy(cfg.mqttCmdTopic, "retort/cmd", sizeof(cfg.mqttCmdTopic) - 1);
+  // User/password/topic MQTT diambil dari konstanta kode (bukan web/NVS).
+  strncpy(cfg.mqttUser,     MQTT_USER,      sizeof(cfg.mqttUser) - 1);
+  strncpy(cfg.mqttPass,     MQTT_PASS,      sizeof(cfg.mqttPass) - 1);
+  strncpy(cfg.mqttPubTopic, MQTT_PUB_TOPIC, sizeof(cfg.mqttPubTopic) - 1);
+  strncpy(cfg.mqttCmdTopic, MQTT_CMD_TOPIC, sizeof(cfg.mqttCmdTopic) - 1);
 
   // Retort parameters
   cfg.targetTemp    = prefs.getFloat(K_TTEMP,    121.0f);
@@ -52,7 +58,7 @@ void loadConfig() {
   // Machine identity
   prefs.getString(K_MACHINE_ID, cfg.machineId, sizeof(cfg.machineId));
   if (cfg.machineId[0] == '\0')
-    strncpy(cfg.machineId, "RETORT-001", sizeof(cfg.machineId) - 1);
+    strncpy(cfg.machineId, "RT-001", sizeof(cfg.machineId) - 1);
 
   prefs.getString(K_PASS_HASH, cfg.passHash, sizeof(cfg.passHash));
   if (cfg.passHash[0] == '\0')
@@ -70,10 +76,6 @@ void saveConfig() {
   prefs.putString(K_WPASS,     cfg.wifiPass);
   prefs.putString(K_MQTT_HOST, cfg.mqttBroker);
   prefs.putUShort(K_MQTT_PORT, cfg.mqttPort);
-  prefs.putString(K_MQTT_USER, cfg.mqttUser);
-  prefs.putString(K_MQTT_PASS, cfg.mqttPass);
-  prefs.putString(K_MQTT_PUB,  cfg.mqttPubTopic);
-  prefs.putString(K_MQTT_CMD,  cfg.mqttCmdTopic);
   prefs.putFloat(K_TTEMP,      cfg.targetTemp);
   prefs.putUInt(K_HOLD_SEC,    cfg.holdingTimeSec);
   prefs.putFloat(K_HEAT_RATE,  cfg.heatingRate);

@@ -46,15 +46,6 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 <h3>MQTT</h3>
 <label>Broker</label><input id="mhost" maxlength="64">
 <label>Port</label><input id="mport" type="number" min="1" max="65535">
-<label>User</label><input id="muser" maxlength="32">
-<label>Password</label><input id="mpass" type="password" maxlength="64" placeholder="Kosongkan jika tidak diubah">
-<label>Pub Topic</label><input id="mpub" maxlength="64">
-<label>Cmd Topic</label><input id="mcmd" maxlength="64">
-<h3>Retort</h3>
-<label>Target Temp (&deg;C)</label><input id="ttemp" type="number" step="0.1" min="50" max="200">
-<label>Holding Time (detik)</label><input id="hold" type="number" min="1" max="7200">
-<label>Heating Rate (&deg;C/s)</label><input id="hrate" type="number" step="0.1" min="0.1" max="10">
-<label>Cooling Rate (&deg;C/s)</label><input id="crate" type="number" step="0.1" min="0.1" max="10">
 <h3>Identity</h3>
 <label>Nomor Mesin</label><input id="mid" maxlength="32">
 <label>Password Login Baru</label><input id="lpass" type="password" maxlength="64" placeholder="Min 6 karakter">
@@ -68,18 +59,10 @@ if(r.status==401){location='/login';return null}return r.json()
 document.getElementById('wssid').value=d.wssid||'';
 document.getElementById('mhost').value=d.mhost||'';
 document.getElementById('mport').value=d.mport||1883;
-document.getElementById('muser').value=d.muser||'';
-document.getElementById('mpub').value=d.mpub||'';
-document.getElementById('mcmd').value=d.mcmd||'';
-document.getElementById('ttemp').value=d.ttemp||121;
-document.getElementById('hold').value=d.hold||1200;
-document.getElementById('hrate').value=d.hrate||1.5;
-document.getElementById('crate').value=d.crate||0.8;
 document.getElementById('mid').value=d.mid||'';
 }).catch(function(){});}
 function save(){
-var ks=['wssid','wpass','mhost','mport','muser','mpass','mpub','mcmd',
-'ttemp','hold','hrate','crate','mid','lpass'];
+var ks=['wssid','wpass','mhost','mport','mid','lpass'];
 var b=ks.map(function(k){
 return k+'='+encodeURIComponent(document.getElementById(k).value);}).join('&');
 var m=document.getElementById('msg');
@@ -108,16 +91,10 @@ void setupWebSettings() {
       req->send(401, "application/json", "{\"ok\":false}");
       return;
     }
-    char buf[400];
+    char buf[256];
     snprintf(buf, sizeof(buf),
-      "{\"wssid\":\"%s\",\"mhost\":\"%s\",\"mport\":%d,"
-      "\"muser\":\"%s\",\"mpub\":\"%s\",\"mcmd\":\"%s\","
-      "\"ttemp\":%.1f,\"hold\":%lu,\"hrate\":%.1f,\"crate\":%.1f,"
-      "\"mid\":\"%s\"}",
-      cfg.wifiSSID, cfg.mqttBroker, cfg.mqttPort,
-      cfg.mqttUser, cfg.mqttPubTopic, cfg.mqttCmdTopic,
-      cfg.targetTemp, (unsigned long)cfg.holdingTimeSec,
-      cfg.heatingRate, cfg.coolingRate, cfg.machineId);
+      "{\"wssid\":\"%s\",\"mhost\":\"%s\",\"mport\":%d,\"mid\":\"%s\"}",
+      cfg.wifiSSID, cfg.mqttBroker, cfg.mqttPort, cfg.machineId);
     AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", buf);
     resp->addHeader("Cache-Control", "no-store");
     req->send(resp);
@@ -159,38 +136,6 @@ void setupWebSettings() {
         if ((uint16_t)p != cfg.mqttPort) needRestart = true;
         cfg.mqttPort = (uint16_t)p;
       }
-    }
-    if (req->hasParam("muser", true)) {
-      strncpy(cfg.mqttUser, req->getParam("muser", true)->value().c_str(),
-              sizeof(cfg.mqttUser) - 1);
-    }
-    if (req->hasParam("mpass", true)) {
-      String v = req->getParam("mpass", true)->value();
-      if (v.length() > 0) strncpy(cfg.mqttPass, v.c_str(), sizeof(cfg.mqttPass) - 1);
-    }
-    if (req->hasParam("mpub", true)) {
-      String v = req->getParam("mpub", true)->value();
-      if (v.length() > 0) strncpy(cfg.mqttPubTopic, v.c_str(), sizeof(cfg.mqttPubTopic) - 1);
-    }
-    if (req->hasParam("mcmd", true)) {
-      String v = req->getParam("mcmd", true)->value();
-      if (v.length() > 0) strncpy(cfg.mqttCmdTopic, v.c_str(), sizeof(cfg.mqttCmdTopic) - 1);
-    }
-    if (req->hasParam("ttemp", true)) {
-      float v = req->getParam("ttemp", true)->value().toFloat();
-      if (v >= 50 && v <= 200) cfg.targetTemp = v;
-    }
-    if (req->hasParam("hold", true)) {
-      uint32_t v = req->getParam("hold", true)->value().toInt();
-      if (v >= 1 && v <= 7200) cfg.holdingTimeSec = v;
-    }
-    if (req->hasParam("hrate", true)) {
-      float v = req->getParam("hrate", true)->value().toFloat();
-      if (v >= 0.1f && v <= 10.0f) cfg.heatingRate = v;
-    }
-    if (req->hasParam("crate", true)) {
-      float v = req->getParam("crate", true)->value().toFloat();
-      if (v >= 0.1f && v <= 10.0f) cfg.coolingRate = v;
     }
     if (req->hasParam("mid", true)) {
       String v = req->getParam("mid", true)->value();

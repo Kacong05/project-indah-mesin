@@ -6,8 +6,9 @@ import datetime
 import sys
 
 # ─── Konfigurasi ──────────────────────────────────────────────────────────────
-API_URL      = "http://127.0.0.1:8000/api/sensor"
-MACHINE_CODE = "RT-002"
+API_URL          = "http://127.0.0.1:8000/api/sensor"
+MACHINE_CODE     = "RT-001"
+SENSOR_API_TOKEN = ""   # isi sama dengan SENSOR_API_TOKEN di .env Laravel
 
 # ─── Simulasi fase proses retort ─────────────────────────────────────────────
 def send_data(machine_code: str):
@@ -64,7 +65,14 @@ def send_data(machine_code: str):
         try:
             print(f"[{timestamp}] {phase.upper():7s} | Suhu={temperature:.2f}°C | Tekanan={pressure} bar", end=" ... ")
 
-            response = requests.post(API_URL, json=payload, timeout=5)
+            headers = {}
+            if SENSOR_API_TOKEN:
+                headers = {
+                    "Authorization": f"Bearer {SENSOR_API_TOKEN}",
+                    "X-Sensor-Token": SENSOR_API_TOKEN,
+                }
+
+            response = requests.post(API_URL, json=payload, headers=headers, timeout=5)
 
             if response.status_code == 200:
                 print("[OK] Sukses")
