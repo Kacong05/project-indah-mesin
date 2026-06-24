@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Alarm;
 use App\Models\RetortMachine;
 use App\Models\SensorReading;
+use App\Services\ProcessSessionService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class SensorController extends Controller
@@ -15,25 +17,45 @@ class SensorController extends Controller
     const TEMP_TOLERANCE = 5.0;   // ±5°C dari target
     const WARMUP_THRESHOLD = 100.0; // Suhu di atas ini dianggap sudah selesai warm-up
 
+    private ProcessSessionService $processSessionService;
+
+    public function __construct(ProcessSessionService $processSessionService)
+    {
+        $this->processSessionService = $processSessionService;
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
             'machine_code' => 'required|string|exists:retort_machines,machine_code',
             'temperature' => 'required|numeric',
+            'sv' => 'nullable|numeric', // SV dari alat ESP
             'pressure' => 'required|numeric',
             'process_status' => 'nullable|string',
-            'recorded_at' => 'nullable|date',
+            'recorded_at' => 'nullable|date', // Timestamp dari ESP
         ]);
 
         $machine = RetortMachine::where('machine_code', $validated['machine_code'])->first();
 
-        // Save reading
+        // Parse timestamp dari ESP, atau pakai waktu server jika tidak ada
+        $timestamp = isset($validated['recorded_at'])
+            ? Carbon::parse($validated['recorded_at'])
+            : now();
+
+        // ============================================
+        // LOGIKA UTAMA: Dapatkan atau buat sesi proses
+        // ============================================
+        $session = $this->processSessionService->getOrCreateSession($timestamp);
+
+        // Save reading dengan link ke sesi
         $reading = SensorReading::create([
             'machine_id' => $machine->id,
             'temperature' => $validated['temperature'],
+            'sv' => $validated['sv'] ?? null, // SV dari alat ESP
             'pressure' => $validated['pressure'],
             'process_status' => $validated['process_status'] ?? 'running',
-            'recorded_at' => $validated['recorded_at'] ?? now(),
+            'recorded_at' => $timestamp,
+            'process_session_id' => $session->id, // Link ke sesi proses
         ]);
 
         // Update machine heartbeat & status
@@ -43,30 +65,32 @@ class SensorController extends Controller
         ]);
 
         // --- Alarm Logic ---
-        $this->checkTemperatureAlarm($machine, $validated['temperature']);
+        $this->checkTemperatureAlarm($machine, $validated['temperature'], $session, $timestamp);
 
         return response()->json([
             'success' => true,
             'message' => 'Sensor reading recorded successfully.',
-            'data' => $reading,
+            'data' => [
+                'reading' => $reading,
+                'session' => [
+                    'id' => $session->id,
+                    'name' => $session->display_name,
+                    'is_new_session' => $session->wasRecentlyCreated,
+                ],
+            ],
         ]);
     }
 
-    private function checkTemperatureAlarm(RetortMachine $machine, float $temperature): void
+    private function checkTemperatureAlarm(RetortMachine $machine, float $temperature, \App\Models\ProcessSession $session, Carbon $timestamp): void
     {
         $high = self::TARGET_TEMP + self::TEMP_TOLERANCE; // 126°C
         $low = self::TARGET_TEMP - self::TEMP_TOLERANCE; // 116°C
 
-        // Cek apakah mesin sudah melewati fase warm-up:
-        // Warm-up = suhu sebelumnya BELUM PERNAH mencapai WARMUP_THRESHOLD
-        // Jika belum ada riwayat di atas threshold, ini masih fase pemanasan → skip alarm
-        $hasReachedNormal = SensorReading::where('machine_id', $machine->id)
-            ->where('temperature', '>=', self::WARMUP_THRESHOLD)
-            ->where('id', '!=', SensorReading::where('machine_id', $machine->id)->latest()->value('id'))
-            ->exists();
+        // Hitung menit berlalu sejak sesi/proses ini dimulai
+        $minutesElapsed = $session->started_at->diffInMinutes($timestamp);
 
-        if (!$hasReachedNormal) {
-            // Mesin masih dalam fase warm-up, tidak perlu alarm
+        // Hanya mengecek alarm jika berada di rentang 25 sampai 50 menit
+        if ($minutesElapsed < 25 || $minutesElapsed > 50) {
             return;
         }
 
