@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Alarm;
 use App\Models\RetortMachine;
 use App\Models\SensorReading;
+use App\Services\ProcessSessionService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class SensorController extends Controller
@@ -15,6 +17,13 @@ class SensorController extends Controller
     const TEMP_TOLERANCE = 5.0;   // ±5°C dari target
     const WARMUP_THRESHOLD = 100.0; // Suhu di atas ini dianggap sudah selesai warm-up
 
+    private ProcessSessionService $processSessionService;
+
+    public function __construct(ProcessSessionService $processSessionService)
+    {
+        $this->processSessionService = $processSessionService;
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -22,18 +31,29 @@ class SensorController extends Controller
             'temperature' => 'required|numeric',
             'pressure' => 'required|numeric',
             'process_status' => 'nullable|string',
-            'recorded_at' => 'nullable|date',
+            'recorded_at' => 'nullable|date', // Timestamp dari ESP
         ]);
 
         $machine = RetortMachine::where('machine_code', $validated['machine_code'])->first();
 
-        // Save reading
+        // Parse timestamp dari ESP, atau pakai waktu server jika tidak ada
+        $timestamp = isset($validated['recorded_at'])
+            ? Carbon::parse($validated['recorded_at'])
+            : now();
+
+        // ============================================
+        // LOGIKA UTAMA: Dapatkan atau buat sesi proses
+        // ============================================
+        $session = $this->processSessionService->getOrCreateSession($timestamp);
+
+        // Save reading dengan link ke sesi
         $reading = SensorReading::create([
             'machine_id' => $machine->id,
             'temperature' => $validated['temperature'],
             'pressure' => $validated['pressure'],
             'process_status' => $validated['process_status'] ?? 'running',
-            'recorded_at' => $validated['recorded_at'] ?? now(),
+            'recorded_at' => $timestamp,
+            'process_session_id' => $session->id, // Link ke sesi proses
         ]);
 
         // Update machine heartbeat & status
@@ -48,7 +68,14 @@ class SensorController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Sensor reading recorded successfully.',
-            'data' => $reading,
+            'data' => [
+                'reading' => $reading,
+                'session' => [
+                    'id' => $session->id,
+                    'name' => $session->display_name,
+                    'is_new_session' => $session->wasRecentlyCreated,
+                ],
+            ],
         ]);
     }
 

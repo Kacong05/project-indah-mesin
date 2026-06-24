@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
+    'process_session_id',
     'machine_id',
     'batch_id',
     'temperature',
@@ -59,5 +60,13 @@ class SensorReading extends Model
     public function batch(): BelongsTo
     {
         return $this->belongsTo(ProductionBatch::class, 'batch_id');
+    }
+
+    /**
+     * Get the process session this reading belongs to.
+     */
+    public function processSession(): BelongsTo
+    {
+        return $this->belongsTo(ProcessSession::class);
     }
 }

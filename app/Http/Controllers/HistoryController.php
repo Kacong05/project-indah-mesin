@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ProcessSession;
 use App\Models\RetortMachine;
 use App\Models\SensorReading;
 use App\Models\ActivityLog;
@@ -14,37 +15,66 @@ class HistoryController extends Controller
     public function index(Request $request)
     {
         $machineId = $request->user()->machine_id;
-        $query = SensorReading::with('machine')->where('machine_id', $machineId)->latest();
+
+        // Ambil data sessions
+        $sessionsQuery = ProcessSession::withCount('sensorReadings')
+            ->latest('started_at');
+
+        // Filter sessions by date range if provided
+        if ($request->filled('start_date')) {
+            $sessionsQuery->whereDate('started_at', '>=', $request->start_date);
+        }
+        if ($request->filled('end_date')) {
+            $sessionsQuery->whereDate('started_at', '<=', $request->end_date);
+        }
+
+        $sessions = $sessionsQuery->get()->map(function ($session) {
+            return [
+                'id' => $session->id,
+                'name' => $session->display_name,
+                'time_range' => $session->time_range,
+                'started_at' => $session->started_at->toIso8601String(),
+                'ended_at' => $session->ended_at?->toIso8601String(),
+                'duration_minutes' => $session->duration_in_minutes,
+                'data_count' => $session->sensor_readings_count,
+                'status' => $session->status,
+            ];
+        });
+
+        // Ambil data readings (legacy table view)
+        $readingsQuery = SensorReading::with('machine')->where('machine_id', $machineId)->latest();
 
         // Filter by Date Range
         if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('created_at', [
+            $readingsQuery->whereBetween('created_at', [
                 $request->start_date . ' 00:00:00',
                 $request->end_date . ' 23:59:59'
             ]);
         } elseif ($request->filled('start_date')) {
-            $query->whereDate('created_at', '>=', $request->start_date);
+            $readingsQuery->whereDate('created_at', '>=', $request->start_date);
         } elseif ($request->filled('end_date')) {
-            $query->whereDate('created_at', '<=', $request->end_date);
+            $readingsQuery->whereDate('created_at', '<=', $request->end_date);
         }
 
-        $readings = $query->paginate(15)->withQueryString()->through(function ($reading) {
+        $readings = $readingsQuery->paginate(15)->withQueryString()->through(function ($reading) {
             return [
                 'id' => $reading->id,
                 'timestamp' => $reading->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'),
                 'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
                 'temperature' => $reading->temperature,
+                'pressure' => $reading->pressure,
                 'status' => $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal'),
-                'sync_status' => 'Synced' // For now assume always synced if it's in DB
+                'sync_status' => 'Synced'
             ];
         });
 
         $machines = $request->user()->machine ? [$request->user()->machine] : [];
 
         return Inertia::render('History/Index', [
+            'sessions' => $sessions,
             'readings' => $readings,
             'machines' => $machines,
-            'filters' => $request->only(['start_date', 'end_date'])
+            'filters' => $request->only(['machine_id', 'start_date', 'end_date'])
         ]);
     }
 
