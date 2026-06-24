@@ -15,7 +15,9 @@ return new class extends Migration
             $table->id();
             $table->foreignId('machine_id')->constrained('retort_machines')->cascadeOnDelete();
             $table->foreignId('batch_id')->nullable()->constrained('production_batches')->nullOnDelete();
+            $table->foreignId('process_session_id')->nullable()->constrained('process_sessions')->nullOnDelete();
             $table->decimal('temperature', 6, 2);
+            $table->decimal('sv', 5, 2)->nullable();
             $table->decimal('pressure', 6, 3);
             $table->string('process_status', 30)->default('idle');
             $table->timestamp('recorded_at');
@@ -23,6 +25,7 @@ return new class extends Migration
 
             $table->index(['machine_id', 'recorded_at'], 'idx_readings_machine_recorded');
             $table->index('batch_id', 'idx_readings_batch');
+            $table->index('process_session_id', 'idx_readings_session');
         });
     }
 

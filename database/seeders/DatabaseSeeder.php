@@ -15,9 +15,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
+        User::create([
             'name' => 'Administrator',
             'email' => 'admin@retort.com',
             'role' => User::ROLE_ADMIN,
@@ -33,7 +31,7 @@ class DatabaseSeeder extends Seeder
             'last_heartbeat_at' => now(),
         ]);
 
-        User::factory()->create([
+        User::create([
             'name' => 'Operator',
             'email' => 'operator@retort.com',
             'role' => User::ROLE_OPERATOR,

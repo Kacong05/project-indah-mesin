@@ -91,14 +91,24 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-# 4. Install Node.js 20 LTS (untuk Vite build)
+# 4. Install Node.js 22 LTS (Vite 8 butuh Node ^20.19 atau >=22.12)
 # ─────────────────────────────────────────────────────────────
-info "4/9 Install Node.js 20..."
-if ! command -v node &>/dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+info "4/9 Install Node.js 22..."
+NEED_NODE_INSTALL=1
+if command -v node &>/dev/null; then
+    NODE_MAJOR=$(node -v | sed 's/v//' | cut -d. -f1)
+    NODE_MINOR=$(node -v | sed 's/v//' | cut -d. -f2)
+    if [ "$NODE_MAJOR" -ge 22 ] 2>/dev/null || { [ "$NODE_MAJOR" -eq 20 ] && [ "$NODE_MINOR" -ge 19 ] 2>/dev/null; }; then
+        NEED_NODE_INSTALL=0
+        info "  Node.js sudah cukup baru: $(node -v)"
+    else
+        warn "  Node.js $(node -v) terlalu lama untuk Vite 8 — upgrade ke 22..."
+    fi
+fi
+if [ "$NEED_NODE_INSTALL" -eq 1 ]; then
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y -qq nodejs
-else
-    info "  Node.js sudah ada: $(node -v)"
+    info "  Node.js terpasang: $(node -v)"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -196,40 +206,45 @@ fi
 info "8/9 Setup Laravel..."
 cd "$APP_DIR"
 
+# Helper: set/update satu baris di .env (handle baris yang dikomentari)
+set_env_var() {
+    local key="$1"
+    local val="$2"
+    local escaped
+    escaped=$(printf '%s\n' "$val" | sed 's/[\\&|]/\\&/g')
+    if grep -q "^${key}=" .env 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=${escaped}|" .env
+    elif grep -q "^# ${key}=" .env 2>/dev/null; then
+        sed -i "s|^# ${key}=.*|${key}=${escaped}|" .env
+    else
+        echo "${key}=${val}" >> .env
+    fi
+}
+
 # Copy .env dan isi nilai penting
 cp .env.example .env
-sed -i "s|APP_ENV=.*|APP_ENV=production|"          .env
-sed -i "s|APP_DEBUG=.*|APP_DEBUG=false|"            .env
-sed -i "s|APP_URL=.*|APP_URL=$APP_URL|"             .env
-sed -i "s|DB_CONNECTION=.*|DB_CONNECTION=pgsql|"    .env
-sed -i "s|DB_HOST=.*|DB_HOST=127.0.0.1|"            .env
-sed -i "s|DB_PORT=.*|DB_PORT=5432|"                 .env
-sed -i "s|DB_DATABASE=.*|DB_DATABASE=$DB_NAME|"     .env
-sed -i "s|DB_USERNAME=.*|DB_USERNAME=$DB_USER|"     .env
-sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$DB_PASS|"     .env
+set_env_var APP_ENV production
+set_env_var APP_DEBUG false
+set_env_var APP_URL "$APP_URL"
+set_env_var DB_CONNECTION pgsql
+set_env_var DB_HOST 127.0.0.1
+set_env_var DB_PORT 5432
+set_env_var DB_DATABASE "$DB_NAME"
+set_env_var DB_USERNAME "$DB_USER"
+set_env_var DB_PASSWORD "$DB_PASS"
+set_env_var SESSION_DRIVER database
+set_env_var QUEUE_CONNECTION database
+set_env_var CACHE_STORE database
 
 # Token API sensor
-if grep -q '^SENSOR_API_TOKEN=' .env; then
-    sed -i "s|^SENSOR_API_TOKEN=.*|SENSOR_API_TOKEN=$SENSOR_API_TOKEN|" .env
-else
-    echo "SENSOR_API_TOKEN=$SENSOR_API_TOKEN" >> .env
-fi
+set_env_var SENSOR_API_TOKEN "$SENSOR_API_TOKEN"
 
 # MQTT web command (START/STOP dari dashboard)
-for kv in \
-    "MQTT_HOST=127.0.0.1" \
-    "MQTT_PORT=1883" \
-    "MQTT_USER=$MQTT_WEB_USER" \
-    "MQTT_PASSWORD=$MQTT_WEB_PASS" \
-    "MQTT_CMD_TOPIC=retort/cmd"; do
-    key="${kv%%=*}"
-  val="${kv#*=}"
-  if grep -q "^${key}=" .env; then
-    sed -i "s|^${key}=.*|${key}=${val}|" .env
-  else
-    echo "${key}=${val}" >> .env
-  fi
-done
+set_env_var MQTT_HOST 127.0.0.1
+set_env_var MQTT_PORT 1883
+set_env_var MQTT_USER "$MQTT_WEB_USER"
+set_env_var MQTT_PASSWORD "$MQTT_WEB_PASS"
+set_env_var MQTT_CMD_TOPIC retort/cmd
 
 # Simpan kredensial untuk referensi (chmod 600)
 cat > "$APP_DIR/.credentials.deploy" << CREDS
@@ -247,10 +262,19 @@ chown www-data:www-data "$APP_DIR/.credentials.deploy"
 
 # Install dependensi
 composer install --no-dev --optimize-autoloader --no-interaction
-npm install --ignore-scripts
+
+# Bersihkan node_modules lama (sering menyimpan vite@3 dari install gagal sebelumnya)
+info "  npm install (frontend build)..."
+rm -rf node_modules
+if [ -f package-lock.json ]; then
+    npm ci --ignore-scripts --legacy-peer-deps
+else
+    npm install --ignore-scripts --legacy-peer-deps
+fi
 npm run build
 
 # Generate key
+php artisan config:clear
 php artisan key:generate --force
 
 # Jalankan migrasi + seed (mesin RT-001, user admin/operator)
