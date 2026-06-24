@@ -15,13 +15,24 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $machine = $request->user()->machine;
-
         $today = Carbon::today();
 
         // Latest Reading
         $latestReading = $machine ? SensorReading::where('machine_id', $machine->id)->latest()->first() : null;
 
-        // Stats
+        return Inertia::render('Dashboard', [
+            'machineName' => $machine ? $machine->name : 'Mesin Belum Ditetapkan',
+            'machineCode' => $machine?->machine_code,
+            'stats' => $this->getMachineStats($machine, $latestReading, $today),
+            'recentActivities' => $this->getRecentActivities($request->user()->id),
+            'chartData' => $this->getTemperatureChartData($machine),
+            'activeAlarms' => $this->getActiveAlarms($machine),
+            'alarmStats' => $this->getAlarmStats($machine),
+        ]);
+    }
+
+    private function getMachineStats($machine, $latestReading, $today)
+    {
         $currentTemperature = $latestReading ? $latestReading->temperature : 0;
         $machineStatus = $machine ? $machine->status : 'Offline';
         $isOnline = $machine ? $machine->last_heartbeat_at?->diffInMinutes(now()) < 1 : false;
@@ -42,9 +53,24 @@ class DashboardController extends Controller
             }
         }
 
-        // Recent Activity
-        $recentActivities = ActivityLog::with('user')
-            ->where('user_id', $request->user()->id)
+        $isLogging = $latestReading && $this->isLoggingStatus($latestReading->process_status);
+
+        return [
+            'currentTemperature' => $currentTemperature,
+            'machineStatus' => $machineStatus,
+            'isOnline' => $isOnline,
+            'isLogging' => $isLogging,
+            'totalDataToday' => $totalDataToday,
+            'totalAlarmsToday' => $totalAlarmsToday,
+            'lastUpdate' => $lastUpdate,
+            'dataIntervalMs' => $dataIntervalMs,
+        ];
+    }
+
+    private function getRecentActivities($userId)
+    {
+        return ActivityLog::with('user')
+            ->where('user_id', $userId)
             ->latest()
             ->take(5)
             ->get()
@@ -57,13 +83,11 @@ class DashboardController extends Controller
                     'properties' => $log->properties,
                 ];
             });
+    }
 
-        // Generate chart data using actual sensor readings
-        $chartData = $this->getTemperatureChartData($machine);
-        $alarmStats = $this->getAlarmStats($machine);
-
-        // Active alarms for popup notification
-        $activeAlarms = $machine ? Alarm::where('machine_id', $machine->id)
+    private function getActiveAlarms($machine)
+    {
+        return $machine ? Alarm::where('machine_id', $machine->id)
             ->where('status', Alarm::STATUS_ACTIVE)
             ->latest('triggered_at')
             ->take(5)
@@ -75,27 +99,6 @@ class DashboardController extends Controller
                 'message' => $a->message,
                 'triggered_at' => $a->triggered_at?->timezone('Asia/Jakarta')->format('H:i:s'),
             ]) : collect();
-
-        $isLogging = $latestReading && $this->isLoggingStatus($latestReading->process_status);
-
-        return Inertia::render('Dashboard', [
-            'machineName' => $machine ? $machine->name : 'Mesin Belum Ditetapkan',
-            'machineCode' => $machine?->machine_code,
-            'stats' => [
-                'currentTemperature' => $currentTemperature,
-                'machineStatus' => $machineStatus,
-                'isOnline' => $isOnline,
-                'isLogging' => $isLogging,
-                'totalDataToday' => $totalDataToday,
-                'totalAlarmsToday' => $totalAlarmsToday,
-                'lastUpdate' => $lastUpdate,
-                'dataIntervalMs' => $dataIntervalMs,
-            ],
-            'recentActivities' => $recentActivities,
-            'chartData' => $chartData,
-            'activeAlarms' => $activeAlarms,
-            'alarmStats' => $alarmStats,
-        ]);
     }
 
     private function getTemperatureChartData($machine)
@@ -108,7 +111,7 @@ class DashboardController extends Controller
         if ($machine) {
             // Dapatkan sesi terbaru untuk mesin operator ini
             $latestSession = \App\Models\ProcessSession::where('machine_id', $machine->id)
-                ->latest('started_at')
+                ->latest()
                 ->first();
 
             if ($latestSession) {
