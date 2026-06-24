@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProcessSession extends Model
@@ -11,6 +12,7 @@ class ProcessSession extends Model
     use HasFactory;
 
     protected $fillable = [
+        'machine_id',
         'name',
         'started_at',
         'ended_at',
@@ -22,6 +24,14 @@ class ProcessSession extends Model
         'started_at' => 'datetime',
         'ended_at' => 'datetime',
     ];
+
+    /**
+     * Mesin retort yang menjalankan sesi ini.
+     */
+    public function machine(): BelongsTo
+    {
+        return $this->belongsTo(RetortMachine::class, 'machine_id');
+    }
 
     /**
      * Relasi ke data sensor dalam sesi ini
@@ -64,8 +74,13 @@ class ProcessSession extends Model
             return $this->name;
         }
 
-        // Hitung nomor proses berdasarkan ID (atau bisa berdasarkan created_at)
-        $count = self::where('id', '<=', $this->id)->count();
+        // Hitung nomor proses per mesin
+        $query = self::query()->where('id', '<=', $this->id);
+        if ($this->machine_id) {
+            $query->where('machine_id', $this->machine_id);
+        }
+        $count = $query->count();
+
         return "Proses {$count}";
     }
 

@@ -52,11 +52,18 @@ def on_message(client, userdata, msg):
         return
 
     esp_id = raw.get("id") or raw.get("machine_code", "")
+    logging = raw.get("logging", False)
+    if isinstance(logging, str):
+        logging = logging.lower() in ("true", "1", "yes")
+
+    phase = str(raw.get("phase", raw.get("process_status", "idle"))).lower()
+    process_status = "logging" if logging else phase
+
     payload = {
         "machine_code": esp_id,
         "temperature": float(raw.get("actual", raw.get("temperature", 0))),
         "pressure": float(raw.get("pressure", 0)),
-        "process_status": str(raw.get("phase", raw.get("process_status", "running"))).lower(),
+        "process_status": process_status,
     }
 
     if not SENSOR_API_TOKEN:

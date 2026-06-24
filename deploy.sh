@@ -32,6 +32,7 @@ APP_URL="http://${VPS_IP}:${APP_PORT}"
 # ── Keamanan MQTT & API ───────────────────────────────────────
 MQTT_ESP_USER="retort_esp"
 MQTT_BRIDGE_USER="retort_bridge"
+MQTT_WEB_USER="retort_web"
 CREDS_FILE="/var/www/project-indah-mesin/.credentials.deploy"
 
 # Pakai ulang kredensial jika sudah pernah deploy (hindari putus ESP32)
@@ -39,9 +40,14 @@ if [ -f "$CREDS_FILE" ]; then
     # shellcheck disable=SC1090
     source "$CREDS_FILE"
     info "Kredensial existing dipakai ulang dari $CREDS_FILE"
+    if [ -z "${MQTT_WEB_PASS:-}" ]; then
+        MQTT_WEB_PASS="RetortWeb_$(openssl rand -hex 8)"
+        warn "MQTT_WEB_PASS baru dibuat (upgrade dari deploy lama)"
+    fi
 else
     MQTT_ESP_PASS="RetortEsp_$(openssl rand -hex 8)"
     MQTT_BRIDGE_PASS="RetortBr_$(openssl rand -hex 8)"
+    MQTT_WEB_PASS="RetortWeb_$(openssl rand -hex 8)"
     SENSOR_API_TOKEN="$(openssl rand -hex 32)"
 fi
 
@@ -121,10 +127,11 @@ apt-get install -y -qq mosquitto mosquitto-clients
 # Buat password file
 mosquitto_passwd -c -b /etc/mosquitto/passwd "$MQTT_ESP_USER" "$MQTT_ESP_PASS"
 mosquitto_passwd -b /etc/mosquitto/passwd "$MQTT_BRIDGE_USER" "$MQTT_BRIDGE_PASS"
+mosquitto_passwd -b /etc/mosquitto/passwd "$MQTT_WEB_USER" "$MQTT_WEB_PASS"
 chmod 640 /etc/mosquitto/passwd
 chown root:mosquitto /etc/mosquitto/passwd
 
-# ACL: ESP publish data + baca cmd; bridge hanya baca
+# ACL: ESP publish data + baca cmd; bridge baca data; web publish cmd
 cat > /etc/mosquitto/acl << ACLCONF
 # ESP32 logger
 user ${MQTT_ESP_USER}
@@ -134,6 +141,10 @@ topic read retort/cmd
 # mqtt_bridge (server)
 user ${MQTT_BRIDGE_USER}
 topic read retort/#
+
+# Laravel web dashboard (kirim START/STOP)
+user ${MQTT_WEB_USER}
+topic write retort/cmd
 ACLCONF
 chmod 640 /etc/mosquitto/acl
 chown root:mosquitto /etc/mosquitto/acl
@@ -188,6 +199,22 @@ else
     echo "SENSOR_API_TOKEN=$SENSOR_API_TOKEN" >> .env
 fi
 
+# MQTT web command (START/STOP dari dashboard)
+for kv in \
+    "MQTT_HOST=127.0.0.1" \
+    "MQTT_PORT=1883" \
+    "MQTT_USER=$MQTT_WEB_USER" \
+    "MQTT_PASSWORD=$MQTT_WEB_PASS" \
+    "MQTT_CMD_TOPIC=retort/cmd"; do
+    key="${kv%%=*}"
+  val="${kv#*=}"
+  if grep -q "^${key}=" .env; then
+    sed -i "s|^${key}=.*|${key}=${val}|" .env
+  else
+    echo "${key}=${val}" >> .env
+  fi
+done
+
 # Simpan kredensial untuk referensi (chmod 600)
 cat > "$APP_DIR/.credentials.deploy" << CREDS
 # Generated $(date -Iseconds) — JANGAN commit ke git
@@ -195,6 +222,8 @@ MQTT_ESP_USER=$MQTT_ESP_USER
 MQTT_ESP_PASS=$MQTT_ESP_PASS
 MQTT_BRIDGE_USER=$MQTT_BRIDGE_USER
 MQTT_BRIDGE_PASS=$MQTT_BRIDGE_PASS
+MQTT_WEB_USER=$MQTT_WEB_USER
+MQTT_WEB_PASS=$MQTT_WEB_PASS
 SENSOR_API_TOKEN=$SENSOR_API_TOKEN
 CREDS
 chmod 600 "$APP_DIR/.credentials.deploy"

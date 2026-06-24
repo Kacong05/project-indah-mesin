@@ -22,149 +22,154 @@ class ProcessSessionService
 
     /**
      * Dapatkan atau buat sesi proses berdasarkan timestamp data yang masuk.
-     * Jika selisih dengan data terakhir > gapThreshold, buat sesi baru.
-     *
-     * @param Carbon $timestamp Timestamp dari perangkat ESP
-     * @return ProcessSession
+     * Jika selisih dengan data terakhir mesin yang sama > gapThreshold, buat sesi baru.
      */
-    public function getOrCreateSession(Carbon $timestamp): ProcessSession
+    public function getOrCreateSession(Carbon $timestamp, int $machineId): ProcessSession
     {
-        // Cari data terakhir dari machine/device yang sama (jika ada filter machine)
-        $lastReading = SensorReading::latest('recorded_at')->first();
+        $lastReading = SensorReading::where('machine_id', $machineId)
+            ->latest('recorded_at')
+            ->first();
 
         if ($lastReading && $lastReading->process_session_id) {
             $lastSession = $lastReading->processSession;
 
-            // Hitung selisih waktu dengan data terakhir
-            $diffInMinutes = $lastReading->recorded_at->diffInMinutes($timestamp);
+            if ($lastSession && $lastSession->machine_id === $machineId) {
+                $diffInMinutes = $lastReading->recorded_at->diffInMinutes($timestamp);
 
-            // Jika jeda kurang dari threshold, return sesi yang sama
-            if ($diffInMinutes < $this->gapThresholdMinutes) {
-                // Update ended_at sesi aktif ini
-                $lastSession->update([
-                    'ended_at' => $timestamp,
-                    'data_count' => $lastSession->data_count + 1,
-                ]);
+                if ($diffInMinutes < $this->gapThresholdMinutes) {
+                    $lastSession->update([
+                        'ended_at' => $timestamp,
+                        'data_count' => $lastSession->data_count + 1,
+                    ]);
 
-                return $lastSession;
+                    return $lastSession;
+                }
             }
         }
 
-        // Jeda >= threshold, buat sesi baru
-        return $this->createNewSession($timestamp);
+        return $this->createNewSession($timestamp, $machineId);
     }
 
     /**
-     * Buat sesi baru.
-     *
-     * @param Carbon $timestamp
-     * @return ProcessSession
+     * Buat sesi baru untuk mesin tertentu.
      */
-    public function createNewSession(Carbon $timestamp): ProcessSession
+    public function createNewSession(Carbon $timestamp, int $machineId): ProcessSession
     {
-        return DB::transaction(function () use ($timestamp) {
-            // Tutup sesi aktif sebelumnya (jika ada)
-            ProcessSession::active()->update(['status' => 'completed']);
+        return DB::transaction(function () use ($timestamp, $machineId) {
+            ProcessSession::where('machine_id', $machineId)
+                ->active()
+                ->update(['status' => 'completed']);
 
-            // Hitung nomor proses
-            $processNumber = ProcessSession::count() + 1;
+            $processNumber = ProcessSession::where('machine_id', $machineId)->count() + 1;
 
-            // Buat sesi baru
-            $session = ProcessSession::create([
+            return ProcessSession::create([
+                'machine_id' => $machineId,
                 'name' => "Proses {$processNumber}",
                 'started_at' => $timestamp,
                 'ended_at' => $timestamp,
                 'data_count' => 1,
                 'status' => 'active',
             ]);
-
-            return $session;
         });
     }
 
     /**
-     * Tutup sesi yang sedang aktif.
-     *
-     * @return void
+     * Tutup sesi aktif. Jika machineId diberikan, hanya untuk mesin tersebut.
      */
-    public function closeActiveSession(): void
+    public function closeActiveSession(?int $machineId = null): void
     {
-        ProcessSession::active()->update(['status' => 'completed']);
+        $query = ProcessSession::active();
+
+        if ($machineId !== null) {
+            $query->where('machine_id', $machineId);
+        }
+
+        $query->update(['status' => 'completed']);
     }
 
     /**
-     * Re-assign semua data sensor yang belum punya process_session_id.
-     * Berguna untuk data yang sudah ada sebelum migrasi.
-     *
-     * @param int|null $gapThreshold Override threshold (dalam menit)
-     * @return int Jumlah sesi yang dibuat
+     * Re-assign data sensor yang belum punya process_session_id, per mesin.
      */
     public function reassignExistingData(?int $gapThreshold = null): int
     {
         $threshold = $gapThreshold ?? $this->gapThresholdMinutes;
-
         $sessionsCreated = 0;
-        $currentSession = null;
 
-        // Ambil semua data yang belum punya sesi, urut berdasarkan recorded_at
-        $readingsWithoutSession = SensorReading::whereNull('process_session_id')
-            ->orderBy('recorded_at')
-            ->get();
+        $machineIds = SensorReading::whereNull('process_session_id')
+            ->distinct()
+            ->pluck('machine_id')
+            ->filter();
 
-        foreach ($readingsWithoutSession as $reading) {
-            $timestamp = Carbon::parse($reading->recorded_at);
+        foreach ($machineIds as $machineId) {
+            $readings = SensorReading::whereNull('process_session_id')
+                ->where('machine_id', $machineId)
+                ->orderBy('recorded_at')
+                ->get();
 
-            if (!$currentSession) {
-                // Buat sesi pertama
-                $currentSession = $this->createNewSession($timestamp);
-                $sessionsCreated++;
-            } else {
-                // Hitung selisih dengan data terakhir di sesi ini
-                $lastReadingInSession = $currentSession->sensorReadings()->latest('recorded_at')->first();
+            $currentSession = null;
 
-                if ($lastReadingInSession) {
-                    $diffInMinutes = $lastReadingInSession->recorded_at->diffInMinutes($timestamp);
+            foreach ($readings as $reading) {
+                $timestamp = Carbon::parse($reading->recorded_at);
+                $shouldCreateNewSession = false;
 
-                    if ($diffInMinutes >= $threshold) {
-                        // Buat sesi baru
-                        $currentSession->update(['status' => 'completed']);
-                        $currentSession = $this->createNewSession($timestamp);
-                        $sessionsCreated++;
+                if ($currentSession === null) {
+                    $shouldCreateNewSession = true;
+                } else {
+                    $lastReadingInSession = $currentSession->sensorReadings()
+                        ->latest('recorded_at')
+                        ->first();
+
+                    if ($lastReadingInSession) {
+                        $diffInMinutes = $lastReadingInSession->recorded_at->diffInMinutes($timestamp);
+
+                        if ($diffInMinutes >= $threshold) {
+                            $currentSession->update(['status' => 'completed']);
+                            $shouldCreateNewSession = true;
+                        }
                     }
+                }
+
+                if ($shouldCreateNewSession) {
+                    $currentSession = $this->createNewSession($timestamp, $machineId);
+                    $sessionsCreated++;
+                }
+
+                $reading->update(['process_session_id' => $currentSession->id]);
+
+                if (!$shouldCreateNewSession) {
+                    $currentSession->update([
+                        'ended_at' => $timestamp,
+                        'data_count' => $currentSession->data_count + 1,
+                    ]);
+                } else {
+                    $currentSession->update(['ended_at' => $timestamp]);
                 }
             }
 
-            // Assign reading ke sesi saat ini
-            $reading->update(['process_session_id' => $currentSession->id]);
-            $currentSession->increment('data_count');
-            $currentSession->update(['ended_at' => $timestamp]);
-        }
-
-        // Tutup sesi terakhir jika masih aktif
-        if ($currentSession && $currentSession->status === 'active') {
-            $currentSession->update(['status' => 'completed']);
+            if ($currentSession && $currentSession->status === 'active') {
+                $currentSession->update(['status' => 'completed']);
+            }
         }
 
         return $sessionsCreated;
     }
 
     /**
-     * Dapatkan daftar semua sesi dengan metadata.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection
+     * Dapatkan daftar sesi, opsional difilter per mesin.
      */
-    public function getAllSessions()
+    public function getAllSessions(?int $machineId = null)
     {
-        return ProcessSession::withCount('sensorReadings')
-            ->latest('started_at')
-            ->get();
+        $query = ProcessSession::withCount('sensorReadings')->latest('started_at');
+
+        if ($machineId !== null) {
+            $query->where('machine_id', $machineId);
+        }
+
+        return $query->get();
     }
 
     /**
      * Dapatkan detail satu sesi termasuk data sensornya.
-     *
-     * @param int $sessionId
-     * @return ProcessSession
      */
     public function getSessionWithReadings(int $sessionId): ProcessSession
     {
@@ -173,15 +178,10 @@ class ProcessSessionService
         }])->findOrFail($sessionId);
     }
 
-    /**
-     * Set threshold untuk pengujian.
-     *
-     * @param int $minutes
-     * @return self
-     */
     public function setGapThreshold(int $minutes): self
     {
         $this->gapThresholdMinutes = $minutes;
+
         return $this;
     }
 }

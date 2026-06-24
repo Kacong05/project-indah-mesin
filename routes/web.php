@@ -9,6 +9,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Operator Routes
     Route::middleware([\App\Http\Middleware\EnsureIsOperator::class])->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
+        Route::post('/dashboard/command', [\App\Http\Controllers\MachineCommandController::class, 'store'])->name('dashboard.command');
         Route::get('/history', [\App\Http\Controllers\HistoryController::class, 'index'])->name('history');
         Route::get('/history/export', [\App\Http\Controllers\HistoryController::class, 'export'])->name('history.export');
         Route::post('/history/log-export', [\App\Http\Controllers\HistoryController::class, 'logExport'])->name('history.log-export');

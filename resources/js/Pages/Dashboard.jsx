@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import {
     Thermometer,
     Zap,
@@ -10,6 +10,9 @@ import {
     Clock,
     X,
     Activity,
+    Play,
+    Square,
+    CircleDot,
 } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
@@ -209,7 +212,28 @@ function Retort3DCard({ temperature, processStatus }) {
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function Dashboard({ stats, recentActivities, chartData, machineName, activeAlarms }) {
+export default function Dashboard({ stats, recentActivities, chartData, machineName, machineCode, activeAlarms }) {
+    const { flash } = usePage().props;
+    const [cmdLoading, setCmdLoading] = useState(false);
+    const [flashMsg, setFlashMsg] = useState(null);
+    const [flashType, setFlashType] = useState('success');
+
+    useEffect(() => {
+        if (flash?.success || flash?.error) {
+            setFlashMsg(flash.success || flash.error);
+            setFlashType(flash.success ? 'success' : 'error');
+            const t = setTimeout(() => setFlashMsg(null), 5000);
+            return () => clearTimeout(t);
+        }
+    }, [flash]);
+
+    const sendCommand = (cmd) => {
+        setCmdLoading(true);
+        router.post(route('dashboard.command'), { cmd }, {
+            preserveScroll: true,
+            onFinish: () => setCmdLoading(false),
+        });
+    };
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -323,6 +347,56 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
             `}</style>
 
             <div className="space-y-6">
+
+                {flashMsg && (
+                    <div className={`rounded-xl border px-4 py-3 text-sm ${
+                        flashType === 'success'
+                            ? 'bg-green-500/10 border-green-500/30 text-green-200'
+                            : 'bg-red-500/10 border-red-500/30 text-red-200'
+                    }`}>
+                        {flashMsg}
+                    </div>
+                )}
+
+                {/* Kontrol Perekaman — sinkron dengan ESP via MQTT */}
+                <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h3 className="text-lg font-medium text-white">Kontrol Perekaman</h3>
+                            <p className="text-sm text-slate-400 mt-1">
+                                Perintah dikirim ke logger ESP32 lewat MQTT
+                                {machineCode ? ` (${machineCode})` : ''}.
+                                Saat offline, gunakan dashboard lokal ESP (WiFi AP).
+                            </p>
+                            <div className="mt-2 flex items-center gap-2 text-sm">
+                                <CircleDot className={`w-4 h-4 ${stats.isLogging ? 'text-amber-400' : 'text-slate-500'}`} />
+                                <span className={stats.isLogging ? 'text-amber-300 font-medium' : 'text-slate-400'}>
+                                    {stats.isLogging ? 'Sedang merekam (LOGGING)' : 'Tidak merekam (IDLE)'}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => sendCommand('start')}
+                                disabled={cmdLoading || stats.isLogging || !stats.isOnline}
+                                className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <Play className="w-4 h-4" />
+                                Start
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => sendCommand('stop')}
+                                disabled={cmdLoading || !stats.isLogging}
+                                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <Square className="w-4 h-4" />
+                                Stop
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
                 {/* Stat Cards */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -46,6 +46,14 @@ class RetortMachine extends Model
     }
 
     /**
+     * Get process sessions for this machine.
+     */
+    public function processSessions(): HasMany
+    {
+        return $this->hasMany(ProcessSession::class, 'machine_id');
+    }
+
+    /**
      * Get the alarms for this machine.
      */
     public function alarms(): HasMany

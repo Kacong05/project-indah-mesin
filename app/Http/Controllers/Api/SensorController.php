@@ -45,7 +45,7 @@ class SensorController extends Controller
         // ============================================
         // LOGIKA UTAMA: Dapatkan atau buat sesi proses
         // ============================================
-        $session = $this->processSessionService->getOrCreateSession($timestamp);
+        $session = $this->processSessionService->getOrCreateSession($timestamp, $machine->id);
 
         // Save reading dengan link ke sesi
         $reading = SensorReading::create([
@@ -86,13 +86,11 @@ class SensorController extends Controller
         $high = self::TARGET_TEMP + self::TEMP_TOLERANCE; // 126°C
         $low = self::TARGET_TEMP - self::TEMP_TOLERANCE; // 116°C
 
-        // Hitung menit berlalu sejak sesi/proses ini dimulai
-        $minutesElapsed = $session->started_at->diffInMinutes($timestamp);
-
-        // Hanya mengecek alarm jika berada di rentang 25 sampai 50 menit
-        if ($minutesElapsed < 25 || $minutesElapsed > 50) {
-            return;
-        }
+        // Lewati alarm suhu rendah selama fase warm-up (belum pernah mencapai 100°C)
+        $hasReachedWarmup = SensorReading::where('machine_id', $machine->id)
+            ->where('temperature', '>=', self::WARMUP_THRESHOLD)
+            ->exists()
+            || $temperature >= self::WARMUP_THRESHOLD;
 
         // Cek apakah sudah ada alarm aktif untuk kondisi yang sama (hindari duplikat)
         $hasActiveHigh = Alarm::where('machine_id', $machine->id)
@@ -124,6 +122,10 @@ class SensorController extends Controller
         }
 
         if ($temperature < $low && !$hasActiveLow) {
+            if (!$hasReachedWarmup) {
+                return;
+            }
+
             // Suhu terlalu rendah (setelah warm-up selesai = drop tidak normal)
             Alarm::create([
                 'machine_id' => $machine->id,

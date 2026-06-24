@@ -76,12 +76,16 @@ class DashboardController extends Controller
                 'triggered_at' => $a->triggered_at?->timezone('Asia/Jakarta')->format('H:i:s'),
             ]) : collect();
 
+        $isLogging = $latestReading && $this->isLoggingStatus($latestReading->process_status);
+
         return Inertia::render('Dashboard', [
             'machineName' => $machine ? $machine->name : 'Mesin Belum Ditetapkan',
+            'machineCode' => $machine?->machine_code,
             'stats' => [
                 'currentTemperature' => $currentTemperature,
                 'machineStatus' => $machineStatus,
                 'isOnline' => $isOnline,
+                'isLogging' => $isLogging,
                 'totalDataToday' => $totalDataToday,
                 'totalAlarmsToday' => $totalAlarmsToday,
                 'lastUpdate' => $lastUpdate,
@@ -102,8 +106,10 @@ class DashboardController extends Controller
         $recordedAts = [];
 
         if ($machine) {
-            // Dapatkan sesi terbaru
-            $latestSession = \App\Models\ProcessSession::latest('started_at')->first();
+            // Dapatkan sesi terbaru untuk mesin operator ini
+            $latestSession = \App\Models\ProcessSession::where('machine_id', $machine->id)
+                ->latest('started_at')
+                ->first();
 
             if ($latestSession) {
                 $readings = SensorReading::where('machine_id', $machine->id)
@@ -147,5 +153,14 @@ class DashboardController extends Controller
                 Alarm::where('machine_id', $machine->id)->where('type', 'connection_lost')->count(),
             ],
         ];
+    }
+
+    private function isLoggingStatus(?string $processStatus): bool
+    {
+        if ($processStatus === null) {
+            return false;
+        }
+
+        return in_array(strtolower($processStatus), ['logging', 'running', 'heating', 'holding', 'sterilizing'], true);
     }
 }

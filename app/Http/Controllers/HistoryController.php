@@ -24,6 +24,10 @@ class HistoryController extends Controller
             }])
             ->latest('started_at');
 
+        if ($machineId) {
+            $sessionsQuery->where('machine_id', $machineId);
+        }
+
         // Filter sessions by date range if provided
         if ($request->filled('start_date')) {
             $sessionsQuery->whereDate('started_at', '>=', $request->start_date);

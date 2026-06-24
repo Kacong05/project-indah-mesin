@@ -21,6 +21,16 @@ static void mqttCb(char* topic, byte* payload, unsigned int len) {
   cmd[len] = '\0';
   Serial.printf("[MQTT] Cmd: %s\n", cmd);
 
+  // Format: START, STOP, STATUS atau START:RT-001 (hanya mesin yang cocok)
+  char* colon = strchr(cmd, ':');
+  if (colon) {
+    *colon = '\0';
+    if (strcasecmp(colon + 1, cfg.machineId) != 0) {
+      Serial.printf("[MQTT] Cmd ignored (target %s, this %s)\n", colon + 1, cfg.machineId);
+      return;
+    }
+  }
+
   if (strcmp(cmd, "START") == 0) startProcess();
   else if (strcmp(cmd, "STOP") == 0) stopProcess();
   else if (strcmp(cmd, "STATUS") == 0) mqttPublishState();
@@ -72,8 +82,9 @@ void mqttPublishState() {
   char buf[256];
   snprintf(buf, sizeof(buf),
     "{\"id\":\"%s\",\"ts\":\"%s\",\"phase\":\"%s\","
-    "\"actual\":%.1f,\"setting\":%.1f}",
+    "\"actual\":%.1f,\"setting\":%.1f,\"logging\":%s}",
     cfg.machineId, ts, phaseName(state.phase),
-    state.temperature, state.setpoint);
+    state.temperature, state.setpoint,
+    state.logging ? "true" : "false");
   mqtt.publish(cfg.mqttPubTopic, buf, false);
 }
