@@ -1,7 +1,11 @@
 // ============================================================
-//  modbus_hw.ino  –  RS485 Modbus RTU
-//  Aktif jika USE_MODBUS = true
-//  Library: ModbusMaster (Doc Walker)
+//  modbus_hw.ino  –  Autonics TNL-P46RR-RS-035 via RS485
+//  Read Input Registers (FC04), 1 transaksi membaca 4 register:
+//    0x03E8 = Present Value (PV / Actual)
+//    0x03E9 = Decimal point (0:0, 1:0.0, 2:0.00, 3:0.000)
+//    0x03EA = Display unit
+//    0x03EB = Set Value (SV / Setting)
+//  Skala otomatis mengikuti decimal point controller.
 // ============================================================
 
 #if USE_MODBUS
@@ -11,74 +15,59 @@
 extern AppConfig   cfg;
 extern RetortState state;
 
-// Pin definitions – sesuaikan dengan hardware
-#define MB_RX_PIN    18
-#define MB_TX_PIN    17
-#define MB_DE_RE_PIN 16
-#define MB_BAUD      9600
-#define MB_SLAVE_ID  1
+// Autonics TN/TNL — Read Input Registers (FC04)
+#define TNL_REG_PV   0x03E8  // base: PV, +1 dp, +2 unit, +3 SV
+#define TNL_REG_COUNT 4
+#define TNL_SLAVE_ID 1       // Unit address default Autonics = 1
 
-// Register map (sesuaikan dengan PLC/sensor)
-#define MB_REG_TEMP     0x0000  // Temperature x10
-#define MB_REG_PRESSURE 0x0001  // Pressure x1000
+// Kode khusus PV controller (sensor error)
+#define TNL_PV_OPEN   31000  // sensor terbuka / putus
+#define TNL_PV_HHHH   30000  // over range
+#define TNL_PV_LLLL  -30000  // under range
 
 static ModbusMaster modbus;
-static unsigned long lastModbusRead = 0;
+static unsigned long lastModbusMs = 0;
 static const unsigned long MODBUS_INTERVAL_MS = 1000;
 
-static void preTransmit()  { digitalWrite(MB_DE_RE_PIN, HIGH); }
-static void postTransmit() { digitalWrite(MB_DE_RE_PIN, LOW);  }
-
 void setupModbus() {
-  pinMode(MB_DE_RE_PIN, OUTPUT);
-  digitalWrite(MB_DE_RE_PIN, LOW);
-
-  Serial1.begin(MB_BAUD, SERIAL_8N1, MB_RX_PIN, MB_TX_PIN);
-  modbus.begin(MB_SLAVE_ID, Serial1);
-  modbus.preTransmission(preTransmit);
-  modbus.postTransmission(postTransmit);
-
-  Serial.println(F("[MODBUS] Initialized."));
+  // 9600 8N1 — samakan dengan setting komunikasi pada TNL
+  Serial1.begin(9600, SERIAL_8N1, PIN_RS485_RX, PIN_RS485_TX);
+  modbus.begin(TNL_SLAVE_ID, Serial1);
+  Serial.println(F("[MODBUS] Autonics TNL initialized."));
+  Serial.printf("[MODBUS] RX=%d TX=%d Slave=%d\n",
+                PIN_RS485_RX, PIN_RS485_TX, TNL_SLAVE_ID);
 }
 
 void loopModbus() {
   unsigned long now = millis();
-  if (now - lastModbusRead < MODBUS_INTERVAL_MS) return;
-  lastModbusRead = now;
+  if (now - lastModbusMs < MODBUS_INTERVAL_MS) return;
+  lastModbusMs = now;
 
-  // Read temperature
-  uint8_t result = modbus.readHoldingRegisters(MB_REG_TEMP, 1);
-  if (result == modbus.ku8MBSuccess) {
-    uint16_t raw = modbus.getResponseBuffer(0);
-    state.temperature = (float)raw / 10.0f;
+  // Satu transaksi FC04 membaca PV, decimal point, unit, dan SV.
+  uint8_t result = modbus.readInputRegisters(TNL_REG_PV, TNL_REG_COUNT);
+  if (result != modbus.ku8MBSuccess) {
+    Serial.printf("[MODBUS] read err: 0x%02X\n", result);
+    return;
   }
 
-  // Read pressure
-  result = modbus.readHoldingRegisters(MB_REG_PRESSURE, 1);
-  if (result == modbus.ku8MBSuccess) {
-    uint16_t raw = modbus.getResponseBuffer(0);
-    state.pressure = (float)raw / 1000.0f;
+  int16_t  pvRaw = (int16_t)modbus.getResponseBuffer(0);
+  uint16_t dp    = modbus.getResponseBuffer(1);  // 0..3
+  int16_t  svRaw = (int16_t)modbus.getResponseBuffer(3);
+
+  // Divisor sesuai decimal point: 1, 10, 100, 1000
+  float div = 1.0f;
+  for (uint16_t i = 0; i < dp && i < 3; i++) div *= 10.0f;
+
+  // PV: abaikan jika kode error sensor (pertahankan nilai terakhir)
+  if (pvRaw == TNL_PV_OPEN || pvRaw == TNL_PV_HHHH || pvRaw == TNL_PV_LLLL) {
+    Serial.printf("[MODBUS] PV sensor err: %d\n", pvRaw);
+  } else {
+    state.temperature = (float)pvRaw / div;
   }
+  state.setpoint = (float)svRaw / div;
 }
 
-#if !USE_FAKE_SENSOR
-void startProcess() {
-  if (state.phase != PHASE_IDLE) return;
-  state.phase = PHASE_HEATING;
-  state.phaseStartMs = millis();
-  Serial.println(F("[MODBUS] START -> HEATING"));
-  // TODO(hardware): Kirim command start ke PLC via Modbus write
-}
-
-void stopProcess() {
-  state.phase = PHASE_IDLE;
-  state.phaseStartMs = 0;
-  Serial.println(F("[MODBUS] STOP"));
-  // TODO(hardware): Kirim command stop ke PLC via Modbus write
-}
-#endif
-
-#else  // USE_MODBUS = false – stubs
+#else
 
 void setupModbus() {}
 void loopModbus() {}

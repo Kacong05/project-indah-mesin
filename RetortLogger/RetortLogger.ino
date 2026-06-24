@@ -1,7 +1,7 @@
 // ============================================================
 //  RetortLogger.ino  –  Entry point, feature flags, setup(), loop()
-//  Industrial Retort Logger berbasis ESP32
-//  Menggunakan ESPAsyncWebServer + DNSServer (Captive Portal)
+//  Industrial Retort Logger - ESP32-S3
+//  Autonics TNL-P46RR-RS-035 Temperature Controller
 // ============================================================
 
 #include <Arduino.h>
@@ -13,36 +13,42 @@
 #include "mbedtls/sha256.h"
 
 // --- Feature Flags ---
-#define USE_FAKE_SENSOR true   // Gunakan sensor simulasi
-#define USE_MODBUS      true   // RS485 Modbus RTU
+#define USE_FAKE_SENSOR false  // Simulasi sensor (set true HANYA tanpa Modbus)
+#define USE_MODBUS      true   // RS485 Modbus RTU - Autonics TNL
 #define USE_RTC         true   // DS3231M RTC
 #define USE_SD          true   // MicroSD logging
-#define USE_OTA         true  // OTA update
+#define USE_OTA         false  // OTA update
+
+// --- Pin Assignments ---
+#define PIN_RTC_SDA     8
+#define PIN_RTC_SCL     9
+#define PIN_SD_CS       10
+#define PIN_SD_MOSI     11
+#define PIN_SD_CLK      12
+#define PIN_SD_MISO     13
+#define PIN_RS485_RX    15
+#define PIN_RS485_TX    16
 
 // --- Constants ---
-#define SESSION_TIMEOUT_MS   600000UL  // 10 menit auto logout
-#define DASHBOARD_POLL_MS    2000      // Update dashboard setiap 2 detik
+#define SESSION_TIMEOUT_MS   600000UL  // 10 menit
+#define DASHBOARD_POLL_MS    2000
 
 // --- Data Structures ---
 struct AppConfig {
-  // WiFi
   char wifiSSID[33];
   char wifiPass[65];
-  // MQTT
   char mqttBroker[65];
   uint16_t mqttPort;
   char mqttUser[33];
   char mqttPass[65];
   char mqttPubTopic[65];
   char mqttCmdTopic[65];
-  // Retort Parameters
-  float targetTemp;       // Target temperature (°C)
-  uint32_t holdingTimeSec; // Holding time (detik)
-  float heatingRate;      // Heating rate (°C/s)
-  float coolingRate;      // Cooling rate (°C/s)
-  // Machine Identity
+  float targetTemp;
+  uint32_t holdingTimeSec;
+  float heatingRate;
+  float coolingRate;
   char machineId[33];
-  char passHash[65];      // SHA256 hex string
+  char passHash[65];
 };
 
 enum RetortPhase : uint8_t {
@@ -54,12 +60,14 @@ enum RetortPhase : uint8_t {
 
 struct RetortState {
   RetortPhase phase;
-  float temperature;
+  float temperature;  // PV (actual)
+  float setpoint;     // SV (setting)
   float pressure;
   unsigned long phaseStartMs;
   bool wifiConnected;
   bool mqttConnected;
   bool sdReady;
+  bool logging;       // true = sesi perekaman CSV aktif
 };
 
 // --- Globals ---
@@ -69,11 +77,10 @@ Preferences prefs;
 DNSServer   dnsServer;
 AsyncWebServer server(80);
 
-// Session management
-char sessionToken[65]       = {0};
-unsigned long sessionStart  = 0;
+char sessionToken[65]      = {0};
+unsigned long sessionStart = 0;
 
-// --- Utility: SHA256 hash ke hex string ---
+// --- SHA256 ---
 void sha256Hex(const char* input, char* output) {
   unsigned char hash[32];
   mbedtls_sha256_context ctx;
@@ -88,49 +95,40 @@ void sha256Hex(const char* input, char* output) {
   output[64] = '\0';
 }
 
-// --- Utility: Generate random session token ---
+// --- Session ---
 void generateSession() {
-  uint32_t r1 = esp_random();
-  uint32_t r2 = esp_random();
-  uint32_t r3 = esp_random();
-  uint32_t r4 = esp_random();
   char raw[64];
-  snprintf(raw, sizeof(raw), "%08lx%08lx%08lx%08lx%lu",
-           (unsigned long)r1, (unsigned long)r2,
-           (unsigned long)r3, (unsigned long)r4, millis());
+  snprintf(raw, sizeof(raw), "%08lx%08lx%lu",
+           (unsigned long)esp_random(), (unsigned long)esp_random(), millis());
   sha256Hex(raw, sessionToken);
   sessionStart = millis();
 }
 
-// --- Utility: Validate session token ---
-bool isSessionValid(AsyncWebServerRequest* request) {
+bool isSessionValid(AsyncWebServerRequest* req) {
   if (sessionToken[0] == '\0') return false;
   if (millis() - sessionStart > SESSION_TIMEOUT_MS) {
     sessionToken[0] = '\0';
     return false;
   }
-  if (!request->hasHeader("Cookie")) return false;
-  String cookie = request->header("Cookie");
-  // Cari "session=<token>"
-  int idx = cookie.indexOf("session=");
-  if (idx < 0) return false;
-  String val = cookie.substring(idx + 8);
-  int semi = val.indexOf(';');
-  if (semi > 0) val = val.substring(0, semi);
-  val.trim();
-  if (val.equals(sessionToken)) {
-    sessionStart = millis();  // Refresh timeout
+  if (!req->hasHeader("Cookie")) return false;
+  String c = req->header("Cookie");
+  int i = c.indexOf("session=");
+  if (i < 0) return false;
+  String v = c.substring(i + 8);
+  int s = v.indexOf(';');
+  if (s > 0) v = v.substring(0, s);
+  v.trim();
+  if (v.equals(sessionToken)) {
+    sessionStart = millis();
     return true;
   }
   return false;
 }
 
-// --- Utility: Redirect ke login ---
-void redirectToLogin(AsyncWebServerRequest* request) {
-  request->redirect("/login");
+void redirectToLogin(AsyncWebServerRequest* req) {
+  req->redirect("/login");
 }
 
-// --- Utility: Phase name ---
 const char* phaseName(RetortPhase p) {
   switch (p) {
     case PHASE_HEATING: return "HEATING";
@@ -140,40 +138,30 @@ const char* phaseName(RetortPhase p) {
   }
 }
 
-// --- Forward declarations (dari file .ino lain) ---
+// --- Forward Declarations ---
 void loadConfig();
 void saveConfig();
-void saveConfigField(const char* key, const char* val);
-void saveConfigField(const char* key, uint16_t val);
-void saveConfigField(const char* key, float val);
-void saveConfigField(const char* key, uint32_t val);
-
 void setupWiFiAP();
 void loopWiFiAP();
-
 void setupMQTT();
 void loopMQTT();
 void mqttPublishState();
-
 void setupRetortSim();
 void loopRetortSim();
 void startProcess();
 void stopProcess();
-
 void setupModbus();
 void loopModbus();
-
 void setupRTC();
 void loopRTC();
 void getTimestamp(char* buf, size_t len);
-
 void setupSDLogger();
 void loopSDLogger();
 void sdLogEntry();
-
+void sdStartLog();
+void sdStopLog();
 void setupOTA();
 void loopOTA();
-
 void setupWebAuth();
 void setupWebDashboard();
 void setupWebSettings();
@@ -183,64 +171,66 @@ void setupWebStorage();
 // ============================================================
 void setup() {
   Serial.begin(115200);
-  delay(500);
-  Serial.println(F("\n=== Industrial Retort Logger ==="));
+  delay(300);
+  Serial.println(F("\n=== RetortLogger ==="));
 
-  // Init state
-  state.phase       = PHASE_IDLE;
+  // Turunkan clock CPU: 160 MHz cukup cepat untuk web + Modbus,
+  // mengurangi panas & konsumsi daya ESP32-S3.
+  setCpuFrequencyMhz(160);
+
+  state.phase        = PHASE_IDLE;
   state.temperature  = 25.0f;
+  state.setpoint     = 121.0f;
   state.pressure     = 1.013f;
   state.phaseStartMs = 0;
   state.wifiConnected = false;
   state.mqttConnected = false;
   state.sdReady       = false;
+  state.logging       = false;
 
   loadConfig();
-  setupWiFiAP();
+  state.setpoint = cfg.targetTemp;
 
-  // Web server routes
+  setupWiFiAP();
   setupWebAuth();
   setupWebDashboard();
   setupWebSettings();
   setupWebLogs();
   setupWebStorage();
   server.begin();
-  Serial.println(F("[WEB] AsyncWebServer started."));
 
   setupMQTT();
 
-#if USE_FAKE_SENSOR
-  setupRetortSim();
-#endif
-#if USE_MODBUS
-  setupModbus();
-#endif
 #if USE_RTC
   setupRTC();
 #endif
 #if USE_SD
   setupSDLogger();
 #endif
+#if USE_MODBUS
+  setupModbus();
+#endif
+#if USE_FAKE_SENSOR
+  setupRetortSim();
+#endif
 #if USE_OTA
   setupOTA();
 #endif
 
-  Serial.println(F("=== Setup Complete ==="));
+  Serial.println(F("=== Ready ==="));
 }
 
-// ============================================================
 void loop() {
   loopWiFiAP();
   loopMQTT();
-
-#if USE_FAKE_SENSOR
-  loopRetortSim();
+#if USE_RTC
+  loopRTC();
 #endif
 #if USE_MODBUS
   loopModbus();
 #endif
-#if USE_RTC
-  loopRTC();
+#if USE_FAKE_SENSOR
+  loopRetortSim();
 #endif
 #if USE_SD
   loopSDLogger();

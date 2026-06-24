@@ -1,57 +1,58 @@
 // ============================================================
-//  rtc_hw.ino  –  DS3231M RTC
-//  Aktif jika USE_RTC = true
-//  Library: RTClib (Adafruit)
+//  rtc_hw.ino  –  DS3231M RTC (SDA=8, SCL=9)
 // ============================================================
 
 #if USE_RTC
 
 #include <RTClib.h>
+#include <Wire.h>
 
 static RTC_DS3231 rtcModule;
-static bool rtcAvailable = false;
+static bool rtcOk = false;
 
 void setupRTC() {
-  Wire.begin();
+  Wire.begin(PIN_RTC_SDA, PIN_RTC_SCL);
   if (!rtcModule.begin()) {
-    Serial.println(F("[RTC] DS3231 not found!"));
+    Serial.println(F("[RTC] Not found!"));
     return;
   }
-  rtcAvailable = true;
+  rtcOk = true;
   if (rtcModule.lostPower()) {
     Serial.println(F("[RTC] Lost power – setting compile time."));
     rtcModule.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
-  Serial.println(F("[RTC] Initialized."));
+  DateTime now = rtcModule.now();
+  Serial.printf("[RTC] OK: %04d-%02d-%02d %02d:%02d:%02d\n",
+    now.year(), now.month(), now.day(),
+    now.hour(), now.minute(), now.second());
 }
 
-void loopRTC() {
-  // RTC tidak perlu loop aktif
-}
+void loopRTC() {}
 
+// Format: "M/D/YYYY h:mm:ssPM" sesuai output CSV
 void getTimestamp(char* buf, size_t len) {
-  if (!rtcAvailable) {
-    // Fallback ke millis
+  if (!rtcOk) {
     unsigned long s = millis() / 1000;
-    snprintf(buf, len, "UP_%luh%02lum%02lus",
-             s / 3600, (s % 3600) / 60, s % 60);
+    snprintf(buf, len, "0/0/0000 0:00:00AM");
     return;
   }
   DateTime now = rtcModule.now();
-  snprintf(buf, len, "%04d-%02d-%02d %02d:%02d:%02d",
-           now.year(), now.month(), now.day(),
-           now.hour(), now.minute(), now.second());
+  int h = now.hour();
+  const char* ampm = (h >= 12) ? "PM" : "AM";
+  if (h == 0) h = 12;
+  else if (h > 12) h -= 12;
+  snprintf(buf, len, "%d/%d/%04d %d:%02d:%02d%s",
+           now.month(), now.day(), now.year(),
+           h, now.minute(), now.second(), ampm);
 }
 
-#else  // USE_RTC = false – stubs
+#else
 
 void setupRTC() {}
 void loopRTC() {}
-
 void getTimestamp(char* buf, size_t len) {
   unsigned long s = millis() / 1000;
-  snprintf(buf, len, "UP_%luh%02lum%02lus",
-           s / 3600, (s % 3600) / 60, s % 60);
+  snprintf(buf, len, "UP_%lus", s);
 }
 
 #endif
