@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'machine_id',
     'batch_id',
     'temperature',
+    'sv',
     'pressure',
     'process_status',
     'recorded_at',
@@ -41,6 +42,7 @@ class SensorReading extends Model
     {
         return [
             'temperature' => 'decimal:2',
+            'sv' => 'decimal:2',
             'pressure' => 'decimal:3',
             'recorded_at' => 'datetime',
         ];

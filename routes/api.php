@@ -23,6 +23,11 @@ Route::prefix('history')->group(function () {
         ->name('api.history.session-detail')
         ->whereNumber('id');
 
+    // Export satu sesi
+    Route::get('/sessions/{id}/export', [HistoryController::class, 'exportSession'])
+        ->name('api.history.export-session')
+        ->whereNumber('id');
+
     // Sesi terbaru
     Route::get('/latest', [HistoryController::class, 'latestSession'])
         ->name('api.history.latest');

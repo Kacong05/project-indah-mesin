@@ -3,7 +3,7 @@
  * Komponen untuk menampilkan detail satu sesi proses (tabel + chart)
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -16,7 +16,9 @@ import {
     Legend,
     Filler
 } from 'chart.js';
-import { ChevronLeft, Download, TrendingUp, TrendingDown, Minimize2, Maximize2 } from 'lucide-react';
+import { ChevronLeft, Download, TrendingUp, TrendingDown } from 'lucide-react';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 ChartJS.register(
     CategoryScale,
@@ -30,40 +32,173 @@ ChartJS.register(
 );
 
 export default function ProcessDetail({ session, onBack }) {
-    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const chartRef = useRef(null);
 
     if (!session) return null;
 
     const { session: sessionInfo, stats, readings } = session;
 
-    // Prepare Chart Data
-    const chartReadings = [...readings].reverse();
+    // SV (Set Value) & PV (Present Value) - Ambil dari data terkini (data paling akhir dari backend)
+    const latestData = readings && readings.length > 0 ? readings[readings.length - 1] : null;
+    const currentSV = latestData?.sv || sessionInfo.latest_sv || 121.1;
+    const currentPV = latestData?.temperature ?? sessionInfo.latest_temperature;
+
+    // Handle Export Excel
+    const handleExport = async () => {
+        setExporting(true);
+
+        try {
+            const chartBase64 = chartRef.current ? chartRef.current.toBase64Image() : null;
+
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Data Sesi');
+
+            // Header info
+            worksheet.mergeCells('A1:C1');
+            worksheet.getCell('A1').value = sessionInfo.name;
+            worksheet.getCell('A1').font = { bold: true, size: 16 };
+
+            worksheet.mergeCells('A2:C2');
+            worksheet.getCell('A2').value = `Waktu: ${sessionInfo.time_range}`;
+            worksheet.getCell('A2').font = { size: 11, color: { argb: 'FF666666' } };
+
+            worksheet.mergeCells('A3:C3');
+            worksheet.getCell('A3').value = `Durasi: ${sessionInfo.duration_minutes || '-'} menit | Total Data: ${stats?.total_readings || 0}`;
+            worksheet.getCell('A3').font = { size: 11, color: { argb: 'FF666666' } };
+
+            // Spacer
+            worksheet.addRow([]);
+
+            // Tabel header
+            const headerRow = worksheet.addRow(['Waktu', 'SV (°C)', 'PV (°C)']);
+            headerRow.eachCell((cell) => {
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FF4F46E5' }
+                };
+                cell.alignment = { horizontal: 'center' };
+            });
+
+            // Data rows
+            readings.forEach((reading) => {
+                const row = worksheet.addRow([
+                    reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8),
+                    reading.sv ? reading.sv.toFixed(1) : '-',
+                    reading.temperature.toFixed(1),
+                ]);
+
+                // Color PV based on value
+                const pvCell = row.getCell(3);
+                if (reading.temperature >= 120) {
+                    pvCell.font = { color: { argb: 'FFEF4444' } }; // Red
+                } else if (reading.temperature >= 110) {
+                    pvCell.font = { color: { argb: 'FFF97316' } }; // Orange
+                } else {
+                    pvCell.font = { color: { argb: 'FF94A3B8' } }; // Gray
+                }
+
+                // Color SV
+                const svCell = row.getCell(2);
+                if (reading.sv) {
+                    svCell.font = { color: { argb: 'FF22C55E' } }; // Green
+                }
+
+                row.alignment = { horizontal: 'center' };
+            });
+
+            // Set column widths
+            worksheet.getColumn(1).width = 15;
+            worksheet.getColumn(2).width = 12;
+            worksheet.getColumn(3).width = 12;
+
+            // Add chart if available
+            if (chartBase64) {
+                const chartImage = workbook.addImage({
+                    base64: chartBase64,
+                    extension: 'png',
+                });
+                worksheet.addImage(chartImage, {
+                    tl: { col: 4, row: 4 }, // Menempatkan grafik di kolom E (indeks 4) dan baris 5 (indeks 4)
+                    ext: { width: 600, height: 300 }
+                });
+            }
+
+            // Generate and download
+            const buffer = await workbook.xlsx.writeBuffer();
+            const filename = `Laporan_${sessionInfo.name.replace(/\s+/g, '_')}_${new Date().getTime()}.xlsx`;
+            saveAs(new Blob([buffer]), filename);
+
+            // Log activity to backend
+            try {
+                await window.axios.post('/history/log-export');
+            } catch (err) {
+                console.error('Failed to log export activity:', err);
+            }
+
+        } catch (error) {
+            console.error('Export error:', error);
+            alert('Gagal export data');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    // Prepare Chart Data (Urut dari lama ke baru agar mengalir ke kanan)
+    const chartReadings = readings || [];
     const chartData = {
         labels: chartReadings.map(r => r.time_formatted || r.recorded_at?.split('T')[1]?.substring(0, 8) || ''),
         datasets: [
             {
                 fill: true,
-                label: 'Suhu (°C)',
+                label: 'PV',
                 data: chartReadings.map(r => r.temperature),
-                borderColor: '#f97316',
-                backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                segment: {
+                    borderColor: ctx => {
+                        if (!chartReadings[0]) return '#eab308';
+                        const start = new Date(chartReadings[0].recorded_at).getTime();
+                        const current = new Date(chartReadings[ctx.p1DataIndex]?.recorded_at).getTime();
+                        const minutes = (current - start) / 60000;
+                        if (minutes <= 25) return '#eab308'; // yellow
+                        if (minutes <= 50) return '#ef4444'; // red
+                        return '#3b82f6'; // blue
+                    },
+                    backgroundColor: ctx => {
+                        if (!chartReadings[0]) return 'rgba(234, 179, 8, 0.1)';
+                        const start = new Date(chartReadings[0].recorded_at).getTime();
+                        const current = new Date(chartReadings[ctx.p1DataIndex]?.recorded_at).getTime();
+                        const minutes = (current - start) / 60000;
+                        if (minutes <= 25) return 'rgba(234, 179, 8, 0.1)';
+                        if (minutes <= 50) return 'rgba(239, 68, 68, 0.1)';
+                        return 'rgba(59, 130, 246, 0.1)';
+                    }
+                },
+                pointBackgroundColor: ctx => {
+                    if (ctx.dataIndex === undefined || !chartReadings[0]) return '#eab308';
+                    const start = new Date(chartReadings[0].recorded_at).getTime();
+                    const current = new Date(chartReadings[ctx.dataIndex]?.recorded_at).getTime();
+                    const minutes = (current - start) / 60000;
+                    if (minutes <= 25) return '#eab308';
+                    if (minutes <= 50) return '#ef4444';
+                    return '#3b82f6';
+                },
                 borderWidth: 2,
-                pointBackgroundColor: '#f97316',
                 pointRadius: 2,
                 tension: 0.3,
             },
             {
                 fill: false,
-                label: 'Tekanan',
-                data: chartReadings.map(r => r.pressure),
-                borderColor: '#3b82f6',
+                label: `SV`,
+                data: chartReadings.map(r => r.sv || currentSV),
+                borderColor: '#22c55e',
                 backgroundColor: 'transparent',
                 borderWidth: 2,
-                pointBackgroundColor: '#3b82f6',
+                borderDash: [5, 5], // garis putus-putus
                 pointRadius: 2,
-                tension: 0.3,
-                yAxisID: 'y1',
+                pointBackgroundColor: '#22c55e',
+                tension: 0,
             }
         ]
     };
@@ -102,18 +237,6 @@ export default function ProcessDetail({ session, onBack }) {
                 ticks: { color: '#94a3b8' },
                 grid: { color: 'rgba(255,255,255,0.05)' }
             },
-            y1: {
-                type: 'linear',
-                display: true,
-                position: 'right',
-                title: {
-                    display: true,
-                    text: 'Tekanan (bar)',
-                    color: '#3b82f6'
-                },
-                ticks: { color: '#94a3b8' },
-                grid: { drawOnChartArea: false }
-            },
             x: {
                 ticks: { color: '#94a3b8', maxTicksLimit: 10 },
                 grid: { color: 'rgba(255,255,255,0.05)' }
@@ -134,11 +257,12 @@ export default function ProcessDetail({ session, onBack }) {
                 </button>
 
                 <button
-                    onClick={() => setIsFullscreen(!isFullscreen)}
-                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                    title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white text-sm font-medium transition-colors"
                 >
-                    {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                    <Download className="w-4 h-4" />
+                    {exporting ? 'Exporting...' : 'Download Excel'}
                 </button>
             </div>
 
@@ -151,47 +275,39 @@ export default function ProcessDetail({ session, onBack }) {
                             {sessionInfo.time_range} • {sessionInfo.duration_minutes || '-'} menit
                         </p>
                     </div>
-                    <div className={`px-4 py-2 rounded-lg ${
-                        sessionInfo.status === 'active'
-                            ? 'bg-emerald-500/20 text-emerald-400'
-                            : 'bg-slate-500/20 text-slate-400'
-                    }`}>
-                        {sessionInfo.status === 'active' ? 'Sedang Berlangsung' : 'Selesai'}
+
+                    {/* SV & PV Display */}
+                    <div className="flex items-center gap-4 p-3 rounded-xl bg-white/5">
+                        <div className="text-center">
+                            <p className="text-xs text-slate-400 uppercase">SV</p>
+                            <p className="text-xl font-bold text-indigo-400">
+                                        {currentSV.toFixed(1)}°C
+                                    </p>
+                        </div>
+                        <div className="w-px h-12 bg-white/10" />
+                        <div className="text-center">
+                            <p className="text-xs text-slate-400 uppercase">PV</p>
+                            <p className={`text-xl font-bold ${
+                                currentPV >= 119 && currentPV <= 123
+                                    ? 'text-emerald-400'
+                                    : currentPV >= 116 && currentPV <= 126
+                                    ? 'text-yellow-400'
+                                    : 'text-red-400'
+                            }`}>
+                                {currentPV !== null && currentPV !== undefined
+                                    ? `${currentPV.toFixed(1)}°C`
+                                    : '-'}
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                    label="Rata-rata Suhu"
-                    value={`${stats?.avg_temperature?.toFixed(1) || '-'}°C`}
-                    icon={<TrendingUp className="w-5 h-5 text-orange-400" />}
-                    color="orange"
-                />
-                <StatCard
-                    label="Suhu Tertinggi"
-                    value={`${stats?.max_temperature?.toFixed(1) || '-'}°C`}
-                    icon={<TrendingUp className="w-5 h-5 text-red-400" />}
-                    color="red"
-                />
-                <StatCard
-                    label="Suhu Terendah"
-                    value={`${stats?.min_temperature?.toFixed(1) || '-'}°C`}
-                    icon={<TrendingDown className="w-5 h-5 text-blue-400" />}
-                    color="blue"
-                />
-                <StatCard
-                    label="Total Data"
-                    value={stats?.total_readings || 0}
-                    icon={<Download className="w-5 h-5 text-indigo-400" />}
-                    color="indigo"
-                />
-            </div>
+
 
             {/* Chart */}
             <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Grafik Sensor</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">Grafik PV vs SV</h3>
                 <div className="h-72">
                     <Line ref={chartRef} data={chartData} options={chartOptions} />
                 </div>
@@ -203,45 +319,35 @@ export default function ProcessDetail({ session, onBack }) {
                     <table className="min-w-full divide-y divide-white/10">
                         <thead className="bg-white/5">
                             <tr>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Waktu</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Mesin</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Suhu (°C)</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Tekanan</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Status</th>
+                                <th className="px-6 py-4 text-left text-sm font-bold text-slate-200 uppercase tracking-wider">Waktu</th>
+                                <th className="px-6 py-4 text-left text-sm font-bold text-slate-200 uppercase tracking-wider">SV (°C)</th>
+                                <th className="px-6 py-4 text-left text-sm font-bold text-slate-200 uppercase tracking-wider">PV (°C)</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/10">
                             {readings.length > 0 ? (
-                                readings.map((reading) => (
+                                [...readings].reverse().map((reading) => (
                                     <tr key={reading.id} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-6 py-4 text-sm text-slate-300 whitespace-nowrap">
+                                        <td className="px-6 py-4 text-base text-slate-200 whitespace-nowrap font-medium">
                                             {reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8)}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-white whitespace-nowrap">
-                                            {reading.machine?.name || '-'}
+                                        <td className="px-6 py-4 text-base text-emerald-400 whitespace-nowrap font-bold">
+                                            {reading.sv ? reading.sv.toFixed(1) : '-'}
                                         </td>
-                                        <td className="px-6 py-4 text-sm whitespace-nowrap">
-                                            <span className={`font-medium ${
+                                        <td className="px-6 py-4 text-base whitespace-nowrap">
+                                            <span className={`font-bold ${
                                                 reading.temperature >= 120 ? 'text-red-400' :
                                                 reading.temperature >= 110 ? 'text-orange-400' :
-                                                'text-slate-300'
+                                                'text-slate-200'
                                             }`}>
                                                 {reading.temperature}°C
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-slate-300 whitespace-nowrap">
-                                            {reading.pressure} bar
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="inline-flex px-2 py-1 rounded-md text-xs font-medium bg-slate-500/20 text-slate-300">
-                                                {reading.process_status || '-'}
                                             </span>
                                         </td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="5" className="px-6 py-8 text-center text-sm text-slate-500">
+                                    <td colSpan="3" className="px-6 py-8 text-center text-sm text-slate-500">
                                         Tidak ada data
                                     </td>
                                 </tr>
@@ -252,14 +358,6 @@ export default function ProcessDetail({ session, onBack }) {
             </div>
         </div>
     );
-
-    if (isFullscreen) {
-        return (
-            <div className="fixed inset-0 z-50 bg-slate-900 p-6 overflow-auto">
-                {content}
-            </div>
-        );
-    }
 
     return content;
 }

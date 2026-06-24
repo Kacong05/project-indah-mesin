@@ -11,59 +11,61 @@ MACHINE_CODE = "RT-002"
 
 # ─── Simulasi fase proses retort ─────────────────────────────────────────────
 def send_data(machine_code: str):
-    temperature  = 0.0
+    temperature  = 30.0 # start at 30
     phase        = "heating"
     hold_counter = 0
 
+    simulated_time = datetime.datetime.now()
+
     while True:
-        # ── HEATING ──────────────────────────────────────────────────────────
+        simulated_time += datetime.timedelta(seconds=30)
+        
+        # ── HEATING (0-25 mins = 50 iterasi) ─────────────────────────────────
         if phase == "heating":
-            if temperature < 30:
-                temperature += random.uniform(2.0, 4.0)
-            elif temperature < 80:
-                temperature += random.uniform(1.0, 2.0)
-            elif temperature < 115:
-                temperature += random.uniform(0.5, 1.2)
-            elif temperature < 121:
-                temperature += random.uniform(0.1, 0.5)
-            else:
+            temperature += 1.82 # (121 - 30) / 50 = 1.82
+            if temperature >= 121.0:
                 temperature = 121.0
                 phase = "holding"
 
-        # ── HOLDING ──────────────────────────────────────────────────────────
+        # ── HOLDING (25-50 mins = 50 iterasi) ────────────────────────────────
         elif phase == "holding":
             hold_counter += 1
-            temperature  += random.uniform(-0.3, 0.3)
-            temperature   = max(119.0, min(123.0, temperature))  # clamp around target
-
-            # 30 siklus × 5 detik = 150 detik sterilisasi
-            if hold_counter >= 30:
-                phase        = "cooling"
+            temperature += random.uniform(-0.5, 0.5)
+            temperature = max(119.0, min(123.0, temperature))
+            
+            if hold_counter >= 50:
+                phase = "cooling"
                 hold_counter = 0
 
-        # ── COOLING ──────────────────────────────────────────────────────────
+        # ── COOLING (50-x mins to 60°C) ──────────────────────────────────────
         elif phase == "cooling":
-            temperature -= random.uniform(0.5, 2.0)
-
-            if temperature <= 30.0:
-                temperature  = 0.0
-                phase        = "heating"
+            temperature -= 3.05 # (121 - 60) / 20 = 3.05 (takes 10 mins simulated)
+            if temperature <= 60.0:
+                temperature = 60.0
+                print("\n[INFO] Selesai cooling di 60°C. Memulai siklus baru...\n")
+                phase = "heating"
+                temperature = 30.0
+                # Loncat 2 menit agar API membuat sesi proses baru
+                simulated_time += datetime.timedelta(minutes=2)
 
         temperature = round(temperature, 2)
         pressure    = round(0.2 + (temperature / 121.0) * 2.0, 2)
 
+        # Format datetime untuk backend (YYYY-MM-DD HH:MM:SS)
+        recorded_at = simulated_time.strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = simulated_time.strftime("%H:%M:%S")
+
         payload = {
             "machine_code":   machine_code,
             "temperature":    temperature,
+            "sv":             121.1 if phase != 'cooling' else 0,
             "pressure":       pressure,
             "process_status": phase,
+            "recorded_at":    recorded_at
         }
-
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
 
         try:
             print(f"[{timestamp}] {phase.upper():7s} | Suhu={temperature:.2f}°C | Tekanan={pressure} bar", end=" ... ")
-
             response = requests.post(API_URL, json=payload, timeout=5)
 
             if response.status_code == 200:
@@ -73,12 +75,11 @@ def send_data(machine_code: str):
 
         except requests.exceptions.ConnectionError:
             print(f"[ERROR] Gagal terhubung ke {API_URL}")
-        except requests.exceptions.Timeout:
-            print("[ERROR] Timeout -- server tidak merespons")
         except Exception as e:
             print(f"[ERROR] {e}")
 
-        time.sleep(5)
+        # Jalankan cepat (1 detik real = 30 detik simulasi)
+        time.sleep(1)
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

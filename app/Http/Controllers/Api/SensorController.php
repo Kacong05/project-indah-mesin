@@ -29,6 +29,7 @@ class SensorController extends Controller
         $validated = $request->validate([
             'machine_code' => 'required|string|exists:retort_machines,machine_code',
             'temperature' => 'required|numeric',
+            'sv' => 'nullable|numeric', // SV dari alat ESP
             'pressure' => 'required|numeric',
             'process_status' => 'nullable|string',
             'recorded_at' => 'nullable|date', // Timestamp dari ESP
@@ -50,6 +51,7 @@ class SensorController extends Controller
         $reading = SensorReading::create([
             'machine_id' => $machine->id,
             'temperature' => $validated['temperature'],
+            'sv' => $validated['sv'] ?? null, // SV dari alat ESP
             'pressure' => $validated['pressure'],
             'process_status' => $validated['process_status'] ?? 'running',
             'recorded_at' => $timestamp,
@@ -63,7 +65,7 @@ class SensorController extends Controller
         ]);
 
         // --- Alarm Logic ---
-        $this->checkTemperatureAlarm($machine, $validated['temperature']);
+        $this->checkTemperatureAlarm($machine, $validated['temperature'], $session, $timestamp);
 
         return response()->json([
             'success' => true,
@@ -79,21 +81,16 @@ class SensorController extends Controller
         ]);
     }
 
-    private function checkTemperatureAlarm(RetortMachine $machine, float $temperature): void
+    private function checkTemperatureAlarm(RetortMachine $machine, float $temperature, \App\Models\ProcessSession $session, Carbon $timestamp): void
     {
         $high = self::TARGET_TEMP + self::TEMP_TOLERANCE; // 126°C
         $low = self::TARGET_TEMP - self::TEMP_TOLERANCE; // 116°C
 
-        // Cek apakah mesin sudah melewati fase warm-up:
-        // Warm-up = suhu sebelumnya BELUM PERNAH mencapai WARMUP_THRESHOLD
-        // Jika belum ada riwayat di atas threshold, ini masih fase pemanasan → skip alarm
-        $hasReachedNormal = SensorReading::where('machine_id', $machine->id)
-            ->where('temperature', '>=', self::WARMUP_THRESHOLD)
-            ->where('id', '!=', SensorReading::where('machine_id', $machine->id)->latest()->value('id'))
-            ->exists();
+        // Hitung menit berlalu sejak sesi/proses ini dimulai
+        $minutesElapsed = $session->started_at->diffInMinutes($timestamp);
 
-        if (!$hasReachedNormal) {
-            // Mesin masih dalam fase warm-up, tidak perlu alarm
+        // Hanya mengecek alarm jika berada di rentang 25 sampai 50 menit
+        if ($minutesElapsed < 25 || $minutesElapsed > 50) {
             return;
         }
 

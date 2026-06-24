@@ -16,8 +16,12 @@ class HistoryController extends Controller
     {
         $machineId = $request->user()->machine_id;
 
-        // Ambil data sessions
-        $sessionsQuery = ProcessSession::withCount('sensorReadings')
+        // Ambil data sessions dengan latest temperature
+        $sessionsQuery = ProcessSession::query()
+            ->withCount('sensorReadings')
+            ->with(['sensorReadings' => function ($query) {
+                $query->latest('recorded_at')->limit(1);
+            }])
             ->latest('started_at');
 
         // Filter sessions by date range if provided
@@ -29,6 +33,11 @@ class HistoryController extends Controller
         }
 
         $sessions = $sessionsQuery->get()->map(function ($session) {
+            // Ambil latest temperature dan sv dari relasi
+            $latestReading = $session->sensorReadings->first();
+            $latestTemperature = $latestReading ? (float) $latestReading->temperature : null;
+            $latestSv = $latestReading && $latestReading->sv ? (float) $latestReading->sv : null;
+
             return [
                 'id' => $session->id,
                 'name' => $session->display_name,
@@ -38,6 +47,8 @@ class HistoryController extends Controller
                 'duration_minutes' => $session->duration_in_minutes,
                 'data_count' => $session->sensor_readings_count,
                 'status' => $session->status,
+                'latest_temperature' => $latestTemperature,
+                'latest_sv' => $latestSv,
             ];
         });
 
@@ -63,7 +74,6 @@ class HistoryController extends Controller
                 'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
                 'temperature' => $reading->temperature,
                 'pressure' => $reading->pressure,
-                'status' => $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal'),
                 'sync_status' => 'Synced'
             ];
         });
@@ -134,5 +144,14 @@ class HistoryController extends Controller
         $response->headers->set('Content-Disposition', 'attachment; filename="' . $filename . '"');
 
         return $response;
+    }
+    public function logExport(Request $request)
+    {
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'Mengunduh data riwayat sensor',
+        ]);
+
+        return response()->json(['success' => true]);
     }
 }

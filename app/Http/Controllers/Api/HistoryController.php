@@ -23,10 +23,18 @@ class HistoryController extends Controller
      */
     public function sessions(Request $request): JsonResponse
     {
-        $sessions = ProcessSession::withCount('sensorReadings')
+        $sessions = ProcessSession::query()
+            ->withCount('sensorReadings')
+            ->with(['sensorReadings' => function ($query) {
+                $query->latest('recorded_at')->limit(1);
+            }])
             ->latest('started_at')
             ->get()
             ->map(function ($session) {
+                $latestReading = $session->sensorReadings->first();
+                $latestTemperature = $latestReading ? (float) $latestReading->temperature : null;
+                $latestSv = $latestReading ? ($latestReading->sv ? (float) $latestReading->sv : null) : null;
+
                 return [
                     'id' => $session->id,
                     'name' => $session->display_name,
@@ -36,6 +44,8 @@ class HistoryController extends Controller
                     'duration_minutes' => $session->duration_in_minutes,
                     'data_count' => $session->sensor_readings_count,
                     'status' => $session->status,
+                    'latest_temperature' => $latestTemperature,
+                    'latest_sv' => $latestSv,
                 ];
             });
 
@@ -53,20 +63,19 @@ class HistoryController extends Controller
     {
         $session = $this->processSessionService->getSessionWithReadings($id);
 
+        // Latest temperature (PV) and SV
+        $latestReading = $session->sensorReadings->sortByDesc('recorded_at')->first();
+        $latestTemperature = $latestReading ? (float) $latestReading->temperature : null;
+        $latestSv = $latestReading ? ($latestReading->sv ? (float) $latestReading->sv : null) : null;
+
         // Format data untuk frontend
         $readings = $session->sensorReadings->map(function ($reading) {
             return [
                 'id' => $reading->id,
                 'recorded_at' => $reading->recorded_at->toIso8601String(),
                 'time_formatted' => $reading->recorded_at->format('H:i:s'),
+                'sv' => $reading->sv ? (float) $reading->sv : null,
                 'temperature' => (float) $reading->temperature,
-                'pressure' => (float) $reading->pressure,
-                'process_status' => $reading->process_status,
-                'machine' => $reading->machine ? [
-                    'id' => $reading->machine->id,
-                    'name' => $reading->machine->name,
-                    'machine_code' => $reading->machine->machine_code,
-                ] : null,
             ];
         });
 
@@ -75,9 +84,6 @@ class HistoryController extends Controller
             'avg_temperature' => $readings->avg('temperature'),
             'min_temperature' => $readings->min('temperature'),
             'max_temperature' => $readings->max('temperature'),
-            'avg_pressure' => $readings->avg('pressure'),
-            'min_pressure' => $readings->min('pressure'),
-            'max_pressure' => $readings->max('pressure'),
             'total_readings' => $readings->count(),
         ];
 
@@ -92,6 +98,8 @@ class HistoryController extends Controller
                     'ended_at' => $session->ended_at?->toIso8601String(),
                     'duration_minutes' => $session->duration_in_minutes,
                     'status' => $session->status,
+                    'latest_temperature' => $latestTemperature,
+                    'latest_sv' => $latestSv,
                 ],
                 'stats' => $stats,
                 'readings' => $readings,
@@ -150,6 +158,45 @@ class HistoryController extends Controller
             'data' => [
                 'sessions_created' => $sessionsCreated,
             ],
+        ]);
+    }
+
+    /**
+     * GET /api/history/sessions/{id}/export
+     * Export data sesi dalam format Excel.
+     */
+    public function exportSession(Request $request, int $id)
+    {
+        $session = $this->processSessionService->getSessionWithReadings($id);
+
+        if (!$session) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi tidak ditemukan',
+            ], 404);
+        }
+
+        // Generate filename
+        $filename = "Laporan_Sesi_{$session->display_name}_{$session->started_at->format('Ymd_His')}.xlsx";
+
+        // Return JSON data untuk di-export di frontend
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'session_name' => $session->display_name,
+                'time_range' => $session->time_range,
+                'started_at' => $session->started_at->format('Y-m-d H:i:s'),
+                'ended_at' => $session->ended_at?->format('Y-m-d H:i:s'),
+                'duration_minutes' => $session->duration_in_minutes,
+                'readings' => $session->sensorReadings->map(function ($reading) {
+                    return [
+                        'waktu' => $reading->recorded_at->format('H:i:s'),
+                        'sv' => $reading->sv ? number_format($reading->sv, 1, '.', '') : '-',
+                        'pv' => number_format($reading->temperature, 1, '.', ''),
+                    ];
+                })->values()->toArray(),
+            ],
+            'filename' => $filename,
         ]);
     }
 }

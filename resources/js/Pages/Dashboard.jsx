@@ -39,8 +39,8 @@ ChartJS.register(
 );
 
 const TARGET_TEMP = 121;
-const TEMP_HIGH   = TARGET_TEMP + 5;
-const TEMP_LOW    = TARGET_TEMP - 5;
+const TEMP_HIGH = TARGET_TEMP + 5;
+const TEMP_LOW = TARGET_TEMP - 5;
 
 // ─── Alarm Popup Component ───────────────────────────────────────────────────
 function AlarmPopups({ alarms }) {
@@ -64,11 +64,10 @@ function AlarmPopups({ alarms }) {
             {visible.map(alarm => (
                 <div
                     key={alarm.id}
-                    className={`flex items-start gap-3 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl ${
-                        alarm.severity === 'critical'
+                    className={`flex items-start gap-3 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl ${alarm.severity === 'critical'
                             ? 'bg-red-900/80 border-red-500/60 text-red-100'
                             : 'bg-amber-900/80 border-amber-500/60 text-amber-100'
-                    }`}
+                        }`}
                     style={{ animation: 'slideIn 0.3s ease' }}
                 >
                     <div className={`mt-0.5 flex-shrink-0 p-1.5 rounded-lg ${alarm.severity === 'critical' ? 'bg-red-500/30' : 'bg-amber-500/30'}`}>
@@ -121,16 +120,16 @@ function ModelLoader() {
 function Retort3DCard({ temperature, processStatus }) {
     const tempLabel =
         temperature > 121 ? 'Kritis' :
-        temperature > 115 ? 'Panas Tinggi' :
-        temperature >= 100 ? 'Suhu Proses' : 'Ambient';
+            temperature > 115 ? 'Panas Tinggi' :
+                temperature >= 100 ? 'Suhu Proses' : 'Ambient';
 
     const statusColor =
         processStatus === 'running' ? '#22c55e' :
-        processStatus === 'error'   ? '#ef4444' : '#eab308';
+            processStatus === 'error' ? '#ef4444' : '#eab308';
 
     const statusLabel =
         processStatus === 'running' ? 'Running' :
-        processStatus === 'error'   ? 'Error' : 'Standby';
+            processStatus === 'error' ? 'Error' : 'Standby';
 
     return (
         <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg flex flex-col" style={{ minHeight: 340 }}>
@@ -154,7 +153,7 @@ function Retort3DCard({ temperature, processStatus }) {
                     <ambientLight intensity={0.6} />
                     <directionalLight castShadow position={[4, 6, 4]} intensity={2} />
                     <pointLight position={[-2, 2, -2]} intensity={0.7} color="#4488ff" />
-                    <pointLight position={[2, -1, 2]}  intensity={0.4} color="#ff8844" />
+                    <pointLight position={[2, -1, 2]} intensity={0.4} color="#ff8844" />
 
                     <Environment preset="warehouse" />
 
@@ -227,7 +226,10 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-            legend: { display: false },
+            legend: {
+                display: true,
+                labels: { color: '#e2e8f0' }
+            },
             tooltip: {
                 mode: 'index',
                 intersect: false,
@@ -247,28 +249,65 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
 
     const lineChartData = {
         labels: chartData.labels,
-        datasets: [{
-            fill: true,
-            label: 'Suhu (°C)',
-            data: chartData.data,
-            borderColor: '#6366f1',
-            backgroundColor: 'rgba(99,102,241,0.1)',
-            borderWidth: 2,
-            pointBackgroundColor: '#6366f1',
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: '#6366f1',
-            pointRadius: 3,
-            pointHoverRadius: 5,
-        }],
+        datasets: [
+            {
+                fill: true,
+                label: 'PV (°C)',
+                data: chartData.data,
+                segment: {
+                    borderColor: ctx => {
+                        if (!chartData.recordedAts || !chartData.recordedAts[0]) return '#eab308';
+                        const start = new Date(chartData.recordedAts[0]).getTime();
+                        const current = new Date(chartData.recordedAts[ctx.p1DataIndex]).getTime();
+                        const minutes = (current - start) / 60000;
+                        if (minutes <= 25) return '#eab308'; // yellow
+                        if (minutes <= 50) return '#ef4444'; // red
+                        return '#3b82f6'; // blue
+                    },
+                    backgroundColor: ctx => {
+                        if (!chartData.recordedAts || !chartData.recordedAts[0]) return 'rgba(234,179,8,0.1)';
+                        const start = new Date(chartData.recordedAts[0]).getTime();
+                        const current = new Date(chartData.recordedAts[ctx.p1DataIndex]).getTime();
+                        const minutes = (current - start) / 60000;
+                        if (minutes <= 25) return 'rgba(234,179,8,0.1)';
+                        if (minutes <= 50) return 'rgba(239,68,68,0.1)';
+                        return 'rgba(59,130,246,0.1)';
+                    }
+                },
+                pointBackgroundColor: ctx => {
+                    if (ctx.dataIndex === undefined || !chartData.recordedAts || !chartData.recordedAts[0]) return '#eab308';
+                    const start = new Date(chartData.recordedAts[0]).getTime();
+                    const current = new Date(chartData.recordedAts[ctx.dataIndex]).getTime();
+                    const minutes = (current - start) / 60000;
+                    if (minutes <= 25) return '#eab308';
+                    if (minutes <= 50) return '#ef4444';
+                    return '#3b82f6';
+                },
+                borderWidth: 2,
+                pointRadius: 2,
+                tension: 0.3,
+            },
+            {
+                fill: false,
+                label: 'SV',
+                data: chartData.svData || [],
+                borderColor: '#22c55e',
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                pointRadius: 2,
+                pointBackgroundColor: '#22c55e',
+                tension: 0,
+            }
+        ],
     };
 
     // Derive processStatus from stats
-    const currentTemp   = parseFloat(stats.currentTemperature) || 0;
+    const currentTemp = parseFloat(stats.currentTemperature) || 0;
     const processStatus = !stats.isOnline ? 'standby'
-                        : currentTemp > TEMP_HIGH ? 'error'
-                        : currentTemp >= 10 ? 'running'
-                        : 'standby';
+        : currentTemp > TEMP_HIGH ? 'error'
+            : currentTemp >= 10 ? 'running'
+                : 'standby';
 
     return (
         <AuthenticatedLayout header={`Dashboard Utama — ${machineName}`}>

@@ -98,23 +98,35 @@ class DashboardController extends Controller
     {
         $labels = [];
         $data = [];
+        $svData = [];
+        $recordedAts = [];
 
         if ($machine) {
-            $readings = SensorReading::where('machine_id', $machine->id)
-                ->latest()
-                ->take(24)
-                ->get()
-                ->reverse();
+            // Dapatkan sesi terbaru
+            $latestSession = \App\Models\ProcessSession::latest('started_at')->first();
 
-            foreach ($readings as $reading) {
-                $labels[] = $reading->created_at->timezone('Asia/Jakarta')->format('H:i');
-                $data[] = $reading->temperature;
+            if ($latestSession) {
+                $readings = SensorReading::where('machine_id', $machine->id)
+                    ->where('process_session_id', $latestSession->id)
+                    ->latest()
+                    ->take(50) // Ambil lebih banyak data (misal 50) agar grafik lebih panjang
+                    ->get()
+                    ->reverse();
+
+                foreach ($readings as $reading) {
+                    $labels[] = $reading->created_at->timezone('Asia/Jakarta')->format('H:i:s');
+                    $data[] = $reading->temperature;
+                    $svData[] = $reading->sv ?? 121.1;
+                    $recordedAts[] = $reading->recorded_at ?? $reading->created_at;
+                }
             }
         }
 
         return [
             'labels' => $labels,
             'data' => $data,
+            'svData' => $svData,
+            'recordedAts' => $recordedAts,
         ];
     }
 

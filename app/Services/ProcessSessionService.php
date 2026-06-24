@@ -11,11 +11,11 @@ class ProcessSessionService
 {
     /**
      * Waktu jeda minimum (dalam menit) untuk dianggap sesi baru.
-     * Default: 10 menit
+     * Default: 1 menit
      */
     protected int $gapThresholdMinutes;
 
-    public function __construct(int $gapThresholdMinutes = 10)
+    public function __construct(int $gapThresholdMinutes = 1)
     {
         $this->gapThresholdMinutes = $gapThresholdMinutes;
     }

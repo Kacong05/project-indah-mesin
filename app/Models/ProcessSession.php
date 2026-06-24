@@ -91,4 +91,21 @@ class ProcessSession extends Model
 
         return $this->started_at->diffInMinutes($this->ended_at);
     }
+
+    /**
+     * Get the dynamically calculated status.
+     * Jika status di DB 'active', tapi sudah lebih dari 1 menit sejak data terakhir (berdasarkan waktu server nyata),
+     * anggap statusnya sudah 'completed'.
+     */
+    public function getStatusAttribute($value): string
+    {
+        if ($value === 'active' && $this->updated_at) {
+            // Gunakan absolute difference pada updated_at (waktu nyata server menerima data)
+            if (abs($this->updated_at->diffInMinutes(now(), false)) >= 1) {
+                return 'completed';
+            }
+        }
+
+        return $value;
+    }
 }

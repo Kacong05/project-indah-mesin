@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import { Filter, Grid3X3, List, RefreshCw } from 'lucide-react';
@@ -11,6 +11,27 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
     const [selectedSession, setSelectedSession] = useState(null);
     const [sessionDetail, setSessionDetail] = useState(null);
     const [loading, setLoading] = useState(false);
+
+    // Auto Refresh Logic
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (viewMode === 'sessions') {
+                router.reload({ only: ['sessions'], preserveState: true, preserveScroll: true });
+            } else if (viewMode === 'detail' && selectedSession) {
+                // Fetch detail without showing loading spinner
+                fetch(`/api/history/sessions/${selectedSession.id}`)
+                    .then(res => res.json())
+                    .then(result => {
+                        if (result.success) {
+                            setSessionDetail(result.data);
+                        }
+                    })
+                    .catch(err => console.error('Error auto-refreshing detail:', err));
+            }
+        }, 5000); // Auto-refresh setiap 5 detik
+
+        return () => clearInterval(interval);
+    }, [viewMode, selectedSession]);
 
     // Filter state
     const [filterData, setFilterData] = useState({
@@ -98,38 +119,15 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                         </button>
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={refreshSessions}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                            title="Refresh"
-                        >
-                            <RefreshCw className="w-5 h-5" />
-                        </button>
-                    </div>
                 </div>
 
                 {/* Filter Area - hanya tampil di mode sessions */}
                 {viewMode === 'sessions' && (
                     <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
                         <div className="flex flex-col md:flex-row gap-4 items-end">
-                            <div className="w-full md:w-1/4">
-                                <label className="block text-sm font-medium text-slate-400 mb-1">Mesin Retort</label>
-                                <select
-                                    name="machine_id"
-                                    value={filterData.machine_id}
-                                    onChange={handleFilterChange}
-                                    className="w-full rounded-lg border-white/20 bg-white/5 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                                >
-                                    <option value="" className="text-slate-900">Semua Mesin</option>
-                                    {machines.map(m => (
-                                        <option key={m.id} value={m.id} className="text-slate-900">{m.name}</option>
-                                    ))}
-                                </select>
-                            </div>
 
-                            <div className="w-full md:w-1/4">
+
+                            <div className="w-full md:w-1/3">
                                 <label className="block text-sm font-medium text-slate-400 mb-1">Tanggal Mulai</label>
                                 <input
                                     type="date"
@@ -140,7 +138,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                                 />
                             </div>
 
-                            <div className="w-full md:w-1/4">
+                            <div className="w-full md:w-1/3">
                                 <label className="block text-sm font-medium text-slate-400 mb-1">Tanggal Selesai</label>
                                 <input
                                     type="date"
@@ -151,7 +149,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                                 />
                             </div>
 
-                            <div className="w-full md:w-1/4 flex gap-2">
+                            <div className="w-full md:w-1/3 flex gap-2">
                                 <button
                                     onClick={applyFilters}
                                     className="flex-1 flex justify-center items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors"
@@ -166,13 +164,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                 {/* Sessions List View */}
                 {viewMode === 'sessions' && (
                     <div className="space-y-4">
-                        {/* Info Banner */}
-                        <div className="overflow-hidden rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-4">
-                            <p className="text-sm text-indigo-300">
-                                <strong>Tip:</strong> Data dikelompokkan berdasarkan sesi proses. Klik salah satu kartu untuk melihat detail data sensor pada sesi tersebut.
-                                Sesi baru dibuat ketika jeda waktu antar data ≥ 10 menit.
-                            </p>
-                        </div>
+
 
                         {/* Sessions Grid */}
                         {sessions && sessions.length > 0 ? (
