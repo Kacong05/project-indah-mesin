@@ -124,12 +124,22 @@ info "  PostgreSQL siap."
 info "6/9 Install Mosquitto MQTT Broker (authenticated)..."
 apt-get install -y -qq mosquitto mosquitto-clients
 
-# Buat password file
-mosquitto_passwd -c -b /etc/mosquitto/passwd "$MQTT_ESP_USER" "$MQTT_ESP_PASS"
+# Nonaktifkan config default Ubuntu yang sering bentrok (listener 1883 ganda)
+for f in /etc/mosquitto/conf.d/*.conf; do
+    [ -f "$f" ] || continue
+    base=$(basename "$f")
+    [ "$base" = "retort.conf" ] && continue
+    mv "$f" "${f}.disabled"
+    warn "  Config Mosquitto dinonaktifkan: $base → ${base}.disabled"
+done
+
+# Password file: owner root, group mosquitto, mode 640 (bisa dibaca proses mosquitto)
+install -o root -g mosquitto -m 640 /dev/null /etc/mosquitto/passwd
+mosquitto_passwd -b /etc/mosquitto/passwd "$MQTT_ESP_USER" "$MQTT_ESP_PASS"
 mosquitto_passwd -b /etc/mosquitto/passwd "$MQTT_BRIDGE_USER" "$MQTT_BRIDGE_PASS"
 mosquitto_passwd -b /etc/mosquitto/passwd "$MQTT_WEB_USER" "$MQTT_WEB_PASS"
-chmod 640 /etc/mosquitto/passwd
 chown root:mosquitto /etc/mosquitto/passwd
+chmod 640 /etc/mosquitto/passwd
 
 # ACL: ESP publish data + baca cmd; bridge baca data; web publish cmd
 cat > /etc/mosquitto/acl << ACLCONF
@@ -146,19 +156,25 @@ topic read retort/#
 user ${MQTT_WEB_USER}
 topic write retort/cmd
 ACLCONF
-chmod 640 /etc/mosquitto/acl
 chown root:mosquitto /etc/mosquitto/acl
+chmod 640 /etc/mosquitto/acl
 
 cat > /etc/mosquitto/conf.d/retort.conf << MQTTCONF
-# Mosquitto – RetortLogger (no anonymous)
-listener 1883
+# Mosquitto – RetortLogger (satu-satunya listener 1883)
+listener 1883 0.0.0.0
 allow_anonymous false
 password_file /etc/mosquitto/passwd
 acl_file /etc/mosquitto/acl
 MQTTCONF
 
 systemctl enable mosquitto
-systemctl restart mosquitto
+if ! systemctl restart mosquitto; then
+    echo ""
+    error "Mosquitto gagal start. Jalankan: journalctl -xeu mosquitto.service -n 40"
+fi
+if ! systemctl is-active --quiet mosquitto; then
+    error "Mosquitto tidak active setelah restart."
+fi
 info "  Mosquitto berjalan di port 1883 (auth required)."
 
 # ─────────────────────────────────────────────────────────────

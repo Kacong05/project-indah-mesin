@@ -13,8 +13,8 @@
 #include "mbedtls/sha256.h"
 
 // --- Feature Flags ---
-#define USE_FAKE_SENSOR false  // Simulasi sensor (set true HANYA tanpa Modbus)
-#define USE_MODBUS      true   // RS485 Modbus RTU - Autonics TNL
+#define USE_FAKE_SENSOR true  // Simulasi sensor (set true HANYA tanpa Modbus)
+#define USE_MODBUS      false   // RS485 Modbus RTU - Autonics TNL
 #define USE_RTC         true   // DS3231M RTC
 #define USE_SD          true   // MicroSD logging
 #define USE_OTA         false  // OTA update
