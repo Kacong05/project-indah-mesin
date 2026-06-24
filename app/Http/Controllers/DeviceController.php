@@ -12,7 +12,8 @@ class DeviceController extends Controller
     {
         $machineId = $request->user()->machine_id;
         $devices = RetortMachine::where('id', $machineId)->latest()->paginate(10)->through(function ($machine) {
-            $isOnline = $machine->last_heartbeat_at?->diffInMinutes(now()) < 5;
+            $lastSeen = $machine->sensorReadings()->latest('created_at')->value('created_at');
+            $isOnline = $lastSeen !== null && \Carbon\Carbon::parse($lastSeen)->greaterThan(now()->subSeconds(90));
             
             return [
                 'id' => $machine->id,

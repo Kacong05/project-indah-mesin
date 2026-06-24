@@ -35,7 +35,14 @@ class DashboardController extends Controller
     {
         $currentTemperature = $latestReading ? $latestReading->temperature : 0;
         $machineStatus = $machine ? $machine->status : 'Offline';
-        $isOnline = $machine ? $machine->last_heartbeat_at?->diffInMinutes(now()) < 1 : false;
+        $lastSeenAt = $latestReading
+            ? ($latestReading->recorded_at ?? $latestReading->created_at)
+            : null;
+        // Online hanya jika ada data masuk ≤90 detik (ESP publish tiap ~2 detik)
+        $isOnline = $lastSeenAt !== null && $lastSeenAt->greaterThan(now()->subSeconds(90));
+        if ($machine && ! $isOnline && $machine->status !== 'offline') {
+            $machine->update(['status' => 'offline']);
+        }
 
         $totalDataToday = $machine ? SensorReading::where('machine_id', $machine->id)->whereDate('created_at', $today)->count() : 0;
         $totalAlarmsToday = $machine ? Alarm::where('machine_id', $machine->id)->whereDate('created_at', $today)->count() : 0;

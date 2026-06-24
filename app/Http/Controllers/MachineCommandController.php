@@ -46,11 +46,13 @@ class MachineCommandController extends Controller
             ],
         ]);
 
+        $code = $machine->machine_code;
+
         return back()->with(
             'success',
             $cmd === 'START'
-                ? 'Perintah START dikirim ke logger. ESP akan mulai merekam.'
-                : 'Perintah STOP dikirim ke logger. ESP akan berhenti merekam.'
+                ? "Perintah START:{$code} dikirim via MQTT. Pastikan ESP Settings → Nomor Mesin = {$code}."
+                : "Perintah STOP:{$code} dikirim via MQTT."
         );
     }
 }

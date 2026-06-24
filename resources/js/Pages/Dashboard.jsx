@@ -366,8 +366,15 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                             <p className="text-sm text-slate-400 mt-1">
                                 Perintah dikirim ke logger ESP32 lewat MQTT
                                 {machineCode ? ` (${machineCode})` : ''}.
+                                Nomor mesin di ESP Settings harus sama persis.
                                 Saat offline, gunakan dashboard lokal ESP (WiFi AP).
                             </p>
+                            {!stats.isOnline && (
+                                <p className="text-sm text-amber-400/90 mt-2">
+                                    Belum ada data sensor masuk ke server — Start tetap bisa dikirim,
+                                    tetapi pastikan mqtt-bridge jalan dan kode mesin ESP cocok.
+                                </p>
+                            )}
                             <div className="mt-2 flex items-center gap-2 text-sm">
                                 <CircleDot className={`w-4 h-4 ${stats.isLogging ? 'text-amber-400' : 'text-slate-500'}`} />
                                 <span className={stats.isLogging ? 'text-amber-300 font-medium' : 'text-slate-400'}>
@@ -379,7 +386,7 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                             <button
                                 type="button"
                                 onClick={() => sendCommand('start')}
-                                disabled={cmdLoading || stats.isLogging || !stats.isOnline}
+                                disabled={cmdLoading || stats.isLogging}
                                 className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             >
                                 <Play className="w-4 h-4" />

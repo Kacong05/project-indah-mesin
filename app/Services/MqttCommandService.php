@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\RetortMachine;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 
@@ -29,10 +30,7 @@ class MqttCommandService
 
         $payload = $command.':'.$machine->machine_code;
         $script = base_path('scripts/mqtt_publish.py');
-        $venvPython = base_path('.venv/bin/python3');
-        $python = (PHP_OS_FAMILY !== 'Windows' && is_file($venvPython))
-            ? $venvPython
-            : (PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3');
+        $python = $this->resolvePythonBinary();
 
         $process = new Process([$python, $script, $payload], base_path(), [
             'MQTT_HOST' => config('mqtt.host'),
@@ -46,9 +44,36 @@ class MqttCommandService
         $process->run();
 
         if (! $process->isSuccessful()) {
-            throw new RuntimeException(
-                'Gagal publish MQTT: '.trim($process->getErrorOutput() ?: $process->getOutput())
-            );
+            $detail = trim($process->getErrorOutput() ?: $process->getOutput());
+            Log::error('MQTT command publish failed', [
+                'payload' => $payload,
+                'python' => $python,
+                'detail' => $detail,
+            ]);
+
+            throw new RuntimeException('Gagal publish MQTT: '.$detail);
         }
+
+        Log::info('MQTT command published', ['payload' => $payload, 'topic' => config('mqtt.cmd_topic')]);
+    }
+
+    private function resolvePythonBinary(): string
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            return 'python';
+        }
+
+        $candidates = [
+            base_path('.venv/bin/python3'),
+            '/usr/bin/python3',
+        ];
+
+        foreach ($candidates as $path) {
+            if (is_file($path) && is_executable($path)) {
+                return $path;
+            }
+        }
+
+        return 'python3';
     }
 }
