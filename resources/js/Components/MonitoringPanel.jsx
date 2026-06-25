@@ -10,7 +10,6 @@ import {
     Settings,
     Clock,
     Activity,
-    Wifi,
 } from 'lucide-react';
 
 // ─── Machine Status Badge ────────────────────────────────────────────────────

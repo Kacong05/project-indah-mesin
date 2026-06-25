@@ -1,178 +1,221 @@
-# Prompt: Perubahan Layout Dashboard Retort Monitoring
+# F₀ Calculation Module
 
-Berikut adalah instruksi perubahan yang perlu dilakukan pada file `resources/js/Pages/Dashboard.jsx` di project Laravel + Inertia + React ini.
+## Tujuan
 
----
+Membuat modul untuk menghitung nilai **F₀ (Sterilization Value)** berdasarkan data suhu terhadap waktu pada titik **Coldest Spot**.
 
-## Konteks Project
-
-- **Framework**: Laravel + InertiaJS + React (Vite)
-- **Styling**: Tailwind CSS (dark mode, glassmorphism)
-- **File utama**: `resources/js/Pages/Dashboard.jsx`
-- **Komponen 3D**: `resources/js/Components/RetortModel.jsx` (dirender via `@react-three/fiber` + `@react-three/drei`)
-- **Komponen monitoring**: `resources/js/Components/MonitoringPanel.jsx`
-- **Chart library**: `react-chartjs-2` + `chart.js`
+Modul ini digunakan sebagai validator apakah proses sterilisasi telah memenuhi target F₀.
 
 ---
 
-## Perubahan yang Diminta
+# Input
 
-### 1. Grafik Suhu — Lebih Panjang dan Lebih Banyak Data
+## Informasi Produk
 
-**Lokasi di file**: Sekitar baris 503–515, bagian `{/* Charts + 3D Model Row */}`.
-
-**Perubahan yang harus dilakukan:**
-
-#### a) Perbesar tinggi grafik
-Di dalam div grafik (line chart), ubah class `h-72` menjadi `h-96` atau lebih besar (misal `h-[420px]`) agar grafik terlihat lebih tinggi dan mudah dibaca:
-
-```jsx
-// SEBELUM:
-<div className="h-72 w-full">
-
-// SESUDAH:
-<div className="h-[420px] w-full">
-```
-
-#### b) Perbanyak jumlah data point di grafik
-Data grafik berasal dari `chartData` yang dikirim dari controller Laravel. Di backend (`app/Http/Controllers/DashboardController.php`), cari query yang mengambil data chart dan **ubah limit dari yang saat ini** (biasanya 20–30 record terakhir) menjadi **100 atau lebih** record terakhir. Contoh:
-
-```php
-// SEBELUM (di DashboardController atau sejenisnya):
-->latest()->limit(20)->get()
-
-// SESUDAH:
-->latest()->limit(100)->get()
-```
-
-> **Catatan**: Pastikan label X-axis (waktu) tetap terbaca. Jika terlalu padat, aktifkan opsi `maxTicksLimit` di konfigurasi chart:
-```js
-scales: {
-    x: {
-        grid: { display: false },
-        ticks: {
-            color: '#94a3b8',
-            maxTicksLimit: 12,  // ← tambahkan ini agar label tidak tumpang tindih
-            maxRotation: 45,
-            minRotation: 0,
-        }
-    }
-}
-```
+- Product Name
+- Packaging Type
+- Sterilization Temperature
+- Coldest Spot
+- Target F₀
+- z-value
+- Reference Temperature
 
 ---
 
-### 2. Pindahkan Model 3D — ke Bawah Samping Kanan Monitoring Panel
+## Data Suhu
 
-**Perubahan besar pada struktur layout.** Saat ini layout-nya:
+Input berupa pasangan waktu dan suhu.
 
-```
-[Grafik Suhu (2/3 lebar)] [Model 3D (1/3 lebar)]   ← baris pertama
-[Monitoring Panel (full width)]                      ← baris kedua
-```
+Contoh:
 
-**Layout baru yang diinginkan:**
-
-```
-[Grafik Suhu (full width)]                           ← baris pertama (grafik lebih lebar)
-[Monitoring Panel (2/3 atau 3/4 lebar)] [Model 3D (1/3 atau 1/4 lebar)]  ← baris kedua
-```
-
-**Cara implementasinya — edit bagian layout di `Dashboard.jsx`:**
-
-```jsx
-{/* ── SEBELUM (hapus/ganti seluruh blok ini) ── */}
-{/* Charts + 3D Model Row */}
-<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-    {/* Line Chart */}
-    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg lg:col-span-2">
-        <h3 className="text-lg font-medium text-white mb-4">Grafik Suhu</h3>
-        <div className="h-72 w-full">
-            <Line data={lineChartData} options={lineChartOptions} />
-        </div>
-    </div>
-
-    {/* 3D Retort Model Card */}
-    <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
-</div>
-
-{/* Monitoring Panel - Full Width */}
-<div className="grid grid-cols-1 lg:grid-cols-1">
-    <MonitoringPanel
-        pv={stats.currentTemperature}
-        sv={stats.sv}
-        mv={stats.mv}
-        status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
-        processStep={stats.processStep}
-        timerTot={stats.timerTot}
-        timerStp={stats.timerStp}
-        timerRem={stats.timerRem}
-        isOnline={stats.isOnline}
-    />
-</div>
-```
-
-```jsx
-{/* ── SESUDAH (ganti dengan layout baru ini) ── */}
-
-{/* Grafik Suhu — Full Width */}
-<div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-    <h3 className="text-lg font-medium text-white mb-4">Grafik Suhu</h3>
-    <div className="h-[420px] w-full">
-        <Line data={lineChartData} options={lineChartOptions} />
-    </div>
-</div>
-
-{/* Monitoring Panel + Model 3D (side by side) */}
-<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-
-    {/* Monitoring Panel — 2/3 lebar */}
-    <div className="lg:col-span-2">
-        <MonitoringPanel
-            pv={stats.currentTemperature}
-            sv={stats.sv}
-            mv={stats.mv}
-            status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
-            processStep={stats.processStep}
-            timerTot={stats.timerTot}
-            timerStp={stats.timerStp}
-            timerRem={stats.timerRem}
-            isOnline={stats.isOnline}
-        />
-    </div>
-
-    {/* Model 3D — 1/3 lebar, di sebelah kanan monitoring panel */}
-    <div className="lg:col-span-1">
-        <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
-    </div>
-
-</div>
-```
+| Time (Minute) | Temperature (°C) |
+|---------------|------------------|
+| 0 | 30 |
+| 1 | 55 |
+| 2 | 80 |
+| 3 | 105 |
+| 4 | 118 |
+| 5 | 121 |
+| 6 | 121 |
+| 7 | 121 |
+| 8 | 121 |
+| 9 | 121 |
+| 10 | 121 |
+| 11 | 121 |
+| 12 | 118 |
+| 13 | 110 |
+| 14 | 95 |
 
 ---
 
-## Ringkasan Perubahan
+# Validasi Input
 
-| # | Komponen | Perubahan |
-|---|----------|-----------|
-| 1 | Grafik Suhu | Tinggi diubah dari `h-72` → `h-[420px]` |
-| 2 | Grafik Suhu | Limit data di backend dinaikkan ke 100 record |
-| 3 | Grafik Suhu | Tambahkan `maxTicksLimit: 12` di konfigurasi X-axis |
-| 4 | Layout | Grafik dilepas dari grid 3-kolom, dijadikan full width sendiri |
-| 5 | Layout | Monitoring Panel + Model 3D dijadikan satu baris grid baru |
-| 6 | Model 3D | Dipindahkan ke kolom kanan (1/3 lebar) berdampingan dengan Monitoring Panel |
+Sebelum melakukan perhitungan lakukan validasi berikut:
+
+## Waktu
+
+- Tidak boleh kosong
+- Harus berupa angka
+- Harus meningkat
+- Tidak boleh ada nilai duplikat
+
+Contoh benar:
+
+0
+1
+2
+3
+4
+
+Contoh salah:
+
+0
+1
+1
+3
+4
 
 ---
 
-## File yang Perlu Diedit
+## Suhu
 
-1. `resources/js/Pages/Dashboard.jsx` — perubahan layout & tinggi grafik
-2. `app/Http/Controllers/DashboardController.php` (atau controller yang relevan) — naikkan limit data chart
+- Tidak boleh kosong
+- Harus berupa angka
+- Boleh naik
+- Boleh turun
+- Boleh tetap
 
 ---
 
-## Catatan Tambahan
+## Parameter
 
-- Pastikan `MonitoringPanel` tetap memiliki `h-full` agar tingginya menyesuaikan model 3D di sebelahnya.
-- `Retort3DCard` sudah memiliki `minHeight: 340` — itu sudah cukup, tidak perlu diubah.
-- Setelah perubahan, jalankan `npm run dev` dan reload browser untuk melihat hasilnya.
+Target F₀ harus lebih besar dari 0.
+
+z-value harus lebih besar dari 0.
+
+Reference Temperature harus lebih besar dari 0.
+
+---
+
+# Rumus
+
+Hitung nilai lethal rate setiap titik menggunakan rumus:
+
+L = 10^((T - Tref) / z)
+
+Keterangan:
+
+- L = Lethal Rate
+- T = Temperatur saat itu
+- Tref = Reference Temperature
+- z = z-value
+
+---
+
+# Perhitungan F₀
+
+Gunakan metode Trapezoidal Rule.
+
+Untuk setiap pasangan data:
+
+F₀ += ((L1 + L2) / 2) × Δt
+
+dimana:
+
+- L1 = lethal rate titik pertama
+- L2 = lethal rate titik kedua
+- Δt = selisih waktu (menit)
+
+Lakukan hingga seluruh data selesai.
+
+---
+
+# Output
+
+Tampilkan informasi berikut.
+
+## F₀ Aktual
+
+Contoh:
+
+7.92
+
+---
+
+## Status
+
+Jika
+
+F₀ Aktual ≥ Target F₀
+
+maka
+
+PASS
+
+Jika
+
+F₀ Aktual < Target F₀
+
+maka
+
+FAIL
+
+---
+
+## Selisih
+
+Hitung
+
+Difference = F₀ Aktual − Target F₀
+
+Contoh
+
+Target F₀
+
+6
+
+F₀ Aktual
+
+7.92
+
+Difference
+
++1.92
+
+---
+
+# Ringkasan
+
+Tampilkan:
+
+- Product Name
+- Coldest Spot
+- Target F₀
+- Actual F₀
+- Difference
+- Status
+
+---
+
+# Error Handling
+
+Tampilkan pesan apabila:
+
+- Tidak ada data suhu
+- Hanya terdapat satu titik data
+- z-value tidak valid
+- Reference Temperature tidak valid
+- Target F₀ tidak valid
+- Waktu tidak berurutan
+- Data mengandung nilai kosong
+
+---
+
+# Catatan Implementasi
+
+- Gunakan seluruh data pada Coldest Spot.
+- Perhitungan dilakukan menggunakan metode Trapezoidal Rule.
+- Interval waktu (Δt) dihitung dari selisih antar waktu sehingga tidak harus selalu 1 menit.
+- Hasil F₀ ditampilkan dengan 2 angka di belakang koma.
+- Status validator ditentukan berdasarkan perbandingan antara F₀ Aktual dan Target F₀.
+- Modul harus mendukung jumlah data suhu yang dinamis (tidak dibatasi jumlah baris).

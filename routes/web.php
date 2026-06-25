@@ -13,9 +13,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/history', [\App\Http\Controllers\HistoryController::class, 'index'])->name('history');
         Route::get('/history/export', [\App\Http\Controllers\HistoryController::class, 'export'])->name('history.export');
         Route::post('/history/log-export', [\App\Http\Controllers\HistoryController::class, 'logExport'])->name('history.log-export');
-        Route::get('/alarms', [\App\Http\Controllers\AlarmController::class, 'index'])->name('alarms');
-        Route::post('/alarms/acknowledge-all', [\App\Http\Controllers\AlarmController::class, 'acknowledgeAll'])->name('alarms.acknowledge-all');
-        Route::post('/alarms/{alarm}/acknowledge', [\App\Http\Controllers\AlarmController::class, 'acknowledge'])->name('alarms.acknowledge');
         Route::get('/retort-monitor', fn () => inertia('RetortMonitor'))->name('retort.monitor');
     });
     

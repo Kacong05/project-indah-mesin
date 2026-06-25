@@ -30,7 +30,6 @@ class ActivityLog extends Model
     public const ACTION_CREATE = 'create';
     public const ACTION_UPDATE = 'update';
     public const ACTION_DELETE = 'delete';
-    public const ACTION_ACKNOWLEDGE_ALARM = 'acknowledge_alarm';
 
     /**
      * Get the attributes that should be cast.

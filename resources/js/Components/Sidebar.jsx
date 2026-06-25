@@ -3,7 +3,6 @@ import {
     LayoutDashboard,
     Activity,
     History,
-    Bell,
     Users,
     LogOut
 } from 'lucide-react';
@@ -17,7 +16,6 @@ export default function Sidebar({ open, setOpen }) {
     ] : [
         { name: 'Dashboard', icon: LayoutDashboard, href: route('dashboard'), active: url.startsWith('/dashboard') },
         { name: 'Riwayat Data', icon: History, href: route('history'), active: url.startsWith('/history') },
-        { name: 'Alarm & Notifikasi', icon: Bell, href: route('alarms'), active: url.startsWith('/alarms') },
     ];
 
     return (

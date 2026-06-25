@@ -54,14 +54,6 @@ class RetortMachine extends Model
     }
 
     /**
-     * Get the alarms for this machine.
-     */
-    public function alarms(): HasMany
-    {
-        return $this->hasMany(Alarm::class, 'machine_id');
-    }
-
-    /**
      * Get the production batches for this machine.
      */
     public function productionBatches(): HasMany
@@ -70,27 +62,11 @@ class RetortMachine extends Model
     }
 
     /**
-     * Get the alarm threshold for this machine.
-     */
-    public function alarmThreshold(): HasOne
-    {
-        return $this->hasOne(AlarmThreshold::class, 'machine_id');
-    }
-
-    /**
      * Get the latest sensor reading for this machine.
      */
     public function latestReading(): HasOne
     {
         return $this->hasOne(SensorReading::class, 'machine_id')->latestOfMany('recorded_at');
-    }
-
-    /**
-     * Get active alarms for this machine.
-     */
-    public function activeAlarms(): HasMany
-    {
-        return $this->hasMany(Alarm::class, 'machine_id')->where('status', 'active');
     }
 
     /**

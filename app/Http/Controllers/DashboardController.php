@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\RetortMachine;
 use App\Models\SensorReading;
-use App\Models\Alarm;
 use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -26,8 +25,6 @@ class DashboardController extends Controller
             'stats' => $this->getMachineStats($machine, $latestReading, $today),
             'recentActivities' => $this->getRecentActivities($request->user()->id),
             'chartData' => $this->getTemperatureChartData($machine),
-            'activeAlarms' => $this->getActiveAlarms($machine),
-            'alarmStats' => $this->getAlarmStats($machine),
         ]);
     }
 
@@ -47,7 +44,6 @@ class DashboardController extends Controller
         }
 
         $totalDataToday = $machine ? SensorReading::where('machine_id', $machine->id)->whereDate('created_at', $today)->count() : 0;
-        $totalAlarmsToday = $machine ? Alarm::where('machine_id', $machine->id)->whereDate('created_at', $today)->count() : 0;
         $lastUpdate = $latestReading ? $latestReading->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s') : 'N/A';
 
         // Hitung interval kecepatan penerimaan data (ms)
@@ -75,7 +71,6 @@ class DashboardController extends Controller
             'isOnline' => $isOnline,
             'isLogging' => $isLogging,
             'totalDataToday' => $totalDataToday,
-            'totalAlarmsToday' => $totalAlarmsToday,
             'lastUpdate' => $lastUpdate,
             'dataIntervalMs' => $dataIntervalMs,
             // Monitoring Panel data (placeholder)
@@ -104,22 +99,6 @@ class DashboardController extends Controller
                     'properties' => $log->properties,
                 ];
             });
-    }
-
-    private function getActiveAlarms($machine)
-    {
-        return $machine ? Alarm::where('machine_id', $machine->id)
-            ->where('status', Alarm::STATUS_ACTIVE)
-            ->latest('triggered_at')
-            ->take(5)
-            ->get()
-            ->map(fn($a) => [
-                'id' => $a->id,
-                'type' => $a->type,
-                'severity' => $a->severity,
-                'message' => $a->message,
-                'triggered_at' => $a->triggered_at?->timezone('Asia/Jakarta')->format('H:i:s'),
-            ]) : collect();
     }
 
     private function getTemperatureChartData($machine)
@@ -158,25 +137,6 @@ class DashboardController extends Controller
             'data' => $data,
             'svData' => $svData,
             'recordedAts' => $recordedAts,
-        ];
-    }
-
-    private function getAlarmStats($machine)
-    {
-        if (!$machine) {
-            return [
-                'labels' => ['Suhu Tinggi', 'Sensor Offline', 'Koneksi Server'],
-                'data' => [0, 0, 0],
-            ];
-        }
-
-        return [
-            'labels' => ['Suhu Tinggi', 'Sensor Offline', 'Koneksi Server'],
-            'data' => [
-                Alarm::where('machine_id', $machine->id)->where('type', Alarm::TYPE_HIGH_TEMPERATURE)->count(),
-                Alarm::where('machine_id', $machine->id)->where('type', Alarm::TYPE_SENSOR_OFFLINE)->count(),
-                Alarm::where('machine_id', $machine->id)->where('type', 'connection_lost')->count(),
-            ],
         ];
     }
 

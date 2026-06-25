@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import Sidebar from '@/Components/Sidebar';
-import NotificationPanel from '@/Components/NotificationPanel';
 import { Menu } from 'lucide-react';
 
 export default function AuthenticatedLayout({ header, children }) {
@@ -18,8 +17,8 @@ export default function AuthenticatedLayout({ header, children }) {
 
             {/* Mobile sidebar backdrop */}
             {sidebarOpen && (
-                <div 
-                    className="fixed inset-0 z-40 bg-black/50 md:hidden" 
+                <div
+                    className="fixed inset-0 z-40 bg-black/50 md:hidden"
                     onClick={() => setSidebarOpen(false)}
                 />
             )}
@@ -37,11 +36,8 @@ export default function AuthenticatedLayout({ header, children }) {
                         <div className="hidden md:flex md:items-center md:gap-x-4">
                             <h1 className="text-xl font-semibold text-white tracking-tight">{header}</h1>
                         </div>
-                        
-                        <div className="flex items-center gap-x-3 ml-auto">
-                            {/* Notification Bell */}
-                            <NotificationPanel />
 
+                        <div className="flex items-center gap-x-3 ml-auto">
                             {/* User Avatar + Name */}
                             <div className="h-8 w-8 rounded-full bg-indigo-500/20 border border-indigo-500/50 flex items-center justify-center">
                                 <span className="text-sm font-medium text-indigo-300">

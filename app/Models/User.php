@@ -62,16 +62,6 @@ class User extends Authenticatable
         return $this->belongsTo(RetortMachine::class, 'machine_id');
     }
 
-
-
-    /**
-     * Get the alarms acknowledged by this user.
-     */
-    public function acknowledgedAlarms(): HasMany
-    {
-        return $this->hasMany(Alarm::class, 'acknowledged_by');
-    }
-
     /**
      * Get the production batches operated by this user.
      */
