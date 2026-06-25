@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
-import { Filter, Grid3X3, List, RefreshCw } from 'lucide-react';
+import { Filter, Grid3X3, List, RefreshCw, Calendar, Search, Download } from 'lucide-react';
 import ProcessCard from '@/Components/ProcessCard';
 import ProcessDetail from '@/Components/ProcessDetail';
 
 export default function HistoryIndex({ sessions, readings, machines, filters }) {
-    // State untuk UI
-    const [viewMode, setViewMode] = useState('sessions'); // 'sessions' | 'detail'
+    const [viewMode, setViewMode] = useState('sessions');
     const [selectedSession, setSelectedSession] = useState(null);
     const [sessionDetail, setSessionDetail] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -18,7 +17,6 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
             if (viewMode === 'sessions') {
                 router.reload({ only: ['sessions'], preserveState: true, preserveScroll: true });
             } else if (viewMode === 'detail' && selectedSession) {
-                // Fetch detail without showing loading spinner
                 fetch(`/api/history/sessions/${selectedSession.id}`)
                     .then(res => res.json())
                     .then(result => {
@@ -28,7 +26,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                     })
                     .catch(err => console.error('Error auto-refreshing detail:', err));
             }
-        }, 5000); // Auto-refresh setiap 5 detik
+        }, 5000);
 
         return () => clearInterval(interval);
     }, [viewMode, selectedSession]);
@@ -40,12 +38,10 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
         end_date: filters.end_date || '',
     });
 
-    // Handle filter change
     const handleFilterChange = (e) => {
         setFilterData({ ...filterData, [e.target.name]: e.target.value });
     };
 
-    // Apply filters
     const applyFilters = () => {
         router.get(route('history'), filterData, {
             preserveState: true,
@@ -53,7 +49,6 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
         });
     };
 
-    // Load detail sesi saat diklik
     const handleSessionClick = async (session) => {
         setSelectedSession(session);
         setLoading(true);
@@ -73,14 +68,12 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
         }
     };
 
-    // Kembali ke daftar sesi
     const handleBackToList = () => {
         setViewMode('sessions');
         setSelectedSession(null);
         setSessionDetail(null);
     };
 
-    // Refresh data sesi
     const refreshSessions = () => {
         router.reload({ only: ['sessions'] });
     };
@@ -91,15 +84,15 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
 
             <div className="space-y-6">
                 {/* Header Actions */}
-                <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
                     {/* View Toggle */}
-                    <div className="flex items-center gap-2 p-1 rounded-xl bg-white/5">
+                    <div className="flex items-center gap-2 p-1 bg-white rounded-xl border border-gray-200 shadow-sm">
                         <button
                             onClick={() => setViewMode('sessions')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                                 viewMode === 'sessions'
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'text-slate-400 hover:text-white'
+                                    ? 'bg-[#FF7A00] text-white shadow-md'
+                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
                             }`}
                         >
                             <Grid3X3 className="w-4 h-4" />
@@ -108,10 +101,10 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                         <button
                             onClick={() => setViewMode('detail')}
                             disabled={!selectedSession}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                                 viewMode === 'detail'
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'text-slate-400 hover:text-white disabled:opacity-50'
+                                    ? 'bg-[#FF7A00] text-white shadow-md'
+                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed'
                             }`}
                         >
                             <List className="w-4 h-4" />
@@ -119,42 +112,59 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                         </button>
                     </div>
 
+                    {/* Refresh Button */}
+                    <button
+                        onClick={refreshSessions}
+                        className="btn btn-outline"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        Refresh
+                    </button>
                 </div>
 
-                {/* Filter Area - hanya tampil di mode sessions */}
+                {/* Filter Area */}
                 {viewMode === 'sessions' && (
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-                        <div className="flex flex-col md:flex-row gap-4 items-end">
-
-
-                            <div className="w-full md:w-1/3">
-                                <label className="block text-sm font-medium text-slate-400 mb-1">Tanggal Mulai</label>
+                    <div className="card p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Filter className="w-5 h-5 text-gray-400" />
+                            <h3 className="text-sm font-semibold text-gray-700">Filter Data</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="label">
+                                    <Calendar className="w-4 h-4 inline mr-1" />
+                                    Tanggal Mulai
+                                </label>
                                 <input
                                     type="date"
                                     name="start_date"
                                     value={filterData.start_date}
                                     onChange={handleFilterChange}
-                                    className="w-full rounded-lg border-white/20 bg-white/5 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                    className="input"
                                 />
                             </div>
 
-                            <div className="w-full md:w-1/3">
-                                <label className="block text-sm font-medium text-slate-400 mb-1">Tanggal Selesai</label>
+                            <div>
+                                <label className="label">
+                                    <Calendar className="w-4 h-4 inline mr-1" />
+                                    Tanggal Selesai
+                                </label>
                                 <input
                                     type="date"
                                     name="end_date"
                                     value={filterData.end_date}
                                     onChange={handleFilterChange}
-                                    className="w-full rounded-lg border-white/20 bg-white/5 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                    className="input"
                                 />
                             </div>
 
-                            <div className="w-full md:w-1/3 flex gap-2">
+                            <div className="flex items-end">
                                 <button
                                     onClick={applyFilters}
-                                    className="flex-1 flex justify-center items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors"
+                                    className="btn btn-primary w-full"
                                 >
-                                    <Filter className="w-4 h-4" /> Filter
+                                    <Search className="w-4 h-4" />
+                                    Terapkan Filter
                                 </button>
                             </div>
                         </div>
@@ -164,9 +174,6 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                 {/* Sessions List View */}
                 {viewMode === 'sessions' && (
                     <div className="space-y-4">
-
-
-                        {/* Sessions Grid */}
                         {sessions && sessions.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {sessions.map((session) => (
@@ -179,10 +186,13 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-12">
-                                <p className="text-slate-500">Belum ada data sesi proses.</p>
-                                <p className="text-sm text-slate-600 mt-2">
-                                    Data akan otomatis dikelompokkan saat sensor mulai mengirim data.
+                            <div className="card p-12 text-center">
+                                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                    <List className="w-8 h-8 text-gray-400" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-700 mb-2">Belum Ada Data</h3>
+                                <p className="text-gray-500 text-sm max-w-md mx-auto">
+                                    Data sesi proses akan muncul di sini setelah sensor mulai mengirim data ke sistem.
                                 </p>
                             </div>
                         )}
@@ -193,8 +203,9 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                 {viewMode === 'detail' && (
                     <>
                         {loading ? (
-                            <div className="flex items-center justify-center py-20">
-                                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+                            <div className="card p-12 flex flex-col items-center justify-center">
+                                <div className="w-10 h-10 border-4 border-gray-200 border-t-[#FF7A00] rounded-full animate-spin mb-4"></div>
+                                <p className="text-gray-500">Memuat detail sesi...</p>
                             </div>
                         ) : (
                             <ProcessDetail
@@ -205,29 +216,29 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                     </>
                 )}
 
-                {/* Legacy Table View - Fallback */}
+                {/* Legacy Table View */}
                 {viewMode === 'sessions' && !sessions?.length && readings?.data?.length > 0 && (
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg">
+                    <div className="table-container">
                         <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-white/10">
-                                <thead className="bg-white/5">
+                            <table className="table">
+                                <thead>
                                     <tr>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Timestamp</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Mesin</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Suhu</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Tekanan</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase">Status</th>
+                                        <th>Timestamp</th>
+                                        <th>Mesin</th>
+                                        <th>Suhu</th>
+                                        <th>Tekanan</th>
+                                        <th>Status</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-white/10">
+                                <tbody>
                                     {readings.data.map((item) => (
-                                        <tr key={item.id} className="hover:bg-white/5">
-                                            <td className="px-6 py-4 text-sm text-slate-300">{item.timestamp}</td>
-                                            <td className="px-6 py-4 text-sm text-white">{item.machine_name}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-300">{item.temperature}°C</td>
-                                            <td className="px-6 py-4 text-sm text-slate-300">{item.pressure} bar</td>
-                                            <td className="px-6 py-4">
-                                                <span className="inline-flex px-2 py-1 rounded-md text-xs font-medium bg-slate-500/20 text-slate-300">
+                                        <tr key={item.id}>
+                                            <td className="text-gray-600">{item.timestamp}</td>
+                                            <td className="font-medium text-gray-800">{item.machine_name}</td>
+                                            <td className="text-gray-600">{item.temperature}°C</td>
+                                            <td className="text-gray-600">{item.pressure} bar</td>
+                                            <td>
+                                                <span className="badge badge-gray">
                                                     {item.status || '-'}
                                                 </span>
                                             </td>
@@ -237,10 +248,9 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                             </table>
                         </div>
 
-                        {/* Pagination */}
                         {readings.links && (
-                            <div className="px-6 py-4 border-t border-white/10 flex items-center justify-between">
-                                <div className="text-sm text-slate-400">
+                            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                                <div className="text-sm text-gray-500">
                                     Menampilkan {readings.from} - {readings.to} dari {readings.total} data
                                 </div>
                             </div>

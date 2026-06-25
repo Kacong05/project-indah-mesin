@@ -6,6 +6,7 @@ use App\Models\ProcessSession;
 use App\Models\RetortMachine;
 use App\Models\SensorReading;
 use App\Models\ActivityLog;
+use App\Services\F0Calculator;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -20,7 +21,7 @@ class HistoryController extends Controller
         $sessionsQuery = ProcessSession::query()
             ->withCount('sensorReadings')
             ->with(['sensorReadings' => function ($query) {
-                $query->latest('recorded_at')->limit(1);
+                $query->orderBy('recorded_at');
             }])
             ->latest('started_at');
 
@@ -37,10 +38,8 @@ class HistoryController extends Controller
         }
 
         $sessions = $sessionsQuery->get()->map(function ($session) {
-            // Ambil latest temperature dan sv dari relasi
-            $latestReading = $session->sensorReadings->first();
-            $latestTemperature = $latestReading ? (float) $latestReading->temperature : null;
-            $latestSv = $latestReading && $latestReading->sv ? (float) $latestReading->sv : null;
+            $readings = $session->sensorReadings;
+            $latestReading = $readings->last();
 
             return [
                 'id' => $session->id,
@@ -51,8 +50,8 @@ class HistoryController extends Controller
                 'duration_minutes' => $session->duration_in_minutes,
                 'data_count' => $session->sensor_readings_count,
                 'status' => $session->status,
-                'latest_temperature' => $latestTemperature,
-                'latest_sv' => $latestSv,
+                'f0' => F0Calculator::fromReadings($readings),
+                'process_status' => $latestReading?->process_status,
             ];
         });
 

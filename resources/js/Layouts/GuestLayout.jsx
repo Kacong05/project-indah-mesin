@@ -1,29 +1,67 @@
-import ApplicationLogo from '@/Components/ApplicationLogo';
 import { Link } from '@inertiajs/react';
 
 export default function GuestLayout({ children }) {
     return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-900 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-[#1e1b4b] to-black px-4 py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-            {/* Background Ornaments */}
-            <div className="absolute -top-40 -left-40 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-            <div className="absolute top-0 -right-40 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-            <div className="absolute -bottom-40 left-20 w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 via-gray-50 to-orange-50 px-4 py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+            {/* Background Pattern */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,_rgb(0_0_0/_3%)_1px,_transparent_0)] [background-size:24px_24px]"></div>
 
-            <div className="relative z-10 w-full max-w-md space-y-8">
-                <div className="text-center">
-                    <Link href="/">
-                        <ApplicationLogo className="mx-auto h-12 w-auto" />
+            {/* Decorative Elements */}
+            <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-orange-200/30 to-transparent rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+            <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-tl from-orange-200/30 to-transparent rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+
+            <div className="relative z-10 w-full max-w-md">
+                {/* Logo Card */}
+                <div className="text-center mb-8">
+                    <Link href="/" className="inline-block">
+                        <div className="flex items-center justify-center gap-3 mb-4">
+                            <img
+                                src="/logo.png"
+                                alt="Logo"
+                                className="w-14 h-14 object-contain drop-shadow-md"
+                                onError={(e) => {
+                                    e.target.style.display = 'none';
+                                }}
+                            />
+                            {/* Fallback SVG icon - shown when image fails */}
+                            <svg
+                                className="w-10 h-10 text-[#FF7A00] drop-shadow-md"
+                                style={{ display: 'none' }}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                        </div>
                     </Link>
-                    <h2 className="mt-6 text-3xl font-extrabold text-white tracking-tight">
-                        Retort<span className="text-indigo-400">Monitor</span>
-                    </h2>
-                    <p className="mt-2 text-sm text-slate-400">
-                        Sign in to access your dashboard
+                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
+                        Retort<span className="text-[#FF7A00]">Monitor</span>
+                    </h1>
+                    <p className="mt-2 text-sm text-gray-500">
+                        Sistem Monitoring Retort Sterilisasi
                     </p>
                 </div>
 
-                <div className="mt-8 bg-white/10 backdrop-blur-xl border border-white/20 py-8 px-6 shadow-2xl sm:rounded-2xl sm:px-10">
-                    {children}
+                {/* Login Card */}
+                <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+                    {/* Card Header */}
+                    <div className="px-8 pt-8 pb-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+                        <h2 className="text-xl font-bold text-gray-800">Selamat Datang</h2>
+                        <p className="mt-1 text-sm text-gray-500">Silakan masuk dengan akun Anda</p>
+                    </div>
+
+                    {/* Form Area */}
+                    <div className="px-8 py-6">
+                        {children}
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="mt-6 text-center">
+                    <p className="text-xs text-gray-400">
+                        &copy; 2026 RetortMonitor. Hak cipta dilindungi.
+                    </p>
                 </div>
             </div>
         </div>

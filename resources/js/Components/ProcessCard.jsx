@@ -1,9 +1,45 @@
 /**
  * ProcessCard.jsx
- * Komponen kartu untuk menampilkan satu sesi proses
+ * Komponen kartu untuk menampilkan satu sesi proses - Light Theme
  */
 
 import { Clock, Thermometer, Activity } from 'lucide-react';
+
+const F0_TARGET = 6;
+
+const PROCESS_STATUS_LABELS = {
+    idle: 'Idle',
+    heating: 'Pemanasan',
+    sterilizing: 'Sterilisasi',
+    holding: 'Holding',
+    cooling: 'Pendinginan',
+    completed: 'Selesai',
+    running: 'Berjalan',
+    logging: 'Logging',
+    stop: 'Stop',
+    alarm: 'Alarm',
+};
+
+function formatProcessStatus(status) {
+    if (!status) return '—';
+    const key = status.toLowerCase();
+    return PROCESS_STATUS_LABELS[key]
+        ?? status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function getF0Color(f0) {
+    if (f0 === null || f0 === undefined) return 'text-gray-400';
+    if (f0 >= F0_TARGET) return 'text-green-600';
+    if (f0 > 0) return 'text-amber-600';
+    return 'text-red-600';
+}
+
+function getCardBgColor(f0) {
+    if (f0 === null || f0 === undefined) return 'bg-gray-50 border-gray-200';
+    if (f0 >= F0_TARGET) return 'bg-green-50 border-green-200';
+    if (f0 > 0) return 'bg-amber-50 border-amber-200';
+    return 'bg-red-50 border-red-200';
+}
 
 export default function ProcessCard({ session, isSelected, onClick }) {
     const {
@@ -13,94 +49,75 @@ export default function ProcessCard({ session, isSelected, onClick }) {
         data_count,
         status,
         started_at,
-        latest_temperature, // PV - suhu terkini
-        latest_sv          // SV - dari alat
+        f0,
+        process_status,
     } = session;
 
     const isActive = status === 'active';
 
-    // SV (Set Value) - dari data session, default 121.1 jika tidak ada
-    const SV = latest_sv || 121.1;
-
-    // Format tanggal
     const dateStr = new Date(started_at).toLocaleDateString('id-ID', {
         weekday: 'short',
         day: 'numeric',
         month: 'short',
-        year: 'numeric'
+        year: 'numeric',
     });
-
-    // Warna PV berdasarkan kondisi
-    const getPVColor = (pv) => {
-        if (!pv) return 'text-slate-400';
-        const diff = Math.abs(pv - SV);
-        if (diff <= 2) return 'text-emerald-400'; // Normal
-        if (diff <= 5) return 'text-yellow-400'; // Warning
-        return 'text-red-400'; // Critical
-    };
 
     return (
         <button
             onClick={onClick}
-            className={`
-                w-full text-left p-4 rounded-xl border transition-all duration-200
-                ${isSelected
-                    ? 'bg-indigo-600/20 border-indigo-500 shadow-lg shadow-indigo-500/20'
-                    : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
-                }
-            `}
+            className={`w-full text-left p-5 rounded-xl border-2 transition-all duration-200 hover-lift ${
+                isSelected
+                    ? 'bg-orange-50 border-[#FF7A00] shadow-lg shadow-[#FF7A00]/10'
+                    : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md'
+            }`}
         >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-white">{name}</h3>
+                    <h3 className="font-bold text-gray-800">{name}</h3>
                     {isActive && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                             Aktif
                         </span>
                     )}
                 </div>
-                <span className="text-xs text-slate-400">{dateStr}</span>
+                <span className="text-xs text-gray-400">{dateStr}</span>
             </div>
 
-            {/* SV & PV Display */}
-            <div className="flex items-center gap-4 mb-4 p-3 rounded-lg bg-white/5">
-                <div className="text-center">
-                    <p className="text-xs text-slate-400 uppercase">SV</p>
-                    <p className="text-lg font-bold text-indigo-400">
-                        {latest_sv ? `${latest_sv.toFixed(1)}°C` : `${SV.toFixed(1)}°C`}
+            <div className={`flex items-center gap-4 mb-4 p-3 rounded-lg border ${getCardBgColor(f0)}`}>
+                <div className="text-center flex-1 min-w-0">
+                    <p className="text-[10px] font-medium text-gray-500 leading-tight mb-1">
+                        Prosesnya sampai dimana
+                    </p>
+                    <p className="text-sm font-bold text-[#FF7A00] truncate">
+                        {formatProcessStatus(process_status)}
                     </p>
                 </div>
-                <div className="w-px h-10 bg-white/10" />
-                <div className="text-center">
-                    <p className="text-xs text-slate-400 uppercase">PV</p>
-                    <p className={`text-lg font-bold ${getPVColor(latest_temperature)}`}>
-                        {latest_temperature ? `${latest_temperature.toFixed(1)}°C` : '-'}
+                <div className="w-px h-10 bg-gray-200 shrink-0" />
+                <div className="text-center flex-1">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">F₀</p>
+                    <p className={`text-xl font-bold tabular-nums ${getF0Color(f0)}`}>
+                        {f0 !== null && f0 !== undefined ? f0.toFixed(2) : '—'}
                     </p>
                 </div>
             </div>
 
-            {/* Info Grid */}
-            <div className="grid grid-cols-3 gap-3">
-                {/* Waktu */}
-                <div className="flex items-center gap-2 text-xs">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="text-slate-400">{time_range}</span>
+            <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center gap-1.5 text-xs">
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-gray-500 font-medium">{time_range}</span>
                 </div>
 
-                {/* Durasi */}
-                <div className="flex items-center gap-2 text-xs">
-                    <Activity className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="text-slate-400">
+                <div className="flex items-center gap-1.5 text-xs">
+                    <Activity className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-gray-500 font-medium">
                         {duration_minutes ? `${duration_minutes}m` : '-'}
                     </span>
                 </div>
 
-                {/* Jumlah Data */}
-                <div className="flex items-center gap-2 text-xs">
-                    <Thermometer className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="text-slate-400">{data_count} data</span>
+                <div className="flex items-center gap-1.5 text-xs">
+                    <Thermometer className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-gray-500 font-medium">{data_count} data</span>
                 </div>
             </div>
         </button>

@@ -1,7 +1,5 @@
 /**
- * MonitoringPanel – Vertical monitoring panel for retort machine dashboard.
- * Features: PV, Machine Status, SV, MV, Process Step, Timer (TOT/STP/REM)
- * Design: Matches Dashboard.jsx stat cards styling (bg-white/5, backdrop-blur-xl, etc.)
+ * MonitoringPanel – Horizontal monitoring panel with compact cards
  */
 
 import {
@@ -10,215 +8,161 @@ import {
     Settings,
     Clock,
     Activity,
+    Zap,
 } from 'lucide-react';
 
-// ─── Machine Status Badge ────────────────────────────────────────────────────
 function StatusBadge({ status }) {
     const config = {
-        running: {
-            label: 'Running',
-            bg: 'bg-emerald-500/20 text-emerald-400',
-            icon: '●',
-        },
-        stop: {
-            label: 'Stop',
-            bg: 'bg-red-500/20 text-red-400',
-            icon: '■',
-        },
-        hold: {
-            label: 'Hold',
-            bg: 'bg-amber-500/20 text-amber-400',
-            icon: '▌▌',
-        },
-        alarm: {
-            label: 'Alarm',
-            bg: 'bg-red-500/20 text-red-400',
-            icon: '⚠',
-        },
-        standby: {
-            label: 'Standby',
-            bg: 'bg-yellow-500/20 text-yellow-400',
-            icon: '○',
-        },
+        running: { label: 'Running', bg: 'bg-green-100 text-green-700', icon: '●' },
+        stop: { label: 'Stop', bg: 'bg-red-100 text-red-700', icon: '■' },
+        hold: { label: 'Hold', bg: 'bg-yellow-100 text-yellow-700', icon: '▌▌' },
+        alarm: { label: 'Alarm', bg: 'bg-red-100 text-red-700', icon: '⚠' },
+        standby: { label: 'Standby', bg: 'bg-amber-100 text-amber-700', icon: '○' },
     };
 
     const current = config[status?.toLowerCase()] ?? {
         label: status ?? 'Unknown',
-        bg: 'bg-slate-500/20 text-slate-400',
+        bg: 'bg-gray-100 text-gray-600',
         icon: '?',
     };
 
     return (
-        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${current.bg}`}>
-            <span className="text-base">{current.icon}</span>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${current.bg}`}>
+            <span>{current.icon}</span>
             {current.label}
         </span>
     );
 }
 
-// ─── Main MonitoringPanel Component ─────────────────────────────────────────
+function InfoCard({ icon: Icon, label, value, unit, colorClass = 'text-gray-800', bgClass = 'bg-orange-50', large = false, className = '' }) {
+    return (
+        <div className={`rounded-xl bg-white border border-gray-200 hover:shadow-sm transition-shadow min-w-0 ${large ? 'p-4' : 'p-3'} ${className}`}>
+            <div className={`flex flex-col items-center text-center ${large ? 'gap-3' : 'gap-2'}`}>
+                <div className={`flex items-center justify-center rounded-xl ${bgClass} ${large ? 'w-14 h-14' : 'w-10 h-10'}`}>
+                    <Icon className={`${colorClass} ${large ? 'w-7 h-7' : 'w-5 h-5'}`} />
+                </div>
+                <p className={`font-medium text-gray-500 uppercase tracking-wide leading-tight ${large ? 'text-xs' : 'text-[10px]'}`}>{label}</p>
+                <div className="flex items-baseline gap-1">
+                    <p className={`font-bold tabular-nums ${colorClass} ${large ? 'text-3xl' : 'text-xl'}`}>{value ?? '—'}</p>
+                    {unit && <span className={`text-gray-400 ${large ? 'text-sm' : 'text-xs'}`}>{unit}</span>}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function MonitoringPanel({
-    pv = null,              // Process Value - actual temperature (°C)
-    sv = null,              // Set Value - target temperature (°C)
-    mv = null,              // Manipulated Value - control output (%)
-    status = 'stop',        // Machine status: running, stop, hold, alarm, standby
-    processStep = null,     // Process step name
-    timerTot = '00:00:00', // Total process time
-    timerStp = '00:00:00', // Step time
-    timerRem = '00:00:00', // Remaining time
+    pv = null,
+    sv = null,
+    mv = null,
+    status = 'stop',
+    processStep = null,
+    timerTot = '00:00:00',
+    timerStp = '00:00:00',
+    timerRem = '00:00:00',
     isOnline = false,
 }) {
-    // Use real data if available, otherwise use props
-    const displayPv = pv ?? 0;
-    const displaySv = sv ?? 121.1;
-
-    // Format temperature display
     const formatTemp = (temp) => {
         if (temp === null || temp === undefined) return '—';
         return typeof temp === 'number' ? temp.toFixed(1) : temp;
     };
 
-    // Format MV display
     const formatMv = (val) => {
         if (val === null || val === undefined) return '—';
         return typeof val === 'number' ? val.toFixed(1) : val;
     };
 
     return (
-        <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg flex flex-col h-full">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+        <div className="card overflow-hidden">
+            <div className="card-header">
                 <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
-                    <h3 className="text-sm font-semibold text-white">Monitoring Panel</h3>
+                    <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                    <h3 className="text-sm font-semibold text-gray-700">Monitoring Panel</h3>
                 </div>
-                <span className={`text-xs font-medium ${isOnline ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                    isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                }`}>
                     {isOnline ? 'ONLINE' : 'OFFLINE'}
                 </span>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 p-5 space-y-5">
+            <div className="p-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-9 gap-3">
+                    <InfoCard
+                        icon={Thermometer}
+                        label="Process Value (PV)"
+                        value={formatTemp(pv ?? 0)}
+                        unit="°C"
+                        colorClass="text-orange-500"
+                        bgClass="bg-orange-50"
+                        large
+                        className="sm:col-span-2 lg:col-span-2"
+                    />
 
-                {/* 1. Process Value (PV) - Temperature Highlight */}
-                <div className="overflow-hidden rounded-2xl bg-orange-500/10 border border-orange-500/20 p-5">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
-                            <Thermometer className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-medium text-slate-400">Process Value (PV)</h3>
-                            <div className="flex items-baseline gap-1 mt-1">
-                                <p className="text-3xl font-bold text-white tabular-nums">
-                                    {formatTemp(displayPv)}
-                                </p>
-                                <p className="text-sm font-medium text-slate-400">°C</p>
+                    <InfoCard
+                        icon={Gauge}
+                        label="Set Value (SV)"
+                        value={formatTemp(sv ?? 121.1)}
+                        unit="°C"
+                        colorClass="text-green-600"
+                        bgClass="bg-green-50"
+                        large
+                        className="sm:col-span-2 lg:col-span-2"
+                    />
+
+                    <div className="rounded-xl bg-white border border-gray-200 p-3 min-w-0">
+                        <div className="flex flex-col items-center text-center gap-2 h-full justify-center">
+                            <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${
+                                isOnline ? 'bg-blue-50' : 'bg-red-50'
+                            }`}>
+                                <Activity className={`w-5 h-5 ${isOnline ? 'text-blue-500' : 'text-red-500'}`} />
                             </div>
+                            <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Machine Status</p>
+                            <StatusBadge status={status} />
                         </div>
                     </div>
-                </div>
 
-                {/* 2. Machine Status */}
-                <div className="overflow-hidden rounded-2xl bg-white/5 border border-white/10 p-5">
-                    <div className="flex items-center gap-3">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${isOnline ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'}`}>
-                            <Activity className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-medium text-slate-400">Machine Status</h3>
-                            <div className="mt-1">
-                                <StatusBadge status={status} />
+                    <InfoCard
+                        icon={Zap}
+                        label="Output (MV)"
+                        value={formatMv(mv)}
+                        unit="%"
+                        colorClass="text-purple-500"
+                        bgClass="bg-purple-50"
+                    />
+
+                    <div className="rounded-xl bg-yellow-50 border border-yellow-100 p-3 min-w-0">
+                        <div className="flex flex-col items-center text-center gap-2 h-full justify-center">
+                            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-yellow-100">
+                                <Settings className="w-5 h-5 text-yellow-600" />
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 3. Set Value (SV) */}
-                <div className="overflow-hidden rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-5">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
-                            <Gauge className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-medium text-slate-400">Set Value (SV)</h3>
-                            <div className="flex items-baseline gap-1 mt-1">
-                                <p className="text-3xl font-bold text-white tabular-nums">
-                                    {formatTemp(displaySv)}
-                                </p>
-                                <p className="text-sm font-medium text-slate-400">°C</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 4. Manipulated Value (MV) */}
-                <div className="overflow-hidden rounded-2xl bg-violet-500/10 border border-violet-500/20 p-5">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/20 text-violet-400">
-                            <Settings className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-medium text-slate-400">Output Kontrol (MV)</h3>
-                            <div className="flex items-baseline gap-1 mt-1">
-                                <p className="text-3xl font-bold text-white tabular-nums">
-                                    {formatMv(mv)}
-                                </p>
-                                <p className="text-sm font-medium text-slate-400">%</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 5. Process Step (P/S) */}
-                <div className="overflow-hidden rounded-2xl bg-yellow-500/10 border border-yellow-500/20 p-5">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-500/20 text-yellow-400">
-                            <Settings className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-medium text-slate-400">Process Step (P/S)</h3>
-                            <p className="mt-1 text-xl font-bold text-yellow-400">
+                            <p className="text-[10px] font-medium text-yellow-700 uppercase tracking-wide">Process Step</p>
+                            <p className="text-sm font-bold text-yellow-800 truncate w-full">
                                 {processStep ?? '—'}
                             </p>
                         </div>
                     </div>
-                </div>
 
-                {/* 6. Timer Section */}
-                <div className="overflow-hidden rounded-2xl bg-teal-500/10 border border-teal-500/20 p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-500/20 text-teal-400">
-                            <Clock className="h-6 w-6" />
+                    <div className="col-span-2 rounded-xl bg-teal-50 border border-teal-100 p-3 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-teal-100 shrink-0">
+                                <Clock className="w-4 h-4 text-teal-600" />
+                            </div>
+                            <p className="text-[10px] font-medium text-teal-700 uppercase tracking-wide">Timer</p>
                         </div>
-                        <div>
-                            <h3 className="text-sm font-medium text-slate-400">Timer</h3>
-                        </div>
-                    </div>
-
-                    {/* Timer Grid */}
-                    <div className="grid grid-cols-3 gap-3">
-                        {/* Total Time */}
-                        <div className="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Total</p>
-                            <p className="text-lg font-bold font-mono text-teal-400 tabular-nums">
-                                {timerTot}
-                            </p>
-                        </div>
-
-                        {/* Step Time */}
-                        <div className="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Step</p>
-                            <p className="text-lg font-bold font-mono text-teal-400 tabular-nums">
-                                {timerStp}
-                            </p>
-                        </div>
-
-                        {/* Remaining Time */}
-                        <div className="text-center p-3 rounded-xl bg-white/5 border border-white/10">
-                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Remain</p>
-                            <p className="text-lg font-bold font-mono text-teal-400 tabular-nums">
-                                {timerRem}
-                            </p>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="text-center p-2 rounded-lg bg-white border border-gray-200">
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-0.5">Total</p>
+                                <p className="text-sm font-bold font-mono text-teal-600 tabular-nums">{timerTot}</p>
+                            </div>
+                            <div className="text-center p-2 rounded-lg bg-white border border-gray-200">
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-0.5">Step</p>
+                                <p className="text-sm font-bold font-mono text-teal-600 tabular-nums">{timerStp}</p>
+                            </div>
+                            <div className="text-center p-2 rounded-lg bg-white border border-gray-200">
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-0.5">Remain</p>
+                                <p className="text-sm font-bold font-mono text-teal-600 tabular-nums">{timerRem}</p>
+                            </div>
                         </div>
                     </div>
                 </div>

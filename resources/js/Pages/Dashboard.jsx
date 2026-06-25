@@ -7,57 +7,31 @@ import {
     Wifi,
     Database,
     Clock,
-    Activity,
-    Play,
-    Square,
-    CircleDot,
+    ActivitySquare,
 } from 'lucide-react';
-import { Line } from 'react-chartjs-2';
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler
-} from 'chart.js';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Html } from '@react-three/drei';
 import RetortModel from '@/Components/RetortModel';
-import MonitoringPanel from '@/Components/MonitoringPanel';
-
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler
-);
 
 const TARGET_TEMP = 121;
 const TEMP_HIGH = TARGET_TEMP + 5;
 const TEMP_LOW = TARGET_TEMP - 5;
 
-// ─── 3D Canvas loading fallback (rendered inside Canvas via drei Html) ─────────
+// ─── 3D Canvas loading fallback ─────────────────────────────────────
 function ModelLoader() {
     return (
         <Html center>
             <div style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                color: '#94a3b8', fontSize: 11, fontFamily: 'sans-serif',
-                background: 'rgba(15,23,42,0.9)', padding: '12px 18px',
-                borderRadius: 8, border: '1px solid #1e293b', whiteSpace: 'nowrap',
+                color: '#666', fontSize: 11, fontFamily: 'sans-serif',
+                background: 'rgba(255,255,255,0.95)', padding: '12px 18px',
+                borderRadius: 8, border: '1px solid #e0e0e0', whiteSpace: 'nowrap',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
             }}>
                 <div style={{
                     width: 22, height: 22,
-                    border: '2px solid #1e293b',
-                    borderTop: '2px solid #22d3ee',
+                    border: '2px solid #e0e0e0',
+                    borderTop: '2px solid #FF7A00',
                     borderRadius: '50%',
                     animation: 'r3f-spin 0.9s linear infinite',
                 }} />
@@ -68,7 +42,25 @@ function ModelLoader() {
     );
 }
 
-// ─── Retort 3D Viewer Card (embedded in dashboard) ───────────────────────────
+// ─── Stat Card Component ────────────────────────────────────────────
+function StatCard({ icon: Icon, label, value, unit, color, bgColor, iconBgColor }) {
+    return (
+        <div className="card p-5 flex items-center gap-4 hover-lift">
+            <div className={`flex items-center justify-center w-12 h-12 rounded-xl ${iconBgColor}`}>
+                <Icon className={`w-6 h-6 ${color}`} />
+            </div>
+            <div>
+                <p className="text-sm text-gray-500">{label}</p>
+                <div className="flex items-baseline gap-1 mt-1">
+                    <p className="text-2xl font-bold text-gray-900">{value}</p>
+                    {unit && <p className="text-sm font-medium text-gray-400">{unit}</p>}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Retort 3D Viewer Card ──────────────────────────────────────────
 function Retort3DCard({ temperature, processStatus }) {
     const tempLabel =
         temperature > 121 ? 'Kritis' :
@@ -76,25 +68,30 @@ function Retort3DCard({ temperature, processStatus }) {
                 temperature >= 100 ? 'Suhu Proses' : 'Ambient';
 
     const statusColor =
-        processStatus === 'running' ? '#22c55e' :
-            processStatus === 'error' ? '#ef4444' : '#eab308';
+        processStatus === 'running' ? '#00BF40' :
+            processStatus === 'error' ? '#FF3B30' : '#FFB800';
 
     const statusLabel =
         processStatus === 'running' ? 'Running' :
             processStatus === 'error' ? 'Error' : 'Standby';
 
     return (
-        <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg flex flex-col h-full">
+        <div className="card overflow-hidden flex flex-col h-full">
             {/* Card header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-shrink-0">
-                <h3 className="text-sm font-semibold text-white">Model 3D Retort</h3>
-                <div className="flex items-center gap-1.5">
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block', boxShadow: `0 0 6px ${statusColor}` }} />
-                    <span className="text-xs text-slate-400">{statusLabel}</span>
+            <div className="card-header">
+                <h3 className="text-sm font-semibold text-gray-700">Model 3D Retort</h3>
+                <div className="flex items-center gap-2">
+                    <span style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: statusColor,
+                        display: 'inline-block',
+                        boxShadow: `0 0 6px ${statusColor}`
+                    }} />
+                    <span className="text-xs text-gray-500">{statusLabel}</span>
                 </div>
             </div>
 
-            {/* Canvas area — fills remaining height */}
+            {/* Canvas area */}
             <div style={{ flex: 1, position: 'relative', minHeight: 300 }}>
                 <Canvas
                     style={{ width: '100%', height: '100%', display: 'block' }}
@@ -115,10 +112,10 @@ function Retort3DCard({ temperature, processStatus }) {
                         args={[6, 6]}
                         cellSize={0.2}
                         cellThickness={0.4}
-                        cellColor="#1e293b"
+                        cellColor="#e0e0e0"
                         sectionSize={1}
                         sectionThickness={0.8}
-                        sectionColor="#334155"
+                        sectionColor="#bdbdbd"
                         fadeDistance={5}
                         fadeStrength={1}
                         infiniteGrid
@@ -141,28 +138,28 @@ function Retort3DCard({ temperature, processStatus }) {
                     />
                 </Canvas>
 
-                {/* Temp overlay badge — bottom-left of canvas */}
+                {/* Temp overlay badge */}
                 <div style={{
                     position: 'absolute', bottom: 10, left: 10, zIndex: 10,
-                    background: 'rgba(15,23,42,0.85)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8, padding: '4px 10px',
+                    background: 'rgba(255,255,255,0.95)',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: 8, padding: '6px 12px',
                     display: 'flex', alignItems: 'baseline', gap: 4,
-                    backdropFilter: 'blur(8px)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
                 }}>
-                    <span style={{ fontSize: 20, fontWeight: 700, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 20, fontWeight: 700, color: '#1A1A1A', fontVariantNumeric: 'tabular-nums' }}>
                         {typeof temperature === 'number' ? temperature.toFixed(1) : '—'}
                     </span>
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>°C</span>
-                    <span style={{ fontSize: 10, color: '#64748b', marginLeft: 4 }}>{tempLabel}</span>
+                    <span style={{ fontSize: 11, color: '#666' }}>°C</span>
+                    <span style={{ fontSize: 10, color: '#999', marginLeft: 4 }}>{tempLabel}</span>
                 </div>
             </div>
         </div>
     );
 }
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function Dashboard({ stats, recentActivities, chartData, machineName, machineCode }) {
+// ─── Main Dashboard ─────────────────────────────────────────────────
+export default function Dashboard({ stats, recentActivities, machineName, machineCode }) {
     const { flash } = usePage().props;
     const [cmdLoading, setCmdLoading] = useState(false);
     const [flashMsg, setFlashMsg] = useState(null);
@@ -188,116 +185,13 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
     useEffect(() => {
         const interval = setInterval(() => {
             router.reload({
-                only: ['stats', 'chartData', 'recentActivities'],
+                only: ['stats', 'recentActivities'],
                 preserveState: true,
                 preserveScroll: true,
             });
         }, 2000);
         return () => clearInterval(interval);
     }, []);
-
-    const lineChartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-            mode: 'index',
-            intersect: false,
-        },
-        plugins: {
-            legend: {
-                display: true,
-                position: 'top',
-                labels: { color: '#94a3b8' }
-            },
-            tooltip: {
-                backgroundColor: 'rgba(15,23,42,0.9)',
-                titleColor: '#f1f5f9',
-                bodyColor: '#cbd5e1',
-                borderColor: 'rgba(255,255,255,0.1)',
-                borderWidth: 1,
-            },
-        },
-        scales: {
-            y: {
-                grid: { color: 'rgba(255,255,255,0.05)' },
-                ticks: { color: '#94a3b8' },
-                title: {
-                    display: true,
-                    text: 'Suhu (°C)',
-                    color: '#f97316',
-                },
-            },
-            x: {
-                grid: { color: 'rgba(255,255,255,0.05)' },
-                ticks: {
-                    color: '#94a3b8',
-                    maxTicksLimit: 100,
-                    maxRotation: 90,
-                    minRotation: 45,
-                    callback: function(value, index) {
-                        // Tampilkan label setiap data point
-                        return this.getLabelForValue(value);
-                    }
-                }
-            }
-        },
-    };
-
-    // Helper: resolusi warna per segmen/titik berdasarkan menit dari data pertama
-    const resolveColor = (index, recordedAts, { yellow, red, blue }) => {
-        if (!recordedAts || !recordedAts[0] || index === undefined || index === null) return yellow;
-        const start = new Date(recordedAts[0]).getTime();
-        const current = new Date(recordedAts[index]).getTime();
-        const minutes = (current - start) / 60000;
-        if (minutes <= 25) return yellow;
-        if (minutes <= 50) return red;
-        return blue;
-    };
-
-    const lineChartData = {
-        labels: chartData.labels,
-        datasets: [
-            {
-                fill: true,
-                label: 'PV',
-                data: chartData.data,
-                segment: {
-                    borderColor: ctx => resolveColor(ctx.p1DataIndex, chartData.recordedAts, {
-                        yellow: '#eab308',
-                        red: '#ef4444',
-                        blue: '#3b82f6',
-                    }),
-                    backgroundColor: ctx => resolveColor(ctx.p1DataIndex, chartData.recordedAts, {
-                        yellow: 'rgba(234,179,8,0.1)',
-                        red: 'rgba(239,68,68,0.1)',
-                        blue: 'rgba(59,130,246,0.1)',
-                    }),
-                },
-                pointBackgroundColor: ctx => resolveColor(ctx.dataIndex, chartData.recordedAts, {
-                    yellow: '#eab308',
-                    red: '#ef4444',
-                    blue: '#3b82f6',
-                }),
-                pointRadius: 2,
-                borderWidth: 2,
-                tension: 0.3,
-            },
-            {
-                fill: false,
-                label: 'SV',
-                data: chartData.svData || [],
-                borderColor: '#22c55e',
-                backgroundColor: 'transparent',
-                borderWidth: 2,
-                borderDash: [5, 5],
-                pointRadius: 2,
-                pointBackgroundColor: '#22c55e',
-                tension: 0,
-            }
-        ],
-    };
-
-    // Derive processStatus from stats
     const currentTemp = parseFloat(stats.currentTemperature) || 0;
     const processStatus = !stats.isOnline ? 'standby'
         : currentTemp > TEMP_HIGH ? 'error'
@@ -310,198 +204,86 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
 
             <div className="space-y-6">
 
+                {/* Flash Messages */}
                 {flashMsg && (
-                    <div className={`rounded-xl border px-4 py-3 text-sm ${flashType === 'success'
-                        ? 'bg-green-500/10 border-green-500/30 text-green-200'
-                        : 'bg-red-500/10 border-red-500/30 text-red-200'
-                        }`}>
+                    <div className={`rounded-xl border px-4 py-3 text-sm animate-slideDown ${
+                        flashType === 'success'
+                            ? 'bg-green-50 border-green-200 text-green-700'
+                            : 'bg-red-50 border-red-200 text-red-700'
+                    }`}>
                         {flashMsg}
                     </div>
                 )}
 
-                {/* Kontrol Perekaman — sinkron dengan ESP via MQTT */}
-                <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h3 className="text-lg font-medium text-white">Kontrol Perekaman</h3>
-                            <p className="text-sm text-slate-400 mt-1">
-                                Perintah dikirim ke logger ESP32 lewat MQTT
-                                {machineCode ? ` (${machineCode})` : ''}.
-                                Nomor mesin di ESP Settings harus sama persis.
-                                Saat offline, gunakan dashboard lokal ESP (WiFi AP).
-                            </p>
-                            {!stats.isOnline && (
-                                <p className="text-sm text-amber-400/90 mt-2">
-                                    Belum ada data sensor masuk ke server — Start tetap bisa dikirim,
-                                    tetapi pastikan mqtt-bridge jalan dan kode mesin ESP cocok.
-                                </p>
-                            )}
-                            <div className="mt-2 flex items-center gap-2 text-sm">
-                                <CircleDot className={`w-4 h-4 ${stats.isLogging ? 'text-amber-400' : 'text-slate-500'}`} />
-                                <span className={stats.isLogging ? 'text-amber-300 font-medium' : 'text-slate-400'}>
-                                    {stats.isLogging ? 'Sedang merekam (LOGGING)' : 'Tidak merekam (IDLE)'}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={() => sendCommand('start')}
-                                disabled={cmdLoading || stats.isLogging}
-                                className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                            >
-                                <Play className="w-4 h-4" />
-                                Start
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => sendCommand('stop')}
-                                disabled={cmdLoading || !stats.isLogging}
-                                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                            >
-                                <Square className="w-4 h-4" />
-                                Stop
-                            </button>
-                        </div>
-                    </div>
-                </div>
+
 
                 {/* Stat Cards */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-
-                    {/* Suhu */}
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-                        <div className="flex items-center">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
-                                <Thermometer className="h-6 w-6" />
-                            </div>
-                            <div className="ml-4">
-                                <h3 className="text-sm font-medium text-slate-400">Suhu Saat Ini</h3>
-                                <div className="mt-1 flex items-baseline">
-                                    <p className="text-2xl font-bold text-white">{stats.currentTemperature}</p>
-                                    <p className="ml-1 text-sm font-medium text-slate-400">°C</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Kecepatan Data */}
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-                        <div className="flex items-center">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/20 text-violet-400">
-                                <Zap className="h-6 w-6" />
-                            </div>
-                            <div className="ml-4">
-                                <h3 className="text-sm font-medium text-slate-400">Kecepatan Data</h3>
-                                <div className="mt-1 flex items-baseline gap-1">
-                                    <p className="text-2xl font-bold text-white">
-                                        {stats.dataIntervalMs !== null ? stats.dataIntervalMs.toLocaleString() : '—'}
-                                    </p>
-                                    {stats.dataIntervalMs !== null && (
-                                        <p className="text-sm font-medium text-slate-400">ms</p>
-                                    )}
-                                </div>
-                                <p className="text-xs text-slate-500 mt-0.5">Interval antar kiriman data</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Koneksi IoT */}
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-                        <div className="flex items-center">
-                            <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${stats.isOnline ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'}`}>
-                                <Wifi className="h-6 w-6" />
-                            </div>
-                            <div className="ml-4">
-                                <h3 className="text-sm font-medium text-slate-400">Koneksi IoT</h3>
-                                <p className="mt-1 text-2xl font-bold text-white">{stats.isOnline ? 'Online' : 'Offline'}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Total Data */}
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-                        <div className="flex items-center">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-400">
-                                <Database className="h-6 w-6" />
-                            </div>
-                            <div className="ml-4">
-                                <h3 className="text-sm font-medium text-slate-400">Data Hari Ini</h3>
-                                <p className="mt-1 text-2xl font-bold text-white">{stats.totalDataToday}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Last Update */}
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-                        <div className="flex items-center">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-500/20 text-teal-400">
-                                <Clock className="h-6 w-6" />
-                            </div>
-                            <div className="ml-4">
-                                <h3 className="text-sm font-medium text-slate-400">Update Terakhir</h3>
-                                <p className="mt-1 text-sm font-bold text-white">{stats.lastUpdate}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Grafik Suhu — Full Width */}
-                <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
-                    <h3 className="text-lg font-medium text-white mb-4">Grafik Suhu</h3>
-                    <div className="h-[420px] w-full">
-                        <Line data={lineChartData} options={lineChartOptions} />
-                    </div>
-                </div>
-
-                {/* Monitoring Panel + Model 3D (side by side, equal height) */}
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-5" style={{ minHeight: 500 }}>
-
-                    {/* Monitoring Panel — 40% lebar */}
-                    <div className="lg:col-span-2 h-full">
-                        <MonitoringPanel
-                            pv={stats.currentTemperature}
-                            sv={stats.sv}
-                            mv={stats.mv}
-                            status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
-                            processStep={stats.processStep}
-                            timerTot={stats.timerTot}
-                            timerStp={stats.timerStp}
-                            timerRem={stats.timerRem}
-                            isOnline={stats.isOnline}
-                        />
-                    </div>
-
-                    {/* Model 3D — 60% lebar */}
-                    <div className="lg:col-span-3 h-full">
-                        <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
-                    </div>
-
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                    <StatCard
+                        icon={Thermometer}
+                        label="Suhu Saat Ini"
+                        value={stats.currentTemperature}
+                        unit="°C"
+                        color="text-orange-500"
+                        iconBgColor="bg-orange-100"
+                    />
+                    <StatCard
+                        icon={Zap}
+                        label="Kecepatan Data"
+                        value={stats.dataIntervalMs !== null ? stats.dataIntervalMs.toLocaleString() : '—'}
+                        unit={stats.dataIntervalMs !== null ? 'ms' : ''}
+                        color="text-purple-500"
+                        iconBgColor="bg-purple-100"
+                    />
+                    <StatCard
+                        icon={Wifi}
+                        label="Koneksi IoT"
+                        value={stats.isOnline ? 'Online' : 'Offline'}
+                        color={stats.isOnline ? 'text-green-500' : 'text-red-500'}
+                        iconBgColor={stats.isOnline ? 'bg-green-100' : 'bg-red-100'}
+                    />
+                    <StatCard
+                        icon={Database}
+                        label="Data Hari Ini"
+                        value={stats.totalDataToday}
+                        color="text-blue-500"
+                        iconBgColor="bg-blue-100"
+                    />
+                    <StatCard
+                        icon={Clock}
+                        label="Update Terakhir"
+                        value={stats.lastUpdate}
+                        color="text-teal-500"
+                        iconBgColor="bg-teal-100"
+                    />
                 </div>
 
                 {/* Recent Activity Table */}
-                <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg">
-                    <div className="p-6 border-b border-white/10">
-                        <h3 className="text-lg font-medium text-white">Aktivitas Terbaru</h3>
+                <div className="table-container">
+                    <div className="card-header">
+                        <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                            <ActivitySquare className="w-5 h-5 text-[#FF7A00]" />
+                            Aktivitas Terbaru
+                        </h3>
                     </div>
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-white/10">
-                            <thead className="bg-white/5">
+                        <table className="table">
+                            <thead>
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Timestamp</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Aktivitas</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">User/System</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Detail</th>
+                                    <th>Timestamp</th>
+                                    <th>Aktivitas</th>
+                                    <th>User/System</th>
+                                    <th>Detail</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-white/10">
+                            <tbody>
                                 {recentActivities.length > 0 ? (
                                     recentActivities.map((activity) => (
-                                        <tr key={activity.id} className="hover:bg-white/5 transition-colors">
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-300">{activity.created_at}</td>
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm text-white">{activity.description}</td>
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-300">{activity.user}</td>
-                                            <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-400">
+                                        <tr key={activity.id}>
+                                            <td className="text-gray-600">{activity.created_at}</td>
+                                            <td className="font-medium text-gray-800">{activity.description}</td>
+                                            <td className="text-gray-600">{activity.user}</td>
+                                            <td className="text-gray-500">
                                                 {activity.properties
                                                     ? Object.entries(activity.properties)
                                                         .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
@@ -512,7 +294,7 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan="4" className="px-6 py-8 text-center text-sm text-slate-500">
+                                        <td colSpan="4" className="text-center py-8 text-gray-400">
                                             Belum ada aktivitas terbaru hari ini.
                                         </td>
                                     </tr>
@@ -520,6 +302,11 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                {/* Model 3D */}
+                <div style={{ minHeight: 500 }}>
+                    <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
                 </div>
 
             </div>

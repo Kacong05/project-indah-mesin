@@ -5,8 +5,11 @@ import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
+import { LogIn, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { useState } from 'react';
 
 export default function Login({ status, canResetPassword }) {
+    const [showPassword, setShowPassword] = useState(false);
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',
@@ -15,7 +18,6 @@ export default function Login({ status, canResetPassword }) {
 
     const submit = (e) => {
         e.preventDefault();
-
         post(route('login'), {
             onFinish: () => reset('password'),
         });
@@ -23,71 +25,111 @@ export default function Login({ status, canResetPassword }) {
 
     return (
         <GuestLayout>
-            <Head title="Log in" />
+            <Head title="Masuk" />
 
             {status && (
-                <div className="mb-4 text-sm font-medium text-green-600">
+                <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-700">
                     {status}
                 </div>
             )}
 
-            <form onSubmit={submit}>
+            <form onSubmit={submit} className="space-y-5">
+                {/* Email */}
                 <div>
-                    <InputLabel htmlFor="email" value="Email" />
-
-                    <TextInput
-                        id="email"
-                        type="email"
-                        name="email"
-                        value={data.email}
-                        className="mt-1 block w-full"
-                        autoComplete="username"
-                        isFocused={true}
-                        onChange={(e) => setData('email', e.target.value)}
-                    />
-
-                    <InputError message={errors.email} className="mt-2" />
+                    <InputLabel htmlFor="email" value="Alamat Email" />
+                    <div className="relative mt-1">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                            <Mail className="h-5 w-5 text-gray-400" />
+                        </div>
+                        <TextInput
+                            id="email"
+                            type="email"
+                            name="email"
+                            value={data.email}
+                            className="!pl-10"
+                            placeholder="nama@email.com"
+                            autoComplete="username"
+                            isFocused={true}
+                            onChange={(e) => setData('email', e.target.value)}
+                        />
+                    </div>
+                    <InputError message={errors.email} className="mt-1" />
                 </div>
 
-                <div className="mt-4">
-                    <InputLabel htmlFor="password" value="Password" />
-
-                    <TextInput
-                        id="password"
-                        type="password"
-                        name="password"
-                        value={data.password}
-                        className="mt-1 block w-full"
-                        autoComplete="current-password"
-                        onChange={(e) => setData('password', e.target.value)}
-                    />
-
-                    <InputError message={errors.password} className="mt-2" />
+                {/* Password */}
+                <div>
+                    <InputLabel htmlFor="password" value="Kata Sandi" />
+                    <div className="relative mt-1">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                            <Lock className="h-5 w-5 text-gray-400" />
+                        </div>
+                        <TextInput
+                            id="password"
+                            type={showPassword ? 'text' : 'password'}
+                            name="password"
+                            value={data.password}
+                            className="!pl-10 !pr-10"
+                            placeholder="••••••••"
+                            autoComplete="current-password"
+                            onChange={(e) => setData('password', e.target.value)}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                        >
+                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                    </div>
+                    <InputError message={errors.password} className="mt-1" />
                 </div>
 
-                <div className="mt-4 block">
-                    <label className="flex items-center">
+                {/* Remember Me & Forgot Password */}
+                <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer">
                         <Checkbox
                             name="remember"
                             checked={data.remember}
-                            onChange={(e) =>
-                                setData('remember', e.target.checked)
-                            }
+                            onChange={(e) => setData('remember', e.target.checked)}
                         />
-                        <span className="ms-2 text-sm text-slate-300">
-                            Remember me
-                        </span>
+                        <span className="text-sm text-gray-600">Ingat saya</span>
                     </label>
+
+                    {canResetPassword && (
+                        <Link
+                            href={route('password.request')}
+                            className="text-sm font-medium text-[#FF7A00] hover:text-[#E66A00] transition-colors"
+                        >
+                            Lupa kata sandi?
+                        </Link>
+                    )}
                 </div>
 
-                <div className="mt-4 flex items-center justify-end">
-
-
-                    <PrimaryButton className="ms-4" disabled={processing}>
-                        Log in
+                {/* Submit Button */}
+                <div className="pt-2">
+                    <PrimaryButton
+                        className="w-full justify-center text-base py-3"
+                        disabled={processing}
+                    >
+                        {processing ? (
+                            <>
+                                <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                Memproses...
+                            </>
+                        ) : (
+                            <>
+                                <LogIn className="w-5 h-5 mr-2" />
+                                Masuk
+                            </>
+                        )}
                     </PrimaryButton>
                 </div>
             </form>
+
+
         </GuestLayout>
     );
 }

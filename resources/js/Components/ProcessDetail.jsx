@@ -1,6 +1,6 @@
 /**
  * ProcessDetail.jsx
- * Komponen untuk menampilkan detail satu sesi proses (tabel + chart)
+ * Komponen untuk menampilkan detail satu sesi proses - Light Theme
  */
 
 import { useState, useRef } from 'react';
@@ -33,28 +33,29 @@ ChartJS.register(
 
 export default function ProcessDetail({ session, onBack }) {
     const [exporting, setExporting] = useState(false);
+    const [exportMode, setExportMode] = useState('both');
     const chartRef = useRef(null);
 
     if (!session) return null;
 
     const { session: sessionInfo, stats, readings } = session;
 
-    // SV (Set Value) & PV (Present Value) - Ambil dari data terkini (data paling akhir dari backend)
     const latestData = readings && readings.length > 0 ? readings[readings.length - 1] : null;
     const currentSV = latestData?.sv || sessionInfo.latest_sv || 121.1;
     const currentPV = latestData?.temperature ?? sessionInfo.latest_temperature;
 
-    // Handle Export Excel
     const handleExport = async () => {
         setExporting(true);
+        const includeChart = exportMode === 'both';
 
         try {
-            const chartBase64 = chartRef.current ? chartRef.current.toBase64Image() : null;
+            const chartBase64 = includeChart && chartRef.current
+                ? chartRef.current.toBase64Image()
+                : null;
 
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Data Sesi');
 
-            // Header info
             worksheet.mergeCells('A1:C1');
             worksheet.getCell('A1').value = sessionInfo.name;
             worksheet.getCell('A1').font = { bold: true, size: 16 };
@@ -67,22 +68,19 @@ export default function ProcessDetail({ session, onBack }) {
             worksheet.getCell('A3').value = `Durasi: ${sessionInfo.duration_minutes || '-'} menit | Total Data: ${stats?.total_readings || 0}`;
             worksheet.getCell('A3').font = { size: 11, color: { argb: 'FF666666' } };
 
-            // Spacer
             worksheet.addRow([]);
 
-            // Tabel header
             const headerRow = worksheet.addRow(['Waktu', 'SV (°C)', 'PV (°C)']);
             headerRow.eachCell((cell) => {
                 cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
                 cell.fill = {
                     type: 'pattern',
                     pattern: 'solid',
-                    fgColor: { argb: 'FF4F46E5' }
+                    fgColor: { argb: 'FFFF7A00' }
                 };
                 cell.alignment = { horizontal: 'center' };
             });
 
-            // Data rows
             readings.forEach((reading) => {
                 const row = worksheet.addRow([
                     reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8),
@@ -90,48 +88,43 @@ export default function ProcessDetail({ session, onBack }) {
                     reading.temperature.toFixed(1),
                 ]);
 
-                // Color PV based on value
                 const pvCell = row.getCell(3);
                 if (reading.temperature >= 120) {
-                    pvCell.font = { color: { argb: 'FFEF4444' } }; // Red
+                    pvCell.font = { color: { argb: 'FFEF4444' } };
                 } else if (reading.temperature >= 110) {
-                    pvCell.font = { color: { argb: 'FFF97316' } }; // Orange
+                    pvCell.font = { color: { argb: 'FFF97316' } };
                 } else {
-                    pvCell.font = { color: { argb: 'FF94A3B8' } }; // Gray
+                    pvCell.font = { color: { argb: 'FF666666' } };
                 }
 
-                // Color SV
                 const svCell = row.getCell(2);
                 if (reading.sv) {
-                    svCell.font = { color: { argb: 'FF22C55E' } }; // Green
+                    svCell.font = { color: { argb: 'FFFF7A00' } };
                 }
 
                 row.alignment = { horizontal: 'center' };
             });
 
-            // Set column widths
             worksheet.getColumn(1).width = 15;
             worksheet.getColumn(2).width = 12;
             worksheet.getColumn(3).width = 12;
 
-            // Add chart if available
             if (chartBase64) {
                 const chartImage = workbook.addImage({
                     base64: chartBase64,
                     extension: 'png',
                 });
                 worksheet.addImage(chartImage, {
-                    tl: { col: 4, row: 4 }, // Menempatkan grafik di kolom E (indeks 4) dan baris 5 (indeks 4)
+                    tl: { col: 4, row: 4 },
                     ext: { width: 600, height: 300 }
                 });
             }
 
-            // Generate and download
             const buffer = await workbook.xlsx.writeBuffer();
-            const filename = `Laporan_${sessionInfo.name.replace(/\s+/g, '_')}_${new Date().getTime()}.xlsx`;
+            const suffix = includeChart ? 'Data_Grafik' : 'Data';
+            const filename = `Laporan_${suffix}_${sessionInfo.name.replace(/\s+/g, '_')}_${new Date().getTime()}.xlsx`;
             saveAs(new Blob([buffer]), filename);
 
-            // Log activity to backend
             try {
                 await window.axios.post('/history/log-export');
             } catch (err) {
@@ -146,10 +139,23 @@ export default function ProcessDetail({ session, onBack }) {
         }
     };
 
-    // Prepare Chart Data (Urut dari lama ke baru agar mengalir ke kanan)
     const chartReadings = readings || [];
+    const pointCount = chartReadings.length;
+    const chartMinWidth = Math.max(pointCount * 28, 600);
+
+    const formatChartTime = (reading) =>
+        reading.time_formatted
+        || (reading.recorded_at
+            ? new Date(reading.recorded_at).toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+            })
+            : '');
+
     const chartData = {
-        labels: chartReadings.map(r => r.time_formatted || r.recorded_at?.split('T')[1]?.substring(0, 8) || ''),
+        labels: chartReadings.map(formatChartTime),
         datasets: [
             {
                 fill: true,
@@ -157,47 +163,47 @@ export default function ProcessDetail({ session, onBack }) {
                 data: chartReadings.map(r => r.temperature),
                 segment: {
                     borderColor: ctx => {
-                        if (!chartReadings[0]) return '#eab308';
+                        if (!chartReadings[0]) return '#FFB800';
                         const start = new Date(chartReadings[0].recorded_at).getTime();
                         const current = new Date(chartReadings[ctx.p1DataIndex]?.recorded_at).getTime();
                         const minutes = (current - start) / 60000;
-                        if (minutes <= 25) return '#eab308'; // yellow
-                        if (minutes <= 50) return '#ef4444'; // red
-                        return '#3b82f6'; // blue
+                        if (minutes <= 25) return '#FFB800';
+                        if (minutes <= 50) return '#FF3B30';
+                        return '#007BFF';
                     },
                     backgroundColor: ctx => {
-                        if (!chartReadings[0]) return 'rgba(234, 179, 8, 0.1)';
+                        if (!chartReadings[0]) return 'rgba(255,184,0,0.1)';
                         const start = new Date(chartReadings[0].recorded_at).getTime();
                         const current = new Date(chartReadings[ctx.p1DataIndex]?.recorded_at).getTime();
                         const minutes = (current - start) / 60000;
-                        if (minutes <= 25) return 'rgba(234, 179, 8, 0.1)';
-                        if (minutes <= 50) return 'rgba(239, 68, 68, 0.1)';
-                        return 'rgba(59, 130, 246, 0.1)';
+                        if (minutes <= 25) return 'rgba(255,184,0,0.1)';
+                        if (minutes <= 50) return 'rgba(255,59,48,0.1)';
+                        return 'rgba(0,123,255,0.1)';
                     }
                 },
                 pointBackgroundColor: ctx => {
-                    if (ctx.dataIndex === undefined || !chartReadings[0]) return '#eab308';
+                    if (ctx.dataIndex === undefined || !chartReadings[0]) return '#FFB800';
                     const start = new Date(chartReadings[0].recorded_at).getTime();
                     const current = new Date(chartReadings[ctx.dataIndex]?.recorded_at).getTime();
                     const minutes = (current - start) / 60000;
-                    if (minutes <= 25) return '#eab308';
-                    if (minutes <= 50) return '#ef4444';
-                    return '#3b82f6';
+                    if (minutes <= 25) return '#FFB800';
+                    if (minutes <= 50) return '#FF3B30';
+                    return '#007BFF';
                 },
                 borderWidth: 2,
-                pointRadius: 2,
+                pointRadius: 3,
                 tension: 0.3,
             },
             {
                 fill: false,
                 label: `SV`,
                 data: chartReadings.map(r => r.sv || currentSV),
-                borderColor: '#22c55e',
+                borderColor: '#00BF40',
                 backgroundColor: 'transparent',
                 borderWidth: 2,
-                borderDash: [5, 5], // garis putus-putus
+                borderDash: [5, 5],
                 pointRadius: 2,
-                pointBackgroundColor: '#22c55e',
+                pointBackgroundColor: '#00BF40',
                 tension: 0,
             }
         ]
@@ -214,14 +220,16 @@ export default function ProcessDetail({ session, onBack }) {
             legend: {
                 display: true,
                 position: 'top',
-                labels: { color: '#94a3b8' }
+                labels: { color: '#666', usePointStyle: true, padding: 20 }
             },
             tooltip: {
-                backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                titleColor: '#f1f5f9',
-                bodyColor: '#cbd5e1',
-                borderColor: 'rgba(255,255,255,0.1)',
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                titleColor: '#1A1A1A',
+                bodyColor: '#666',
+                borderColor: '#e0e0e0',
                 borderWidth: 1,
+                padding: 12,
+                boxPadding: 6,
             }
         },
         scales: {
@@ -232,15 +240,21 @@ export default function ProcessDetail({ session, onBack }) {
                 title: {
                     display: true,
                     text: 'Suhu (°C)',
-                    color: '#f97316'
+                    color: '#FF7A00'
                 },
-                ticks: { color: '#94a3b8' },
-                grid: { color: 'rgba(255,255,255,0.05)' }
+                ticks: { color: '#999' },
+                grid: { color: '#f0f0f0' }
             },
             x: {
-                ticks: { color: '#94a3b8', maxTicksLimit: 10 },
-                grid: { color: 'rgba(255,255,255,0.05)' }
-            }
+                grid: { color: '#f0f0f0' },
+                ticks: {
+                    color: '#999',
+                    autoSkip: false,
+                    maxRotation: 45,
+                    minRotation: 35,
+                    font: { size: 9 },
+                },
+            },
         }
     };
 
@@ -250,49 +264,60 @@ export default function ProcessDetail({ session, onBack }) {
             <div className="flex items-center justify-between">
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+                    className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
                 >
                     <ChevronLeft className="w-5 h-5" />
-                    <span>Kembali ke Daftar</span>
+                    <span className="font-medium">Kembali ke Daftar</span>
                 </button>
 
-                <button
-                    onClick={handleExport}
-                    disabled={exporting}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white text-sm font-medium transition-colors"
-                >
-                    <Download className="w-4 h-4" />
-                    {exporting ? 'Exporting...' : 'Download Excel'}
-                </button>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <select
+                        value={exportMode}
+                        onChange={(e) => setExportMode(e.target.value)}
+                        disabled={exporting}
+                        className="input text-sm py-2 min-w-[180px]"
+                    >
+                        <option value="data">Data saja</option>
+                        <option value="both">Data + Grafik</option>
+                    </select>
+                    <button
+                        onClick={handleExport}
+                        disabled={exporting}
+                        className="btn btn-success"
+                    >
+                        <Download className="w-4 h-4" />
+                        {exporting ? 'Exporting...' : 'Download Excel'}
+                    </button>
+                </div>
             </div>
 
             {/* Session Info */}
-            <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="card p-6">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-2xl font-bold text-white">{sessionInfo.name}</h2>
-                        <p className="text-slate-400 mt-1">
+                        <h2 className="text-2xl font-bold text-gray-800">{sessionInfo.name}</h2>
+                        <p className="text-gray-500 mt-1">
                             {sessionInfo.time_range} • {sessionInfo.duration_minutes || '-'} menit
                         </p>
                     </div>
 
                     {/* SV & PV Display */}
-                    <div className="flex items-center gap-4 p-3 rounded-xl bg-white/5">
+                    <div className="flex items-center gap-6 p-4 rounded-xl bg-orange-50 border border-orange-100">
                         <div className="text-center">
-                            <p className="text-xs text-slate-400 uppercase">SV</p>
-                            <p className="text-xl font-bold text-indigo-400">
-                                        {currentSV.toFixed(1)}°C
-                                    </p>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">SV</p>
+                            <p className="text-2xl font-bold text-[#FF7A00]">
+                                {currentSV.toFixed(1)}°C
+                            </p>
                         </div>
-                        <div className="w-px h-12 bg-white/10" />
+                        <div className="w-px h-12 bg-orange-200" />
                         <div className="text-center">
-                            <p className="text-xs text-slate-400 uppercase">PV</p>
-                            <p className={`text-xl font-bold ${
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">PV</p>
+                            <p className={`text-2xl font-bold ${
                                 currentPV >= 119 && currentPV <= 123
-                                    ? 'text-emerald-400'
+                                    ? 'text-green-600'
                                     : currentPV >= 116 && currentPV <= 126
-                                    ? 'text-yellow-400'
-                                    : 'text-red-400'
+                                        ? 'text-amber-600'
+                                        : 'text-red-600'
                             }`}>
                                 {currentPV !== null && currentPV !== undefined
                                     ? `${currentPV.toFixed(1)}°C`
@@ -303,84 +328,62 @@ export default function ProcessDetail({ session, onBack }) {
                 </div>
             </div>
 
-
-
             {/* Chart */}
-            <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Grafik PV vs SV</h3>
-                <div className="h-72">
-                    <Line ref={chartRef} data={chartData} options={chartOptions} />
+            <div className="card p-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-[#FF7A00]" />
+                    Grafik PV vs SV
+                </h3>
+                <div className="h-72 w-full overflow-x-auto">
+                    <div style={{ minWidth: chartMinWidth, height: '100%' }}>
+                        <Line ref={chartRef} data={chartData} options={chartOptions} />
+                    </div>
                 </div>
             </div>
 
             {/* Data Table */}
-            <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10">
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-white/10">
-                        <thead className="bg-white/5">
-                            <tr>
-                                <th className="px-6 py-4 text-left text-sm font-bold text-slate-200 uppercase tracking-wider">Waktu</th>
-                                <th className="px-6 py-4 text-left text-sm font-bold text-slate-200 uppercase tracking-wider">SV (°C)</th>
-                                <th className="px-6 py-4 text-left text-sm font-bold text-slate-200 uppercase tracking-wider">PV (°C)</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/10">
-                            {readings.length > 0 ? (
-                                [...readings].reverse().map((reading) => (
-                                    <tr key={reading.id} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-6 py-4 text-base text-slate-200 whitespace-nowrap font-medium">
-                                            {reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8)}
-                                        </td>
-                                        <td className="px-6 py-4 text-base text-emerald-400 whitespace-nowrap font-bold">
-                                            {reading.sv ? reading.sv.toFixed(1) : '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-base whitespace-nowrap">
-                                            <span className={`font-bold ${
-                                                reading.temperature >= 120 ? 'text-red-400' :
-                                                reading.temperature >= 110 ? 'text-orange-400' :
-                                                'text-slate-200'
-                                            }`}>
-                                                {reading.temperature}°C
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan="3" className="px-6 py-8 text-center text-sm text-slate-500">
-                                        Tidak ada data
+            <div className="table-container">
+                <table className="table">
+                    <thead>
+                        <tr>
+                            <th>Waktu</th>
+                            <th>SV (°C)</th>
+                            <th>PV (°C)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {readings.length > 0 ? (
+                            [...readings].reverse().map((reading) => (
+                                <tr key={reading.id}>
+                                    <td className="font-medium text-gray-800 whitespace-nowrap">
+                                        {reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8)}
+                                    </td>
+                                    <td className="font-bold text-[#FF7A00] whitespace-nowrap">
+                                        {reading.sv ? reading.sv.toFixed(1) : '-'}
+                                    </td>
+                                    <td className="whitespace-nowrap">
+                                        <span className={`font-bold ${
+                                            reading.temperature >= 120 ? 'text-red-600' :
+                                                reading.temperature >= 110 ? 'text-orange-500' :
+                                                    'text-gray-700'
+                                        }`}>
+                                            {reading.temperature}°C
+                                        </span>
                                     </td>
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan="3" className="text-center py-8 text-gray-400">
+                                    Tidak ada data
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
             </div>
         </div>
     );
 
     return content;
-}
-
-function StatCard({ label, value, icon, color }) {
-    const colorClasses = {
-        orange: 'bg-orange-500/10 border-orange-500/20',
-        red: 'bg-red-500/10 border-red-500/20',
-        blue: 'bg-blue-500/10 border-blue-500/20',
-        indigo: 'bg-indigo-500/10 border-indigo-500/20',
-    };
-
-    return (
-        <div className={`rounded-xl border p-4 ${colorClasses[color]}`}>
-            <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-white/5">
-                    {icon}
-                </div>
-                <div>
-                    <p className="text-xs text-slate-400 uppercase">{label}</p>
-                    <p className="text-xl font-bold text-white">{value}</p>
-                </div>
-            </div>
-        </div>
-    );
 }

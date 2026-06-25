@@ -1,6 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
-import { Cpu, Plus, Settings } from 'lucide-react';
+import { Cpu, Plus, Settings, Wifi, WifiOff, Activity, Calendar } from 'lucide-react';
 
 export default function DeviceIndex({ devices }) {
     return (
@@ -8,71 +8,117 @@ export default function DeviceIndex({ devices }) {
             <Head title="Perangkat" />
 
             <div className="space-y-6">
-
-                {/* Header Actions */}
-                <div className="flex justify-between items-center">
-                    <h2 className="text-lg font-medium text-white">Daftar Mesin Retort</h2>
-                    <button className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors">
-                        <Plus className="w-4 h-4" /> Tambah Perangkat
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <p className="text-sm text-gray-500">Kelola perangkat ESP32 untuk monitoring retort</p>
+                    </div>
+                    <button className="btn btn-primary">
+                        <Plus className="w-4 h-4" />
+                        Tambah Perangkat
                     </button>
                 </div>
 
                 {/* Device Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {devices.data.length > 0 ? (
                         devices.data.map((device) => (
-                            <div key={device.id} className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg relative group transition-all hover:-translate-y-1 hover:shadow-indigo-500/10 hover:shadow-2xl hover:border-indigo-500/30">
+                            <div key={device.id} className="card-hover overflow-hidden group">
+                                {/* Card Header */}
+                                <div className="p-5 border-b border-gray-100">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center shadow-lg shadow-[#FF7A00]/20">
+                                                <Cpu className="w-6 h-6 text-white" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-gray-800">{device.name}</h3>
+                                                <p className="text-xs font-mono text-gray-400 mt-0.5">{device.mac_address}</p>
+                                            </div>
+                                        </div>
 
-                                <div className="absolute top-4 right-4 flex items-center gap-2">
-                                    <span className="relative flex h-3 w-3">
-                                        {device.is_online && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
-                                        <span className={`relative inline-flex rounded-full h-3 w-3 ${device.is_online ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                    </span>
+                                        {/* Status Indicator */}
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="relative flex h-2.5 w-2.5">
+                                                {device.is_online && (
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                )}
+                                                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                                                    device.is_online ? 'bg-green-500' : 'bg-red-500'
+                                                }`}></span>
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="flex items-center gap-4 mb-6">
-                                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
-                                        <Cpu className="h-7 w-7" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-bold text-white">{device.name}</h3>
-                                        <p className="text-sm font-medium text-slate-400 font-mono mt-1">{device.mac_address}</p>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3 mb-6">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">Status Operasi</span>
-                                        <span className={`font-medium px-2 py-1 rounded text-xs ${device.status === 'Running' ? 'bg-green-500/20 text-green-400' : (device.status === 'Standby' ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-500/20 text-slate-400')}`}>
+                                {/* Card Body */}
+                                <div className="p-5 space-y-3">
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500 flex items-center gap-2">
+                                            <Activity className="w-4 h-4" />
+                                            Status Operasi
+                                        </span>
+                                        <span className={`font-medium px-2 py-0.5 rounded-full text-xs ${
+                                            device.status === 'Running'
+                                                ? 'bg-green-100 text-green-700'
+                                                : device.status === 'Standby'
+                                                    ? 'bg-amber-100 text-amber-700'
+                                                    : 'bg-gray-100 text-gray-600'
+                                        }`}>
                                             {device.status}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">Koneksi Terakhir</span>
-                                        <span className="text-white font-medium">{device.last_heartbeat}</span>
+
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500 flex items-center gap-2">
+                                            {device.is_online ? (
+                                                <Wifi className="w-4 h-4 text-green-500" />
+                                            ) : (
+                                                <WifiOff className="w-4 h-4 text-red-500" />
+                                            )}
+                                            Koneksi
+                                        </span>
+                                        <span className={`font-medium ${device.is_online ? 'text-green-600' : 'text-red-600'}`}>
+                                            {device.is_online ? 'Online' : 'Offline'}
+                                        </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-400">Tanggal Daftar</span>
-                                        <span className="text-white font-medium">{device.created_at}</span>
+
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500 flex items-center gap-2">
+                                            <Calendar className="w-4 h-4" />
+                                            Terakhir Aktif
+                                        </span>
+                                        <span className="font-medium text-gray-700">{device.last_heartbeat}</span>
                                     </div>
                                 </div>
 
-                                <div className="pt-4 border-t border-white/10 flex justify-end">
-                                    <button className="text-slate-400 hover:text-indigo-400 transition-colors flex items-center gap-2 text-sm font-medium">
-                                        <Settings className="w-4 h-4" /> Konfigurasi
+                                {/* Card Footer */}
+                                <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+                                    <button className="btn btn-outline btn-sm">
+                                        <Settings className="w-4 h-4" />
+                                        Konfigurasi
                                     </button>
                                 </div>
                             </div>
                         ))
                     ) : (
-                        <div className="col-span-full py-12 text-center border border-dashed border-white/20 rounded-2xl">
-                            <Cpu className="mx-auto h-12 w-12 text-slate-500 mb-3" />
-                            <h3 className="text-lg font-medium text-white mb-1">Belum Ada Perangkat</h3>
-                            <p className="text-slate-400 text-sm">Tambahkan perangkat ESP32 baru untuk memulai monitoring.</p>
+                        <div className="col-span-full">
+                            <div className="card p-12 text-center">
+                                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gray-100 flex items-center justify-center">
+                                    <Cpu className="w-10 h-10 text-gray-400" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-700 mb-2">Belum Ada Perangkat</h3>
+                                <p className="text-gray-500 text-sm max-w-md mx-auto mb-6">
+                                    Tambahkan perangkat ESP32 baru untuk memulai monitoring suhu retort secara real-time.
+                                </p>
+                                <button className="btn btn-primary">
+                                    <Plus className="w-4 h-4" />
+                                    Tambah Perangkat Pertama
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
-
             </div>
         </AuthenticatedLayout>
     );

@@ -8,7 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
-class DashboardController extends Controller
+class MonitoringController extends Controller
 {
     use ProvidesMachineData;
 
@@ -19,11 +19,11 @@ class DashboardController extends Controller
 
         $latestReading = $machine ? SensorReading::where('machine_id', $machine->id)->latest()->first() : null;
 
-        return Inertia::render('Dashboard', [
+        return Inertia::render('Monitoring/Index', [
             'machineName' => $machine ? $machine->name : 'Mesin Belum Ditetapkan',
             'machineCode' => $machine?->machine_code,
             'stats' => $this->getMachineStats($machine, $latestReading, $today),
-            'recentActivities' => $this->getRecentActivities($request->user()->id),
+            'chartData' => $this->getTemperatureChartData($machine),
         ]);
     }
 }

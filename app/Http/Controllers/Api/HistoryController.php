@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProcessSession;
+use App\Services\F0Calculator;
 use App\Services\ProcessSessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,15 +27,13 @@ class HistoryController extends Controller
         $sessions = ProcessSession::query()
             ->withCount('sensorReadings')
             ->with(['sensorReadings' => function ($query) {
-                // Urutkan dengan recorded_at DESC, id DESC untuk stabilitas
-                $query->orderByDesc('recorded_at')->orderByDesc('id')->limit(1);
+                $query->orderBy('recorded_at');
             }])
             ->orderByDesc('started_at')
             ->get()
             ->map(function ($session) {
-                $latestReading = $session->sensorReadings->first();
-                $latestTemperature = $latestReading ? (float) $latestReading->temperature : null;
-                $latestSv = $latestReading ? ($latestReading->sv ? (float) $latestReading->sv : null) : null;
+                $readings = $session->sensorReadings;
+                $latestReading = $readings->last();
 
                 return [
                     'id' => $session->id,
@@ -45,8 +44,8 @@ class HistoryController extends Controller
                     'duration_minutes' => $session->duration_in_minutes,
                     'data_count' => $session->sensor_readings_count,
                     'status' => $session->status,
-                    'latest_temperature' => $latestTemperature,
-                    'latest_sv' => $latestSv,
+                    'f0' => F0Calculator::fromReadings($readings),
+                    'process_status' => $latestReading?->process_status,
                 ];
             });
 
@@ -74,7 +73,7 @@ class HistoryController extends Controller
             return [
                 'id' => $reading->id,
                 'recorded_at' => $reading->recorded_at->toIso8601String(),
-                'time_formatted' => $reading->recorded_at->format('H:i:s'),
+                'time_formatted' => $reading->recorded_at->timezone('Asia/Jakarta')->format('H:i:s.v'),
                 'sv' => $reading->sv ? (float) $reading->sv : null,
                 'temperature' => (float) $reading->temperature,
             ];

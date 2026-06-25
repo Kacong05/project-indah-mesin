@@ -25,7 +25,7 @@ export default function UserIndex({ users }) {
     const [deleting, setDeleting] = useState(false);
 
     const confirmDelete = (user) => setDeleteTarget(user);
-    const cancelDelete  = () => setDeleteTarget(null);
+    const cancelDelete = () => setDeleteTarget(null);
 
     const handleDelete = () => {
         if (!deleteTarget) return;
@@ -37,11 +37,11 @@ export default function UserIndex({ users }) {
 
     const roleBadge = (role) => {
         const map = {
-            admin:      { label: 'Administrator', cls: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
-            operator:   { label: 'Operator',      cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-            supervisor: { label: 'Supervisor',    cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+            admin: { label: 'Administrator', cls: 'bg-purple-100 text-purple-700' },
+            operator: { label: 'Operator', cls: 'bg-green-100 text-green-700' },
+            supervisor: { label: 'Supervisor', cls: 'bg-blue-100 text-blue-700' },
         };
-        return map[role] ?? { label: role, cls: 'bg-slate-500/10 text-slate-400 border-slate-500/20' };
+        return map[role] ?? { label: role, cls: 'bg-gray-100 text-gray-600' };
     };
 
     return (
@@ -49,13 +49,12 @@ export default function UserIndex({ users }) {
             <Head title="Manajemen Pengguna" />
 
             <div className="space-y-6">
-
                 {/* Flash Message */}
                 {flashMsg && (
-                    <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${
+                    <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium animate-slideDown ${
                         flashType === 'success'
-                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                            : 'bg-red-500/10 border-red-500/20 text-red-400'
+                            ? 'bg-green-50 border-green-200 text-green-700'
+                            : 'bg-red-50 border-red-200 text-red-700'
                     }`}>
                         {flashType === 'success'
                             ? <CheckCircle className="w-4 h-4 flex-shrink-0" />
@@ -65,91 +64,90 @@ export default function UserIndex({ users }) {
                 )}
 
                 {/* Header Actions */}
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 rounded-xl bg-indigo-500/20 text-indigo-400">
-                            <Users className="w-6 h-6" />
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center shadow-lg shadow-[#FF7A00]/20">
+                            <Users className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-white">Daftar Pengguna</h2>
-                            <p className="text-sm text-slate-400">Kelola akses admin dan operator</p>
+                            <h2 className="text-xl font-bold text-gray-800">Daftar Pengguna</h2>
+                            <p className="text-sm text-gray-500">Kelola akses admin dan operator</p>
                         </div>
                     </div>
                     {isAdmin && (
                         <Link
                             href={route('users.create')}
-                            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-colors shadow-lg shadow-indigo-500/20"
+                            className="btn btn-primary"
                         >
-                            <UserPlus className="w-4 h-4" /> Tambah User
+                            <UserPlus className="w-4 h-4" />
+                            Tambah User
                         </Link>
                     )}
                 </div>
 
                 {/* Users Table */}
-                <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg">
+                <div className="table-container">
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-white/10">
-                            <thead className="bg-white/5">
+                        <table className="table">
+                            <thead>
                                 <tr>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Pengguna</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Kontak</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Mesin Retort</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-300 uppercase tracking-wider">Bergabung</th>
+                                    <th>Pengguna</th>
+                                    <th>Kontak</th>
+                                    <th>Role</th>
+                                    <th>Mesin Retort</th>
+                                    <th>Bergabung</th>
                                     {isAdmin && (
-                                        <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-300 uppercase tracking-wider">Aksi</th>
+                                        <th className="text-right">Aksi</th>
                                     )}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-white/10">
+                            <tbody>
                                 {users.data.length > 0 ? (
                                     users.data.map((user) => {
                                         const badge = roleBadge(user.role);
                                         return (
-                                            <tr key={user.id} className="hover:bg-white/5 transition-colors group">
-                                                <td className="whitespace-nowrap px-6 py-4">
-                                                    <div className="flex items-center">
-                                                        <div className="h-9 w-9 flex-shrink-0 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold shadow-lg text-sm">
+                                            <tr key={user.id}>
+                                                <td>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center text-white font-bold shadow-md text-sm">
                                                             {user.name.charAt(0).toUpperCase()}
                                                         </div>
-                                                        <div className="ml-3">
-                                                            <div className="text-sm font-medium text-white">{user.name}</div>
-                                                        </div>
+                                                        <span className="font-medium text-gray-800">{user.name}</span>
                                                     </div>
                                                 </td>
-                                                <td className="whitespace-nowrap px-6 py-4">
-                                                    <div className="flex items-center text-sm text-slate-300">
-                                                        <Mail className="w-4 h-4 mr-2 text-slate-500 flex-shrink-0" />
+                                                <td>
+                                                    <div className="flex items-center gap-2 text-gray-600">
+                                                        <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                                         {user.email}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${badge.cls}`}>
-                                                        {user.role === 'admin' ? <Shield className="w-3.5 h-3.5 mr-1" /> : <User className="w-3.5 h-3.5 mr-1" />}
+                                                <td>
+                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${badge.cls}`}>
+                                                        {user.role === 'admin' ? <Shield className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                                                         {badge.label}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className="text-sm text-slate-300">
-                                                        {user.machine_name}
-                                                    </span>
+                                                <td className="text-gray-600">
+                                                    {user.machine_name || '-'}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-400">
+                                                <td className="text-gray-500">
                                                     {user.created_at}
                                                 </td>
                                                 {isAdmin && (
-                                                    <td className="whitespace-nowrap px-6 py-4 text-sm text-right font-medium">
+                                                    <td className="text-right">
                                                         <Link
                                                             href={route('users.edit', user.id)}
-                                                            className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 mr-4 transition-colors"
+                                                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 mr-4 transition-colors"
                                                         >
-                                                            <Pencil className="w-3.5 h-3.5" /> Edit
+                                                            <Pencil className="w-3.5 h-3.5" />
+                                                            Edit
                                                         </Link>
                                                         <button
                                                             onClick={() => confirmDelete(user)}
-                                                            className="inline-flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors"
+                                                            className="inline-flex items-center gap-1 text-red-600 hover:text-red-800 transition-colors"
                                                         >
-                                                            <Trash2 className="w-3.5 h-3.5" /> Hapus
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                            Hapus
                                                         </button>
                                                     </td>
                                                 )}
@@ -158,7 +156,7 @@ export default function UserIndex({ users }) {
                                     })
                                 ) : (
                                     <tr>
-                                        <td colSpan={isAdmin ? 5 : 4} className="whitespace-nowrap px-6 py-12 text-center text-slate-500">
+                                        <td colSpan={isAdmin ? 6 : 5} className="text-center py-12 text-gray-400">
                                             Tidak ada data pengguna.
                                         </td>
                                     </tr>
@@ -169,7 +167,7 @@ export default function UserIndex({ users }) {
 
                     {/* Pagination */}
                     {users.last_page > 1 && (
-                        <div className="px-6 py-4 border-t border-white/10 flex items-center justify-between text-sm text-slate-400">
+                        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
                             <span>Menampilkan {users.from}–{users.to} dari {users.total} pengguna</span>
                             <div className="flex gap-1">
                                 {users.links.map((link, i) => (
@@ -178,10 +176,10 @@ export default function UserIndex({ users }) {
                                         href={link.url ?? '#'}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                                             link.active
-                                                ? 'bg-indigo-600 text-white'
+                                                ? 'bg-[#FF7A00] text-white'
                                                 : link.url
-                                                ? 'bg-white/5 hover:bg-white/10 text-slate-300'
-                                                : 'bg-white/[0.02] text-slate-600 cursor-default'
+                                                    ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                                    : 'bg-gray-50 text-gray-400 cursor-default'
                                         }`}
                                         dangerouslySetInnerHTML={{ __html: link.label }}
                                     />
@@ -197,37 +195,37 @@ export default function UserIndex({ users }) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     {/* Backdrop */}
                     <div
-                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        className="absolute inset-0 bg-black/40"
                         onClick={cancelDelete}
                     />
                     {/* Modal */}
-                    <div className="relative z-10 w-full max-w-md rounded-2xl bg-slate-900 border border-white/10 shadow-2xl overflow-hidden">
+                    <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-slideUp">
                         <div className="p-6">
                             <div className="flex items-start gap-4">
-                                <div className="flex-shrink-0 w-11 h-11 rounded-full bg-red-500/15 flex items-center justify-center">
-                                    <AlertTriangle className="w-5 h-5 text-red-400" />
+                                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                                    <AlertTriangle className="w-6 h-6 text-red-600" />
                                 </div>
                                 <div>
-                                    <h3 className="text-base font-semibold text-white">Hapus Pengguna</h3>
-                                    <p className="mt-1 text-sm text-slate-400">
+                                    <h3 className="text-lg font-semibold text-gray-800">Hapus Pengguna</h3>
+                                    <p className="mt-1 text-sm text-gray-500">
                                         Apakah Anda yakin ingin menghapus pengguna{' '}
-                                        <span className="font-semibold text-white">{deleteTarget.name}</span>?
+                                        <span className="font-semibold text-gray-700">{deleteTarget.name}</span>?
                                         Tindakan ini tidak dapat dibatalkan.
                                     </p>
                                 </div>
                             </div>
                         </div>
-                        <div className="px-6 py-4 bg-white/[0.03] border-t border-white/10 flex justify-end gap-3">
+                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
                             <button
                                 onClick={cancelDelete}
-                                className="px-4 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-white bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+                                className="btn btn-secondary"
                             >
                                 Batal
                             </button>
                             <button
                                 onClick={handleDelete}
                                 disabled={deleting}
-                                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 text-sm font-medium text-white hover:bg-red-500 focus:outline-none transition-all disabled:opacity-60 shadow-lg shadow-red-500/20"
+                                className="btn btn-danger"
                             >
                                 {deleting ? (
                                     <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
