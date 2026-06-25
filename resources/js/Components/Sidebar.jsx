@@ -25,6 +25,7 @@ export default function Sidebar({ open, setOpen }) {
             className={`fixed inset-y-0 left-0 z-50 w-64 transform bg-slate-900/80 backdrop-blur-xl border-r border-white/10 transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
         >
             <div className="flex h-16 shrink-0 items-center justify-center border-b border-white/10 px-4">
+                <img src="/logo.png" alt="Logo" className="w-8 h-8 mr-2" />
                 <h1 className="text-xl font-bold text-white tracking-wider">
                     Retort<span className="text-indigo-400">Monitor</span>
                 </h1>

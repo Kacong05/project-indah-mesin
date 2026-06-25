@@ -62,6 +62,12 @@ class DashboardController extends Controller
 
         $isLogging = $latestReading && $this->isLoggingStatus($latestReading->process_status);
 
+        // Mock/placeholder data untuk Monitoring Panel (belum ada di database)
+        // TODO: Aktifkan data real saat kolom MV, Process Step, dan Timer tersedia di SensorReading
+        $processSession = $machine
+            ? \App\Models\ProcessSession::where('machine_id', $machine->id)->latest()->first()
+            : null;
+
         return [
             'currentTemperature' => $currentTemperature,
             'machineStatus' => $machineStatus,
@@ -71,6 +77,13 @@ class DashboardController extends Controller
             'totalAlarmsToday' => $totalAlarmsToday,
             'lastUpdate' => $lastUpdate,
             'dataIntervalMs' => $dataIntervalMs,
+            // Monitoring Panel data (placeholder untuk sekarang)
+            'sv' => $processSession?->target_temperature ?? 121.1, // Set Value - target suhu
+            'mv' => null,                                          // Manipulated Value - placeholder
+            'processStep' => $processSession?->current_step,      // Process Step - placeholder
+            'timerTot' => '00:00:00',                              // Total Process Time - placeholder
+            'timerStp' => '00:00:00',                              // Step Time - placeholder
+            'timerRem' => '00:00:00',                              // Remaining Time - placeholder
         ];
     }
 

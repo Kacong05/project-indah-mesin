@@ -165,7 +165,7 @@ class ProcessSessionService
      */
     public function getAllSessions(?int $machineId = null)
     {
-        $query = ProcessSession::withCount('sensorReadings')->latest('started_at');
+        $query = ProcessSession::withCount('sensorReadings')->orderBy('started_at', 'desc');
 
         if ($machineId !== null) {
             $query->where('machine_id', $machineId);

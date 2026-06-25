@@ -22,7 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'sensor.token' => \App\Http\Middleware\VerifySensorApiToken::class,
         ]);
 
-        $middleware->validateCsrfTokens(except: [
+        $middleware->preventRequestForgery(except: [
             'api/*',
         ]);
     })

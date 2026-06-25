@@ -29,6 +29,7 @@ import {
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, Grid, Html } from '@react-three/drei';
 import RetortModel from '@/Components/RetortModel';
+import MonitoringPanel from '@/Components/MonitoringPanel';
 
 ChartJS.register(
     CategoryScale,
@@ -511,6 +512,21 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
 
                     {/* 3D Retort Model Card */}
                     <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
+                </div>
+
+                {/* Monitoring Panel - Full Width */}
+                <div className="grid grid-cols-1 lg:grid-cols-1">
+                    <MonitoringPanel
+                        pv={stats.currentTemperature}
+                        sv={stats.sv}
+                        mv={stats.mv}
+                        status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
+                        processStep={stats.processStep}
+                        timerTot={stats.timerTot}
+                        timerStp={stats.timerStp}
+                        timerRem={stats.timerRem}
+                        isOnline={stats.isOnline}
+                    />
                 </div>
 
                 {/* Recent Activity Table */}

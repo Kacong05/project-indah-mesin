@@ -115,7 +115,7 @@ class HistoryController extends Controller
     public function latestSession(Request $request): JsonResponse
     {
         $session = ProcessSession::withCount('sensorReadings')
-            ->latest('started_at')
+            ->orderBy('started_at', 'desc')
             ->first();
 
         if (!$session) {
