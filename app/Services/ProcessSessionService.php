@@ -11,11 +11,13 @@ class ProcessSessionService
 {
     /**
      * Waktu jeda minimum (dalam menit) untuk dianggap sesi baru.
-     * Default: 1 menit
+     * ESP mengirim timestamp tiap data; gap ≥ 3 menit = proses baru.
      */
+    public const GAP_THRESHOLD_MINUTES = 3;
+
     protected int $gapThresholdMinutes;
 
-    public function __construct(int $gapThresholdMinutes = 1)
+    public function __construct(int $gapThresholdMinutes = self::GAP_THRESHOLD_MINUTES)
     {
         $this->gapThresholdMinutes = $gapThresholdMinutes;
     }
@@ -37,7 +39,7 @@ class ProcessSessionService
             $lastSession = $lastReading->processSession;
 
             if ($lastSession && $lastSession->machine_id === $machineId) {
-                $diffInMinutes = $lastReading->recorded_at->diffInMinutes($timestamp);
+                $diffInMinutes = abs($lastReading->recorded_at->diffInSeconds($timestamp)) / 60;
 
                 if ($diffInMinutes < $this->gapThresholdMinutes) {
                     // Update ended_at langsung dari recorded_at data terbaru
@@ -126,7 +128,7 @@ class ProcessSessionService
                         ->first();
 
                     if ($lastReadingInSession) {
-                        $diffInMinutes = $lastReadingInSession->recorded_at->diffInMinutes($timestamp);
+                        $diffInMinutes = abs($lastReadingInSession->recorded_at->diffInSeconds($timestamp)) / 60;
 
                         if ($diffInMinutes >= $threshold) {
                             $currentSession->update(['status' => 'completed']);

@@ -76,6 +76,7 @@ class HistoryController extends Controller
                 'time_formatted' => $reading->recorded_at->timezone('Asia/Jakarta')->format('H:i:s.v'),
                 'sv' => $reading->sv ? (float) $reading->sv : null,
                 'temperature' => (float) $reading->temperature,
+                'process_status' => $reading->process_status,
             ];
         });
 

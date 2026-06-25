@@ -3,7 +3,7 @@
  * Komponen untuk menampilkan detail satu sesi proses - Light Theme
  */
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -14,7 +14,7 @@ import {
     Title,
     Tooltip,
     Legend,
-    Filler
+    Filler,
 } from 'chart.js';
 import { ChevronLeft, Download, TrendingUp, TrendingDown } from 'lucide-react';
 import ExcelJS from 'exceljs';
@@ -31,10 +31,161 @@ ChartJS.register(
     Filler
 );
 
+const PIXELS_PER_POINT = 28;
+const EXPORT_CHART_HEIGHT = 400;
+
+function formatChartTime(reading) {
+    return reading.time_formatted
+        || (reading.recorded_at
+            ? new Date(reading.recorded_at).toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+            })
+            : '');
+}
+
+// Warna mengikuti fase proses: heating → orange, sterilisasi → merah, cooling → biru
+function resolvePhaseColor(reading, { yellow, red, blue }) {
+    const status = (reading?.process_status ?? '').toLowerCase();
+    if (status === 'cooling') return blue;
+    if (status === 'sterilizing' || status === 'holding') return red;
+    return yellow;
+}
+
+function buildChartData(chartReadings, currentSV) {
+    return {
+        labels: chartReadings.map(formatChartTime),
+        datasets: [
+            {
+                fill: true,
+                label: 'PV',
+                data: chartReadings.map(r => r.temperature),
+                segment: {
+                    borderColor: ctx => resolvePhaseColor(chartReadings[ctx.p1DataIndex], {
+                        yellow: '#FFB800',
+                        red: '#FF3B30',
+                        blue: '#007BFF',
+                    }),
+                    backgroundColor: ctx => resolvePhaseColor(chartReadings[ctx.p1DataIndex], {
+                        yellow: 'rgba(255,184,0,0.1)',
+                        red: 'rgba(255,59,48,0.1)',
+                        blue: 'rgba(0,123,255,0.1)',
+                    }),
+                },
+                pointBackgroundColor: ctx => resolvePhaseColor(chartReadings[ctx.dataIndex], {
+                    yellow: '#FFB800',
+                    red: '#FF3B30',
+                    blue: '#007BFF',
+                }),
+                borderWidth: 2,
+                pointRadius: 3,
+                tension: 0.3,
+            },
+            {
+                fill: false,
+                label: 'SV',
+                data: chartReadings.map(r => r.sv || currentSV),
+                borderColor: '#00BF40',
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                pointRadius: 2,
+                pointBackgroundColor: '#00BF40',
+                tension: 0,
+            },
+        ],
+    };
+}
+
+function buildChartOptions(forExport = false) {
+    return {
+        responsive: !forExport,
+        maintainAspectRatio: false,
+        animation: forExport ? false : undefined,
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
+        plugins: {
+            legend: {
+                display: true,
+                position: 'top',
+                labels: { color: '#666', usePointStyle: true, padding: 20 },
+            },
+            tooltip: {
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                titleColor: '#1A1A1A',
+                bodyColor: '#666',
+                borderColor: '#e0e0e0',
+                borderWidth: 1,
+                padding: 12,
+                boxPadding: 6,
+            },
+        },
+        scales: {
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: {
+                    display: true,
+                    text: 'Suhu (°C)',
+                    color: '#FF7A00',
+                },
+                ticks: { color: '#999' },
+                grid: { color: '#f0f0f0' },
+            },
+            x: {
+                grid: { color: '#f0f0f0' },
+                ticks: {
+                    color: '#999',
+                    autoSkip: false,
+                    maxRotation: 45,
+                    minRotation: 35,
+                    font: { size: forExport ? 8 : 9 },
+                },
+            },
+        },
+    };
+}
+
+async function renderFullWidthChartImage(chartReadings, currentSV) {
+    const pointCount = chartReadings.length;
+    const width = Math.max(pointCount * PIXELS_PER_POINT, 600);
+    const height = EXPORT_CHART_HEIGHT;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.position = 'fixed';
+    canvas.style.left = '-9999px';
+    canvas.style.top = '0';
+    document.body.appendChild(canvas);
+
+    const chart = new ChartJS(canvas, {
+        type: 'line',
+        data: buildChartData(chartReadings, currentSV),
+        options: buildChartOptions(true),
+    });
+
+    chart.update();
+
+    await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+
+    const base64 = canvas.toDataURL('image/png');
+    chart.destroy();
+    document.body.removeChild(canvas);
+
+    return { base64, width, height };
+}
+
 export default function ProcessDetail({ session, onBack }) {
     const [exporting, setExporting] = useState(false);
     const [exportMode, setExportMode] = useState('both');
-    const chartRef = useRef(null);
 
     if (!session) return null;
 
@@ -43,15 +194,26 @@ export default function ProcessDetail({ session, onBack }) {
     const latestData = readings && readings.length > 0 ? readings[readings.length - 1] : null;
     const currentSV = latestData?.sv || sessionInfo.latest_sv || 121.1;
     const currentPV = latestData?.temperature ?? sessionInfo.latest_temperature;
+    const chartReadings = readings || [];
+    const chartMinWidth = Math.max(chartReadings.length * PIXELS_PER_POINT, 600);
+    const chartData = buildChartData(chartReadings, currentSV);
+    const chartOptions = buildChartOptions(false);
 
     const handleExport = async () => {
         setExporting(true);
         const includeChart = exportMode === 'both';
 
         try {
-            const chartBase64 = includeChart && chartRef.current
-                ? chartRef.current.toBase64Image()
-                : null;
+            let chartBase64 = null;
+            let chartWidth = 600;
+            let chartHeight = EXPORT_CHART_HEIGHT;
+
+            if (includeChart && chartReadings.length > 0) {
+                const exportChart = await renderFullWidthChartImage(chartReadings, currentSV);
+                chartBase64 = exportChart.base64;
+                chartWidth = exportChart.width;
+                chartHeight = exportChart.height;
+            }
 
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Data Sesi');
@@ -111,12 +273,13 @@ export default function ProcessDetail({ session, onBack }) {
 
             if (chartBase64) {
                 const chartImage = workbook.addImage({
-                    base64: chartBase64,
+                    base64: chartBase64.replace(/^data:image\/\w+;base64,/, ''),
                     extension: 'png',
                 });
+                const chartStartRow = headerRow.number + readings.length + 2;
                 worksheet.addImage(chartImage, {
-                    tl: { col: 4, row: 4 },
-                    ext: { width: 600, height: 300 }
+                    tl: { col: 0, row: chartStartRow },
+                    ext: { width: chartWidth, height: chartHeight },
                 });
             }
 
@@ -136,125 +299,6 @@ export default function ProcessDetail({ session, onBack }) {
             alert('Gagal export data');
         } finally {
             setExporting(false);
-        }
-    };
-
-    const chartReadings = readings || [];
-    const pointCount = chartReadings.length;
-    const chartMinWidth = Math.max(pointCount * 28, 600);
-
-    const formatChartTime = (reading) =>
-        reading.time_formatted
-        || (reading.recorded_at
-            ? new Date(reading.recorded_at).toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-            })
-            : '');
-
-    const chartData = {
-        labels: chartReadings.map(formatChartTime),
-        datasets: [
-            {
-                fill: true,
-                label: 'PV',
-                data: chartReadings.map(r => r.temperature),
-                segment: {
-                    borderColor: ctx => {
-                        if (!chartReadings[0]) return '#FFB800';
-                        const start = new Date(chartReadings[0].recorded_at).getTime();
-                        const current = new Date(chartReadings[ctx.p1DataIndex]?.recorded_at).getTime();
-                        const minutes = (current - start) / 60000;
-                        if (minutes <= 25) return '#FFB800';
-                        if (minutes <= 50) return '#FF3B30';
-                        return '#007BFF';
-                    },
-                    backgroundColor: ctx => {
-                        if (!chartReadings[0]) return 'rgba(255,184,0,0.1)';
-                        const start = new Date(chartReadings[0].recorded_at).getTime();
-                        const current = new Date(chartReadings[ctx.p1DataIndex]?.recorded_at).getTime();
-                        const minutes = (current - start) / 60000;
-                        if (minutes <= 25) return 'rgba(255,184,0,0.1)';
-                        if (minutes <= 50) return 'rgba(255,59,48,0.1)';
-                        return 'rgba(0,123,255,0.1)';
-                    }
-                },
-                pointBackgroundColor: ctx => {
-                    if (ctx.dataIndex === undefined || !chartReadings[0]) return '#FFB800';
-                    const start = new Date(chartReadings[0].recorded_at).getTime();
-                    const current = new Date(chartReadings[ctx.dataIndex]?.recorded_at).getTime();
-                    const minutes = (current - start) / 60000;
-                    if (minutes <= 25) return '#FFB800';
-                    if (minutes <= 50) return '#FF3B30';
-                    return '#007BFF';
-                },
-                borderWidth: 2,
-                pointRadius: 3,
-                tension: 0.3,
-            },
-            {
-                fill: false,
-                label: `SV`,
-                data: chartReadings.map(r => r.sv || currentSV),
-                borderColor: '#00BF40',
-                backgroundColor: 'transparent',
-                borderWidth: 2,
-                borderDash: [5, 5],
-                pointRadius: 2,
-                pointBackgroundColor: '#00BF40',
-                tension: 0,
-            }
-        ]
-    };
-
-    const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-            mode: 'index',
-            intersect: false,
-        },
-        plugins: {
-            legend: {
-                display: true,
-                position: 'top',
-                labels: { color: '#666', usePointStyle: true, padding: 20 }
-            },
-            tooltip: {
-                backgroundColor: 'rgba(255,255,255,0.95)',
-                titleColor: '#1A1A1A',
-                bodyColor: '#666',
-                borderColor: '#e0e0e0',
-                borderWidth: 1,
-                padding: 12,
-                boxPadding: 6,
-            }
-        },
-        scales: {
-            y: {
-                type: 'linear',
-                display: true,
-                position: 'left',
-                title: {
-                    display: true,
-                    text: 'Suhu (°C)',
-                    color: '#FF7A00'
-                },
-                ticks: { color: '#999' },
-                grid: { color: '#f0f0f0' }
-            },
-            x: {
-                grid: { color: '#f0f0f0' },
-                ticks: {
-                    color: '#999',
-                    autoSkip: false,
-                    maxRotation: 45,
-                    minRotation: 35,
-                    font: { size: 9 },
-                },
-            },
         }
     };
 
@@ -336,7 +380,7 @@ export default function ProcessDetail({ session, onBack }) {
                 </h3>
                 <div className="h-72 w-full overflow-x-auto">
                     <div style={{ minWidth: chartMinWidth, height: '100%' }}>
-                        <Line ref={chartRef} data={chartData} options={chartOptions} />
+                        <Line data={chartData} options={chartOptions} />
                     </div>
                 </div>
             </div>

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import { TrendingUp } from 'lucide-react';
@@ -31,6 +31,9 @@ const TARGET_TEMP = 121;
 const TEMP_HIGH = TARGET_TEMP + 5;
 
 export default function MonitoringIndex({ stats, chartData, machineName }) {
+    const chartScrollRef = useRef(null);
+    const lastProcessKeyRef = useRef(null);
+
     useEffect(() => {
         const interval = setInterval(() => {
             router.reload({
@@ -41,6 +44,23 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
         }, 2000);
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        const processKey = chartData.processStartedAt
+            ?? chartData.processSessionId
+            ?? chartData.labels?.[0]
+            ?? null;
+
+        if (
+            lastProcessKeyRef.current !== null
+            && processKey !== null
+            && processKey !== lastProcessKeyRef.current
+        ) {
+            chartScrollRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+        }
+
+        lastProcessKeyRef.current = processKey;
+    }, [chartData.processStartedAt, chartData.processSessionId, chartData.labels]);
 
     const pointCount = chartData.labels?.length ?? 0;
     const chartMinWidth = Math.max(pointCount * 28, 600);
@@ -91,14 +111,13 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
         },
     };
 
-    const resolveColor = (index, recordedAts, { yellow, red, blue }) => {
-        if (!recordedAts || !recordedAts[0] || index === undefined || index === null) return yellow;
-        const start = new Date(recordedAts[0]).getTime();
-        const current = new Date(recordedAts[index]).getTime();
-        const minutes = (current - start) / 60000;
-        if (minutes <= 25) return yellow;
-        if (minutes <= 50) return red;
-        return blue;
+    // Warna mengikuti fase proses: heating → orange, sterilisasi → merah, cooling → biru
+    const resolveColor = (index, statuses, { yellow, red, blue }) => {
+        if (!statuses || index === undefined || index === null) return yellow;
+        const status = (statuses[index] ?? '').toLowerCase();
+        if (status === 'cooling') return blue;
+        if (status === 'sterilizing' || status === 'holding') return red;
+        return yellow;
     };
 
     const lineChartData = {
@@ -109,18 +128,18 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
                 label: 'PV',
                 data: chartData.data,
                 segment: {
-                    borderColor: ctx => resolveColor(ctx.p1DataIndex, chartData.recordedAts, {
+                    borderColor: ctx => resolveColor(ctx.p1DataIndex, chartData.statuses, {
                         yellow: '#FFB800',
                         red: '#FF3B30',
                         blue: '#007BFF',
                     }),
-                    backgroundColor: ctx => resolveColor(ctx.p1DataIndex, chartData.recordedAts, {
+                    backgroundColor: ctx => resolveColor(ctx.p1DataIndex, chartData.statuses, {
                         yellow: 'rgba(255,184,0,0.1)',
                         red: 'rgba(255,59,48,0.1)',
                         blue: 'rgba(0,123,255,0.1)',
                     }),
                 },
-                pointBackgroundColor: ctx => resolveColor(ctx.dataIndex, chartData.recordedAts, {
+                pointBackgroundColor: ctx => resolveColor(ctx.dataIndex, chartData.statuses, {
                     yellow: '#FFB800',
                     red: '#FF3B30',
                     blue: '#007BFF',
@@ -174,7 +193,7 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
                             Grafik Suhu
                         </h3>
                     </div>
-                    <div className="h-[400px] w-full overflow-x-auto">
+                    <div className="h-[400px] w-full overflow-x-auto" ref={chartScrollRef}>
                         <div style={{ minWidth: chartMinWidth, height: '100%' }}>
                             <Line data={lineChartData} options={lineChartOptions} />
                         </div>

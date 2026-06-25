@@ -17,7 +17,9 @@ class MonitoringController extends Controller
         $machine = $request->user()->machine;
         $today = Carbon::today();
 
-        $latestReading = $machine ? SensorReading::where('machine_id', $machine->id)->latest()->first() : null;
+        $latestReading = $machine
+            ? SensorReading::where('machine_id', $machine->id)->latest('recorded_at')->first()
+            : null;
 
         return Inertia::render('Monitoring/Index', [
             'machineName' => $machine ? $machine->name : 'Mesin Belum Ditetapkan',
