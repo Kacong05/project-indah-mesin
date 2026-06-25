@@ -19,6 +19,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Admin Routes
     Route::middleware([\App\Http\Middleware\EnsureIsAdmin::class])->group(function () {
+        Route::get('/admin/dashboard', [\App\Http\Controllers\AdminDashboardController::class, 'index'])->name('admin.dashboard');
         Route::get('/users', [\App\Http\Controllers\UserController::class, 'index'])->name('users');
         Route::get('/users/create', [\App\Http\Controllers\UserController::class, 'create'])->name('users.create');
         Route::post('/users', [\App\Http\Controllers\UserController::class, 'store'])->name('users.store');

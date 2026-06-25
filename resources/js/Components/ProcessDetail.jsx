@@ -132,7 +132,7 @@ function buildChartOptions(forExport = false) {
                 title: {
                     display: true,
                     text: 'Suhu (°C)',
-                    color: '#FF7A00',
+                    color: '#FFB800',
                 },
                 ticks: { color: '#999' },
                 grid: { color: '#f0f0f0' },
@@ -238,7 +238,7 @@ export default function ProcessDetail({ session, onBack }) {
                 cell.fill = {
                     type: 'pattern',
                     pattern: 'solid',
-                    fgColor: { argb: 'FFFF7A00' }
+                    fgColor: { argb: 'FFFFB800' }
                 };
                 cell.alignment = { horizontal: 'center' };
             });
@@ -261,7 +261,7 @@ export default function ProcessDetail({ session, onBack }) {
 
                 const svCell = row.getCell(2);
                 if (reading.sv) {
-                    svCell.font = { color: { argb: 'FFFF7A00' } };
+                    svCell.font = { color: { argb: 'FFFFB800' } };
                 }
 
                 row.alignment = { horizontal: 'center' };
@@ -346,14 +346,14 @@ export default function ProcessDetail({ session, onBack }) {
                     </div>
 
                     {/* SV & PV Display */}
-                    <div className="flex items-center gap-6 p-4 rounded-xl bg-orange-50 border border-orange-100">
+                    <div className="flex items-center gap-6 p-4 rounded-xl bg-yellow-50 border border-yellow-100">
                         <div className="text-center">
                             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">SV</p>
-                            <p className="text-2xl font-bold text-[#FF7A00]">
+                            <p className="text-2xl font-bold text-[#FFB800]">
                                 {currentSV.toFixed(1)}°C
                             </p>
                         </div>
-                        <div className="w-px h-12 bg-orange-200" />
+                        <div className="w-px h-12 bg-yellow-200" />
                         <div className="text-center">
                             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">PV</p>
                             <p className={`text-2xl font-bold ${
@@ -375,7 +375,7 @@ export default function ProcessDetail({ session, onBack }) {
             {/* Chart */}
             <div className="card p-6">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-[#FF7A00]" />
+                    <TrendingUp className="w-5 h-5 text-[#FFB800]" />
                     Grafik PV vs SV
                 </h3>
                 <div className="h-72 w-full overflow-x-auto">
@@ -402,13 +402,13 @@ export default function ProcessDetail({ session, onBack }) {
                                     <td className="font-medium text-gray-800 whitespace-nowrap">
                                         {reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8)}
                                     </td>
-                                    <td className="font-bold text-[#FF7A00] whitespace-nowrap">
+                                    <td className="font-bold text-[#FFB800] whitespace-nowrap">
                                         {reading.sv ? reading.sv.toFixed(1) : '-'}
                                     </td>
                                     <td className="whitespace-nowrap">
                                         <span className={`font-bold ${
                                             reading.temperature >= 120 ? 'text-red-600' :
-                                                reading.temperature >= 110 ? 'text-orange-500' :
+                                                reading.temperature >= 110 ? 'text-yellow-500' :
                                                     'text-gray-700'
                                         }`}>
                                             {reading.temperature}°C

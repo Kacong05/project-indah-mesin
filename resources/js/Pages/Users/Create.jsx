@@ -43,7 +43,7 @@ export default function UserCreate() {
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
                     <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center shadow-lg shadow-[#FF7A00]/20">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FFB800] to-[#FFC933] flex items-center justify-center shadow-lg shadow-[#FFB800]/20">
                             <UserPlus className="w-6 h-6 text-white" />
                         </div>
                         <div>
@@ -74,7 +74,7 @@ export default function UserCreate() {
                                         name="name"
                                         value={data.name}
                                         onChange={(e) => setData('name', e.target.value)}
-                                        className="input pl-10"
+                                        className="pl-10"
                                         placeholder="Masukkan nama lengkap"
                                         required
                                         autoFocus
@@ -96,7 +96,7 @@ export default function UserCreate() {
                                         name="email"
                                         value={data.email}
                                         onChange={(e) => setData('email', e.target.value)}
-                                        className="input pl-10"
+                                        className="pl-10"
                                         placeholder="contoh@email.com"
                                         required
                                     />
@@ -149,7 +149,7 @@ export default function UserCreate() {
                                             name="machine_code"
                                             value={data.machine_code}
                                             onChange={(e) => setData('machine_code', e.target.value.toUpperCase())}
-                                            className="input pl-10"
+                                            className="pl-10"
                                             placeholder="Contoh: RT-001, SN-002..."
                                         />
                                     </div>
@@ -178,7 +178,7 @@ export default function UserCreate() {
                                         name="password"
                                         value={data.password}
                                         onChange={(e) => setData('password', e.target.value)}
-                                        className="input pl-10 pr-10"
+                                        className="pl-10 pr-10"
                                         placeholder="Minimal 8 karakter"
                                         required
                                     />
@@ -206,7 +206,7 @@ export default function UserCreate() {
                                         name="password_confirmation"
                                         value={data.password_confirmation}
                                         onChange={(e) => setData('password_confirmation', e.target.value)}
-                                        className="input pl-10 pr-10"
+                                        className="pl-10 pr-10"
                                         placeholder="Ulangi kata sandi"
                                         required
                                     />

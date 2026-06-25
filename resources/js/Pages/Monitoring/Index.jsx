@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, ChevronsRight } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -33,7 +33,10 @@ const TEMP_HIGH = TARGET_TEMP + 5;
 export default function MonitoringIndex({ stats, chartData, machineName }) {
     const chartScrollRef = useRef(null);
     const lastProcessKeyRef = useRef(null);
+    const userScrollingRef = useRef(false);   // user sedang lihat data lama
+    const [showJumpBtn, setShowJumpBtn] = useState(false);
 
+    // ── Auto-refresh data setiap 2 detik ────────────────────────────
     useEffect(() => {
         const interval = setInterval(() => {
             router.reload({
@@ -45,6 +48,7 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
         return () => clearInterval(interval);
     }, []);
 
+    // ── Reset scroll ke kiri saat sesi proses baru dimulai ──────────
     useEffect(() => {
         const processKey = chartData.processStartedAt
             ?? chartData.processSessionId
@@ -56,11 +60,43 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
             && processKey !== null
             && processKey !== lastProcessKeyRef.current
         ) {
+            userScrollingRef.current = false;
             chartScrollRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
         }
 
         lastProcessKeyRef.current = processKey;
     }, [chartData.processStartedAt, chartData.processSessionId, chartData.labels]);
+
+    // ── Auto-scroll ke kanan saat data baru, kecuali user sedang scroll ──
+    useEffect(() => {
+        const el = chartScrollRef.current;
+        if (!el || userScrollingRef.current) return;
+        el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' });
+    }, [chartData.labels?.length]);
+
+    // ── Deteksi apakah user sedang scroll ke data lama ──────────────
+    useEffect(() => {
+        const el = chartScrollRef.current;
+        if (!el) return;
+
+        const handleScroll = () => {
+            // Threshold 80px: dianggap "di ujung kanan" jika sisa < 80px
+            const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 80;
+            userScrollingRef.current = !atEnd;
+            setShowJumpBtn(!atEnd);
+        };
+
+        el.addEventListener('scroll', handleScroll, { passive: true });
+        return () => el.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    const scrollToLatest = () => {
+        const el = chartScrollRef.current;
+        if (!el) return;
+        userScrollingRef.current = false;
+        setShowJumpBtn(false);
+        el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' });
+    };
 
     const pointCount = chartData.labels?.length ?? 0;
     const chartMinWidth = Math.max(pointCount * 28, 600);
@@ -95,7 +131,7 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
                 title: {
                     display: true,
                     text: 'Suhu (°C)',
-                    color: '#FF7A00',
+                    color: '#FFB800',
                 },
             },
             x: {
@@ -111,7 +147,7 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
         },
     };
 
-    // Warna mengikuti fase proses: heating → orange, sterilisasi → merah, cooling → biru
+    // Warna mengikuti fase proses: heating → kuning, sterilisasi → merah, cooling → biru
     const resolveColor = (index, statuses, { yellow, red, blue }) => {
         if (!statuses || index === undefined || index === null) return yellow;
         const status = (statuses[index] ?? '').toLowerCase();
@@ -189,9 +225,19 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
                 <div className="card p-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                            <TrendingUp className="w-5 h-5 text-[#FF7A00]" />
+                            <TrendingUp className="w-5 h-5 text-[#FFB800]" />
                             Grafik Suhu
                         </h3>
+                        {/* Tombol lompat ke data terbaru */}
+                        {showJumpBtn && (
+                            <button
+                                onClick={scrollToLatest}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#FFB800] text-white hover:bg-[#FFC933] transition-colors shadow-sm animate-slideDown"
+                            >
+                                <ChevronsRight className="w-4 h-4" />
+                                Data Terbaru
+                            </button>
+                        )}
                     </div>
                     <div className="h-[400px] w-full overflow-x-auto" ref={chartScrollRef}>
                         <div style={{ minWidth: chartMinWidth, height: '100%' }}>

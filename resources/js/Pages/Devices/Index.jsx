@@ -28,7 +28,7 @@ export default function DeviceIndex({ devices }) {
                                 <div className="p-5 border-b border-gray-100">
                                     <div className="flex items-start justify-between">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center shadow-lg shadow-[#FF7A00]/20">
+                                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FFB800] to-[#FFC933] flex items-center justify-center shadow-lg shadow-[#FFB800]/20">
                                                 <Cpu className="w-6 h-6 text-white" />
                                             </div>
                                             <div>

@@ -66,7 +66,7 @@ export default function UserIndex({ users }) {
                 {/* Header Actions */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center shadow-lg shadow-[#FF7A00]/20">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FFB800] to-[#FFC933] flex items-center justify-center shadow-lg shadow-[#FFB800]/20">
                             <Users className="w-6 h-6 text-white" />
                         </div>
                         <div>
@@ -109,7 +109,7 @@ export default function UserIndex({ users }) {
                                             <tr key={user.id}>
                                                 <td>
                                                     <div className="flex items-center gap-3">
-                                                        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FF7A00] to-[#FFB800] flex items-center justify-center text-white font-bold shadow-md text-sm">
+                                                        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#FFB800] to-[#FFC933] flex items-center justify-center text-white font-bold shadow-md text-sm">
                                                             {user.name.charAt(0).toUpperCase()}
                                                         </div>
                                                         <span className="font-medium text-gray-800">{user.name}</span>
@@ -176,7 +176,7 @@ export default function UserIndex({ users }) {
                                         href={link.url ?? '#'}
                                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                                             link.active
-                                                ? 'bg-[#FF7A00] text-white'
+                                                ? 'bg-[#FFB800] text-white'
                                                 : link.url
                                                     ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                                                     : 'bg-gray-50 text-gray-400 cursor-default'

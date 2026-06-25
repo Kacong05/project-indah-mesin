@@ -25,7 +25,7 @@ export default function GuestLayout({ children }) {
                             />
                             {/* Fallback SVG icon - shown when image fails */}
                             <svg
-                                className="w-10 h-10 text-[#FF7A00] drop-shadow-md"
+                                className="w-10 h-10 text-[#FFB800] drop-shadow-md"
                                 style={{ display: 'none' }}
                                 fill="none"
                                 viewBox="0 0 24 24"
@@ -35,8 +35,9 @@ export default function GuestLayout({ children }) {
                             </svg>
                         </div>
                     </Link>
-                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-                        Retort<span className="text-[#FF7A00]">Monitor</span>
+                    <h1 className="text-3xl font-extrabold tracking-widest uppercase" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+                        <span style={{ color: '#00BFFF' }}>INDAH</span>
+                        <span style={{ color: '#FFB800' }}> MESIN</span>
                     </h1>
                     <p className="mt-2 text-sm text-gray-500">
                         Sistem Monitoring Retort Sterilisasi
@@ -60,7 +61,7 @@ export default function GuestLayout({ children }) {
                 {/* Footer */}
                 <div className="mt-6 text-center">
                     <p className="text-xs text-gray-400">
-                        &copy; 2026 RetortMonitor. Hak cipta dilindungi.
+                        &copy; 2026 Indah Mesin. Hak cipta dilindungi.
                     </p>
                 </div>
             </div>

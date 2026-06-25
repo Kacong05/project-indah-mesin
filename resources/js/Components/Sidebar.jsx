@@ -33,7 +33,7 @@ export default function Sidebar({ open, setOpen }) {
                 <div className="flex h-16 items-center gap-3 px-5 border-b border-white/10">
                     <img src="/logo.png" alt="Logo" className="w-8 h-8" />
                     <h1 className="text-lg font-bold text-white tracking-wide">
-                        Retort<span className="text-[#FF7A00]">Monitor</span>
+                        Retort<span className="text-[#FFB800]">Monitor</span>
                     </h1>
                 </div>
 
@@ -50,7 +50,7 @@ export default function Sidebar({ open, setOpen }) {
                             href={item.href}
                             className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                                 item.active
-                                    ? 'bg-[#FF7A00] text-white shadow-lg shadow-[#FF7A00]/20'
+                                    ? 'bg-[#FFB800] text-white shadow-lg shadow-[#FFB800]/20'
                                     : 'text-gray-400 hover:bg-white/10 hover:text-white'
                             }`}
                         >
@@ -101,7 +101,7 @@ export default function Sidebar({ open, setOpen }) {
                     <div className="flex h-16 items-center gap-3 px-5 border-b border-white/10">
                         <img src="/logo.png" alt="Logo" className="w-8 h-8" />
                         <h1 className="text-lg font-bold text-white tracking-wide">
-                            Retort<span className="text-[#FF7A00]">Monitor</span>
+                            Retort<span className="text-[#FFB800]">Monitor</span>
                         </h1>
                     </div>
 
@@ -118,7 +118,7 @@ export default function Sidebar({ open, setOpen }) {
                                 onClick={() => setOpen(false)}
                                 className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                                     item.active
-                                        ? 'bg-[#FF7A00] text-white shadow-lg shadow-[#FF7A00]/20'
+                                        ? 'bg-[#FFB800] text-white shadow-lg shadow-[#FFB800]/20'
                                         : 'text-gray-400 hover:bg-white/10 hover:text-white'
                                 }`}
                             >

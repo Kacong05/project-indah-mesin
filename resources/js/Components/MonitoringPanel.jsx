@@ -14,6 +14,10 @@ import {
 function StatusBadge({ status }) {
     const config = {
         running: { label: 'Running', bg: 'bg-green-100 text-green-700', icon: '●' },
+        heating: { label: 'Pemanasan', bg: 'bg-orange-100 text-orange-700', icon: '▲' },
+        sterilizing: { label: 'Sterilisasi', bg: 'bg-red-100 text-red-700', icon: '●' },
+        holding: { label: 'Sterilisasi', bg: 'bg-red-100 text-red-700', icon: '●' },
+        cooling: { label: 'Pendinginan', bg: 'bg-blue-100 text-blue-700', icon: '▼' },
         stop: { label: 'Stop', bg: 'bg-red-100 text-red-700', icon: '■' },
         hold: { label: 'Hold', bg: 'bg-yellow-100 text-yellow-700', icon: '▌▌' },
         alarm: { label: 'Alarm', bg: 'bg-red-100 text-red-700', icon: '⚠' },
@@ -93,8 +97,8 @@ export default function MonitoringPanel({
                         label="Process Value (PV)"
                         value={formatTemp(pv ?? 0)}
                         unit="°C"
-                        colorClass="text-orange-500"
-                        bgClass="bg-orange-50"
+                        colorClass="text-yellow-500"
+                        bgClass="bg-yellow-50"
                         large
                         className="sm:col-span-2 lg:col-span-2"
                     />

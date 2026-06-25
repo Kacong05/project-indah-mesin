@@ -55,8 +55,9 @@ export default function AuthenticatedLayout({ header, children }) {
                     <div className="flex items-center gap-3">
                         <Link href={route('dashboard')} className="flex items-center gap-2">
                             <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain drop-shadow-sm" />
-                            <h1 className="text-xl font-bold text-[#32475c] tracking-tight hidden sm:block">
-                                Retort<span className="text-[#666cff]">Monitor</span>
+                            <h1 className="text-xl font-extrabold tracking-widest uppercase hidden sm:block" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+                                <span style={{ color: '#00BFFF' }}>INDAH</span>
+                                <span style={{ color: '#FFB800' }}> MESIN</span>
                             </h1>
                         </Link>
                     </div>
@@ -130,11 +131,17 @@ export default function AuthenticatedLayout({ header, children }) {
             {mobileMenuOpen && (
                 <div className="md:hidden bg-white border-b border-[#d9dee3]">
                     <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-                        <Link href={route('dashboard')} className="block px-3 py-2 rounded-md text-base font-medium text-[#666cff] bg-[#666cff]/10">Dashboard</Link>
-                        <Link href={route('monitoring')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Monitoring</Link>
-                        <Link href={route('history')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Riwayat Data</Link>
-                        {user.role === 'admin' && (
-                            <Link href={route('users')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Manajemen Pengguna</Link>
+                        {user.role === 'admin' ? (
+                            <>
+                                <Link href={route('admin.dashboard')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Dashboard Admin</Link>
+                                <Link href={route('users')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Manajemen Pengguna</Link>
+                            </>
+                        ) : (
+                            <>
+                                <Link href={route('dashboard')} className="block px-3 py-2 rounded-md text-base font-medium text-[#666cff] bg-[#666cff]/10">Dashboard</Link>
+                                <Link href={route('monitoring')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Monitoring</Link>
+                                <Link href={route('history')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Riwayat Data</Link>
+                            </>
                         )}
                     </div>
                 </div>
@@ -146,9 +153,9 @@ export default function AuthenticatedLayout({ header, children }) {
             </main>
 
             {/* Footer */}
-            <footer className="mt-auto max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <footer className="max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 mt-4 border-t border-gray-200">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-[#566a7f]">
-                    <p>&copy; 2026 RetortMonitor. Hak cipta dilindungi.</p>
+                    <p>&copy; 2026 Indah Mesin. Hak cipta dilindungi.</p>
                     <p>Versi 1.3.0</p>
                 </div>
             </footer>

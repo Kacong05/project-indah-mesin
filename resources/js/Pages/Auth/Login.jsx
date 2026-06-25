@@ -98,7 +98,7 @@ export default function Login({ status, canResetPassword }) {
                     {canResetPassword && (
                         <Link
                             href={route('password.request')}
-                            className="text-sm font-medium text-[#FF7A00] hover:text-[#E66A00] transition-colors"
+                            className="text-sm font-medium text-[#FFB800] hover:text-[#E6A600] transition-colors"
                         >
                             Lupa kata sandi?
                         </Link>

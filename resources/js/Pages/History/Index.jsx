@@ -91,7 +91,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                             onClick={() => setViewMode('sessions')}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                                 viewMode === 'sessions'
-                                    ? 'bg-[#FF7A00] text-white shadow-md'
+                                    ? 'bg-[#FFB800] text-white shadow-md'
                                     : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
                             }`}
                         >
@@ -103,7 +103,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                             disabled={!selectedSession}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                                 viewMode === 'detail'
-                                    ? 'bg-[#FF7A00] text-white shadow-md'
+                                    ? 'bg-[#FFB800] text-white shadow-md'
                                     : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed'
                             }`}
                         >
@@ -204,7 +204,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                     <>
                         {loading ? (
                             <div className="card p-12 flex flex-col items-center justify-center">
-                                <div className="w-10 h-10 border-4 border-gray-200 border-t-[#FF7A00] rounded-full animate-spin mb-4"></div>
+                                <div className="w-10 h-10 border-4 border-gray-200 border-t-[#FFB800] rounded-full animate-spin mb-4"></div>
                                 <p className="text-gray-500">Memuat detail sesi...</p>
                             </div>
                         ) : (

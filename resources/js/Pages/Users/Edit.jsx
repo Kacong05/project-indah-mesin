@@ -74,7 +74,7 @@ export default function UserEdit({ user }) {
                                         name="name"
                                         value={data.name}
                                         onChange={(e) => setData('name', e.target.value)}
-                                        className="input pl-10"
+                                        className="pl-10"
                                         placeholder="Masukkan nama lengkap"
                                         required
                                         autoFocus
@@ -96,7 +96,7 @@ export default function UserEdit({ user }) {
                                         name="email"
                                         value={data.email}
                                         onChange={(e) => setData('email', e.target.value)}
-                                        className="input pl-10"
+                                        className="pl-10"
                                         placeholder="contoh@email.com"
                                         required
                                     />
@@ -149,7 +149,7 @@ export default function UserEdit({ user }) {
                                             name="machine_code"
                                             value={data.machine_code}
                                             onChange={(e) => setData('machine_code', e.target.value.toUpperCase())}
-                                            className="input pl-10"
+                                            className="pl-10"
                                             placeholder="Contoh: RT-001, SN-002..."
                                         />
                                     </div>
@@ -181,7 +181,7 @@ export default function UserEdit({ user }) {
                                         name="password"
                                         value={data.password}
                                         onChange={(e) => setData('password', e.target.value)}
-                                        className="input pl-10 pr-10"
+                                        className="pl-10 pr-10"
                                         placeholder="Kosongkan jika tidak diubah"
                                     />
                                     <button
@@ -208,7 +208,7 @@ export default function UserEdit({ user }) {
                                         name="password_confirmation"
                                         value={data.password_confirmation}
                                         onChange={(e) => setData('password_confirmation', e.target.value)}
-                                        className="input pl-10 pr-10"
+                                        className="pl-10 pr-10"
                                         placeholder="Ulangi kata sandi baru"
                                     />
                                     <button

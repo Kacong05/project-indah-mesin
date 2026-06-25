@@ -31,7 +31,7 @@ function ModelLoader() {
                 <div style={{
                     width: 22, height: 22,
                     border: '2px solid #e0e0e0',
-                    borderTop: '2px solid #FF7A00',
+                    borderTop: '2px solid #FFB800',
                     borderRadius: '50%',
                     animation: 'r3f-spin 0.9s linear infinite',
                 }} />
@@ -224,8 +224,8 @@ export default function Dashboard({ stats, recentActivities, machineName, machin
                         label="Suhu Saat Ini"
                         value={stats.currentTemperature}
                         unit="°C"
-                        color="text-orange-500"
-                        iconBgColor="bg-orange-100"
+                        color="text-yellow-500"
+                        iconBgColor="bg-yellow-100"
                     />
                     <StatCard
                         icon={Zap}
@@ -262,7 +262,7 @@ export default function Dashboard({ stats, recentActivities, machineName, machin
                 <div className="table-container">
                     <div className="card-header">
                         <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                            <ActivitySquare className="w-5 h-5 text-[#FF7A00]" />
+                            <ActivitySquare className="w-5 h-5 text-[#FFB800]" />
                             Aktivitas Terbaru
                         </h3>
                     </div>
@@ -305,7 +305,7 @@ export default function Dashboard({ stats, recentActivities, machineName, machin
                 </div>
 
                 {/* Model 3D */}
-                <div style={{ minHeight: 500 }}>
+                <div style={{ minHeight: 420 }}>
                     <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
                 </div>
 

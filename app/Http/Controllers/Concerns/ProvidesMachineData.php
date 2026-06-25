@@ -9,6 +9,14 @@ use Illuminate\Support\Collection;
 
 trait ProvidesMachineData
 {
+    private const HEATING_TARGET_C = 120.0;
+
+    private const COOLING_TARGET_C = 60.0;
+
+    private const STERILIZING_TARGET_SEC = 50;
+
+    private const COOLING_RATE_PER_SEC = 3.05;
+
     protected function getMachineStats($machine, $latestReading, $today)
     {
         $currentProcessReadings = $machine
@@ -16,6 +24,7 @@ trait ProvidesMachineData
             : collect();
 
         $currentLatest = $currentProcessReadings->last() ?? $latestReading;
+        $timers = $this->calculateProcessTimers($currentProcessReadings);
 
         $currentTemperature = $currentLatest ? $currentLatest->temperature : 0;
         $machineStatus = $machine ? $machine->status : 'Offline';
@@ -62,11 +71,170 @@ trait ProvidesMachineData
             'dataIntervalMs' => $dataIntervalMs,
             'sv' => $currentLatest?->sv ?? 121.1,
             'mv' => null,
-            'processStep' => $currentLatest?->process_status,
+            'processStep' => $this->formatProcessStepLabel($currentLatest?->process_status),
+            'timerTot' => $timers['timerTot'],
+            'timerStp' => $timers['timerStp'],
+            'timerRem' => $timers['timerRem'],
+        ];
+    }
+
+    protected function calculateProcessTimers(Collection $readings): array
+    {
+        $empty = [
             'timerTot' => '00:00:00',
             'timerStp' => '00:00:00',
             'timerRem' => '00:00:00',
         ];
+
+        if ($readings->isEmpty()) {
+            return $empty;
+        }
+
+        $first = $readings->first();
+        $last = $readings->last();
+        $currentPhase = $this->normalizePhase($last->process_status);
+        $phaseStart = $this->findCurrentPhaseStart($readings, $currentPhase);
+
+        $totalSeconds = (int) abs($first->recorded_at->diffInSeconds($last->recorded_at));
+        $stepSeconds = (int) abs($phaseStart->recorded_at->diffInSeconds($last->recorded_at));
+
+        return [
+            'timerTot' => $this->formatTimer($totalSeconds),
+            'timerStp' => $this->formatTimer($stepSeconds),
+            'timerRem' => $this->estimatePhaseRemaining(
+                $readings,
+                $currentPhase,
+                $stepSeconds,
+                (float) $last->temperature
+            ),
+        ];
+    }
+
+    protected function findCurrentPhaseStart(Collection $readings, string $currentPhase): SensorReading
+    {
+        $phaseStart = $readings->last();
+
+        for ($i = $readings->count() - 1; $i >= 0; $i--) {
+            $reading = $readings->get($i);
+
+            if ($this->normalizePhase($reading->process_status) !== $currentPhase) {
+                break;
+            }
+
+            $phaseStart = $reading;
+        }
+
+        return $phaseStart;
+    }
+
+    protected function estimatePhaseRemaining(
+        Collection $readings,
+        string $phase,
+        int $stepSeconds,
+        float $currentTemp
+    ): string {
+        return match ($phase) {
+            'sterilizing' => $this->formatTimer(max(0, self::STERILIZING_TARGET_SEC - $stepSeconds)),
+            'heating' => $this->estimateHeatingRemaining($readings, $currentTemp),
+            'cooling' => $this->estimateCoolingRemaining($readings, $currentTemp),
+            default => '00:00:00',
+        };
+    }
+
+    protected function estimateHeatingRemaining(Collection $readings, float $currentTemp): string
+    {
+        if ($currentTemp >= self::HEATING_TARGET_C) {
+            return '00:00:00';
+        }
+
+        $heatingReadings = $readings
+            ->filter(fn ($r) => $this->normalizePhase($r->process_status) === 'heating')
+            ->values();
+
+        if ($heatingReadings->count() < 2) {
+            return '--:--:--';
+        }
+
+        $first = $heatingReadings->first();
+        $last = $heatingReadings->last();
+        $tempDelta = (float) $last->temperature - (float) $first->temperature;
+        $timeDelta = abs($first->recorded_at->diffInSeconds($last->recorded_at));
+
+        if ($timeDelta <= 0 || $tempDelta <= 0) {
+            return '--:--:--';
+        }
+
+        $ratePerSecond = $tempDelta / $timeDelta;
+        $tempToGo = self::HEATING_TARGET_C - $currentTemp;
+        $remainSeconds = (int) ceil($tempToGo / $ratePerSecond);
+
+        return $this->formatTimer($remainSeconds);
+    }
+
+    protected function estimateCoolingRemaining(Collection $readings, float $currentTemp): string
+    {
+        if ($currentTemp <= self::COOLING_TARGET_C) {
+            return '00:00:00';
+        }
+
+        $coolingReadings = $readings
+            ->filter(fn ($r) => $this->normalizePhase($r->process_status) === 'cooling')
+            ->values();
+
+        if ($coolingReadings->count() >= 2) {
+            $first = $coolingReadings->first();
+            $last = $coolingReadings->last();
+            $tempDrop = (float) $first->temperature - (float) $last->temperature;
+            $timeDelta = abs($first->recorded_at->diffInSeconds($last->recorded_at));
+
+            if ($timeDelta > 0 && $tempDrop > 0) {
+                $ratePerSecond = $tempDrop / $timeDelta;
+                $tempToGo = $currentTemp - self::COOLING_TARGET_C;
+                $remainSeconds = (int) ceil($tempToGo / $ratePerSecond);
+
+                return $this->formatTimer($remainSeconds);
+            }
+        }
+
+        $remainSeconds = (int) ceil(( $currentTemp - self::COOLING_TARGET_C) / self::COOLING_RATE_PER_SEC);
+
+        return $this->formatTimer($remainSeconds);
+    }
+
+    protected function normalizePhase(?string $status): string
+    {
+        $phase = strtolower($status ?? 'heating');
+
+        if (in_array($phase, ['holding', 'sterilizing'], true)) {
+            return 'sterilizing';
+        }
+
+        if ($phase === 'cooling') {
+            return 'cooling';
+        }
+
+        return 'heating';
+    }
+
+    protected function formatProcessStepLabel(?string $status): ?string
+    {
+        return match ($this->normalizePhase($status)) {
+            'sterilizing' => 'STERILISASI',
+            'cooling' => 'PENDINGINAN',
+            default => 'PEMANASAN',
+        };
+    }
+
+    protected function formatTimer(int $seconds): string
+    {
+        $seconds = max(0, $seconds);
+
+        return sprintf(
+            '%02d:%02d:%02d',
+            intdiv($seconds, 3600),
+            intdiv($seconds % 3600, 60),
+            $seconds % 60
+        );
     }
 
     protected function getRecentActivities($userId)

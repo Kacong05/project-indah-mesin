@@ -67,7 +67,7 @@ export default function ProcessCard({ session, isSelected, onClick }) {
             onClick={onClick}
             className={`w-full text-left p-5 rounded-xl border-2 transition-all duration-200 hover-lift ${
                 isSelected
-                    ? 'bg-orange-50 border-[#FF7A00] shadow-lg shadow-[#FF7A00]/10'
+                    ? 'bg-yellow-50 border-[#FFB800] shadow-lg shadow-[#FFB800]/10'
                     : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md'
             }`}
         >
@@ -89,7 +89,7 @@ export default function ProcessCard({ session, isSelected, onClick }) {
                     <p className="text-[10px] font-medium text-gray-500 leading-tight mb-1">
                         Prosesnya sampai dimana
                     </p>
-                    <p className="text-sm font-bold text-[#FF7A00] truncate">
+                    <p className="text-sm font-bold text-[#FFB800] truncate">
                         {formatProcessStatus(process_status)}
                     </p>
                 </div>
