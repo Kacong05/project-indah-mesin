@@ -35,11 +35,13 @@ class DashboardController extends Controller
     {
         $currentTemperature = $latestReading ? $latestReading->temperature : 0;
         $machineStatus = $machine ? $machine->status : 'Offline';
-        $lastSeenAt = $latestReading
-            ? ($latestReading->recorded_at ?? $latestReading->created_at)
-            : null;
-        // Online hanya jika ada data masuk ≤90 detik (ESP publish tiap ~2 detik)
-        $isOnline = $lastSeenAt !== null && $lastSeenAt->greaterThan(now()->subSeconds(90));
+
+        // Gunakan last_heartbeat_at (timestamp server saat data diterima) bukan recorded_at
+        $lastHeartbeat = $machine?->last_heartbeat_at;
+
+        // Online jika heartbeat terakhir ≤15 detik yang lalu
+        $isOnline = $lastHeartbeat !== null && $lastHeartbeat->greaterThan(now()->subSeconds(15));
+
         if ($machine && ! $isOnline && $machine->status !== 'offline') {
             $machine->update(['status' => 'offline']);
         }
@@ -62,8 +64,7 @@ class DashboardController extends Controller
 
         $isLogging = $latestReading && $this->isLoggingStatus($latestReading->process_status);
 
-        // Mock/placeholder data untuk Monitoring Panel (belum ada di database)
-        // TODO: Aktifkan data real saat kolom MV, Process Step, dan Timer tersedia di SensorReading
+        // Mock/placeholder data untuk Monitoring Panel
         $processSession = $machine
             ? \App\Models\ProcessSession::where('machine_id', $machine->id)->latest()->first()
             : null;
@@ -77,13 +78,13 @@ class DashboardController extends Controller
             'totalAlarmsToday' => $totalAlarmsToday,
             'lastUpdate' => $lastUpdate,
             'dataIntervalMs' => $dataIntervalMs,
-            // Monitoring Panel data (placeholder untuk sekarang)
-            'sv' => $processSession?->target_temperature ?? 121.1, // Set Value - target suhu
-            'mv' => null,                                          // Manipulated Value - placeholder
-            'processStep' => $processSession?->current_step,      // Process Step - placeholder
-            'timerTot' => '00:00:00',                              // Total Process Time - placeholder
-            'timerStp' => '00:00:00',                              // Step Time - placeholder
-            'timerRem' => '00:00:00',                              // Remaining Time - placeholder
+            // Monitoring Panel data (placeholder)
+            'sv' => $processSession?->target_temperature ?? 121.1,
+            'mv' => null,
+            'processStep' => $processSession?->current_step,
+            'timerTot' => '00:00:00',
+            'timerStp' => '00:00:00',
+            'timerRem' => '00:00:00',
         ];
     }
 
@@ -138,11 +139,12 @@ class DashboardController extends Controller
                 $readings = SensorReading::where('machine_id', $machine->id)
                     ->where('process_session_id', $latestSession->id)
                     ->latest()
-                    ->take(50) // Ambil lebih banyak data (misal 50) agar grafik lebih panjang
+                    ->take(100)
                     ->get()
                     ->reverse();
 
                 foreach ($readings as $reading) {
+                    // Gunakan created_at (waktu server terima data) sebagai label X-axis
                     $labels[] = $reading->created_at->timezone('Asia/Jakarta')->format('H:i:s');
                     $data[] = $reading->temperature;
                     $svData[] = $reading->sv ?? 121.1;

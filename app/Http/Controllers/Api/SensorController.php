@@ -29,10 +29,10 @@ class SensorController extends Controller
         $validated = $request->validate([
             'machine_code' => 'required|string|exists:retort_machines,machine_code',
             'temperature' => 'required|numeric',
-            'sv' => 'nullable|numeric', // SV dari alat ESP
+            'sv' => 'nullable|numeric',
             'pressure' => 'required|numeric',
             'process_status' => 'nullable|string',
-            'recorded_at' => 'nullable|date', // Timestamp dari ESP
+            'recorded_at' => 'nullable|date',
         ]);
 
         $machine = RetortMachine::where('machine_code', $validated['machine_code'])->first();
@@ -51,11 +51,11 @@ class SensorController extends Controller
         $reading = SensorReading::create([
             'machine_id' => $machine->id,
             'temperature' => $validated['temperature'],
-            'sv' => $validated['sv'] ?? null, // SV dari alat ESP
+            'sv' => $validated['sv'] ?? null,
             'pressure' => $validated['pressure'],
             'process_status' => $validated['process_status'] ?? 'running',
             'recorded_at' => $timestamp,
-            'process_session_id' => $session->id, // Link ke sesi proses
+            'process_session_id' => $session->id,
         ]);
 
         // Update machine heartbeat & status
@@ -86,7 +86,13 @@ class SensorController extends Controller
         $high = self::TARGET_TEMP + self::TEMP_TOLERANCE; // 126°C
         $low = self::TARGET_TEMP - self::TEMP_TOLERANCE; // 116°C
 
-        // Lewati alarm suhu rendah selama fase warm-up (belum pernah mencapai 100°C)
+        // Cek apakah target suhu (121°C) sudah pernah tercapai
+        $hasReachedTarget = SensorReading::where('machine_id', $machine->id)
+            ->where('temperature', '>=', self::TARGET_TEMP)
+            ->exists()
+            || $temperature >= self::TARGET_TEMP;
+
+        // Cek apakah sudah melewati warm-up threshold (100°C)
         $hasReachedWarmup = SensorReading::where('machine_id', $machine->id)
             ->where('temperature', '>=', self::WARMUP_THRESHOLD)
             ->exists()
@@ -103,8 +109,8 @@ class SensorController extends Controller
             ->where('status', Alarm::STATUS_ACTIVE)
             ->exists();
 
-        if ($temperature > $high && !$hasActiveHigh) {
-            // Suhu terlalu tinggi
+        // Suppress alarm HIGH selama fase heating (belum mencapai target 121°C)
+        if ($temperature > $high && !$hasActiveHigh && $hasReachedTarget) {
             Alarm::create([
                 'machine_id' => $machine->id,
                 'type' => Alarm::TYPE_HIGH_TEMPERATURE,
@@ -126,7 +132,6 @@ class SensorController extends Controller
                 return;
             }
 
-            // Suhu terlalu rendah (setelah warm-up selesai = drop tidak normal)
             Alarm::create([
                 'machine_id' => $machine->id,
                 'type' => 'low_temperature',

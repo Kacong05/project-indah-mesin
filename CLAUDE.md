@@ -1,102 +1,178 @@
-# Daftar Problem / Warning Saat Ini di Project
+# Prompt: Perubahan Layout Dashboard Retort Monitoring
 
-Berikut adalah semua masalah (problem/warning/info) yang terdeteksi oleh IDE pada project ini. Tolong bantu analisis dan perbaiki jika memungkinkan.
-
----
-
-## ⚠️ WARNING — `app/Services/ProcessSessionService.php` (Line 168)
-
-**Pesan:** `Too many arguments to function latest(). 1 provided, but 0 accepted.`
-
-**Penjelasan:** Fungsi `latest()` di Eloquent tidak menerima argumen kolom secara langsung dalam konteks ini. Method `latest()` default mengurutkan berdasarkan `created_at`.
-
-**Kemungkinan Perbaikan:**
-- Hapus argumen dari `latest(...)`, gunakan cukup `->latest()` (default ke `created_at`), atau
-- Ganti dengan `->orderBy('nama_kolom', 'desc')` jika ingin mengurutkan berdasarkan kolom tertentu.
+Berikut adalah instruksi perubahan yang perlu dilakukan pada file `resources/js/Pages/Dashboard.jsx` di project Laravel + Inertia + React ini.
 
 ---
 
-## ⚠️ WARNING — `app/Http/Controllers/Api/HistoryController.php` (Line 118)
+## Konteks Project
 
-**Pesan:** `Too many arguments to function latest(). 1 provided, but 0 accepted.`
-
-**Penjelasan:** Sama seperti masalah di `ProcessSessionService.php` — fungsi `latest()` dipanggil dengan argumen kolom yang tidak diterima dalam konteks query ini.
-
-**Kemungkinan Perbaikan:**
-- Cari baris 118 di `HistoryController.php` yang memanggil `->latest('nama_kolom')`.
-- Ganti dengan salah satu:
-  ```php
-  // Opsi 1: default ke created_at
-  ->latest()
-
-  // Opsi 2: urutkan berdasarkan kolom tertentu
-  ->orderBy('nama_kolom', 'desc')
-  ```
+- **Framework**: Laravel + InertiaJS + React (Vite)
+- **Styling**: Tailwind CSS (dark mode, glassmorphism)
+- **File utama**: `resources/js/Pages/Dashboard.jsx`
+- **Komponen 3D**: `resources/js/Components/RetortModel.jsx` (dirender via `@react-three/fiber` + `@react-three/drei`)
+- **Komponen monitoring**: `resources/js/Components/MonitoringPanel.jsx`
+- **Chart library**: `react-chartjs-2` + `chart.js`
 
 ---
 
-## ⚠️ WARNING — `resources/css/app.css` (Lines 1–3)
+## Perubahan yang Diminta
 
-**Pesan:** `Unknown at rule @tailwind` (muncul 3 kali untuk `@tailwind base`, `@tailwind components`, `@tailwind utilities`)
+### 1. Grafik Suhu — Lebih Panjang dan Lebih Banyak Data
 
-**Penjelasan:** IDE tidak mengenali directive `@tailwind` karena ini bukan sintaks CSS standar. Ini adalah **false positive** — kode tetap berfungsi saat di-compile oleh Vite + Tailwind CSS.
+**Lokasi di file**: Sekitar baris 503–515, bagian `{/* Charts + 3D Model Row */}`.
 
-**Kemungkinan Perbaikan:**
-- Install ekstensi **Tailwind CSS IntelliSense** di IDE agar warning ini hilang, atau
-- Tambahkan komentar `/* stylelint-disable */` di bagian atas file jika menggunakan stylelint.
-- Tidak perlu mengubah kode — ini bukan error runtime.
+**Perubahan yang harus dilakukan:**
 
----
+#### a) Perbesar tinggi grafik
+Di dalam div grafik (line chart), ubah class `h-72` menjadi `h-96` atau lebih besar (misal `h-[420px]`) agar grafik terlihat lebih tinggi dan mudah dibaca:
 
-## ℹ️ INFO — `app/Http/Middleware/EnsureIsAdmin.php` (Line 14)
+```jsx
+// SEBELUM:
+<div className="h-72 w-full">
 
-**Pesan (2 item):**
-1. `Name '\Illuminate\Http\Request' can be simplified with 'Request'.`
-2. `Name '\Symfony\Component\HttpFoundation\Response' can be simplified with 'Response'.`
+// SESUDAH:
+<div className="h-[420px] w-full">
+```
 
-**Penjelasan:** Nama class digunakan dengan fully-qualified namespace padahal bisa disederhanakan menggunakan `use` statement di bagian atas file.
+#### b) Perbanyak jumlah data point di grafik
+Data grafik berasal dari `chartData` yang dikirim dari controller Laravel. Di backend (`app/Http/Controllers/DashboardController.php`), cari query yang mengambil data chart dan **ubah limit dari yang saat ini** (biasanya 20–30 record terakhir) menjadi **100 atau lebih** record terakhir. Contoh:
 
-**Kemungkinan Perbaikan:**
-- Pastikan di bagian atas file sudah ada:
-  ```php
-  use Illuminate\Http\Request;
-  use Symfony\Component\HttpFoundation\Response;
-  ```
-- Lalu gunakan cukup `Request` dan `Response` tanpa backslash `\` di depan.
+```php
+// SEBELUM (di DashboardController atau sejenisnya):
+->latest()->limit(20)->get()
 
----
+// SESUDAH:
+->latest()->limit(100)->get()
+```
 
-## ℹ️ INFO — `app/Http/Middleware/EnsureIsOperator.php` (Line 14)
-
-**Pesan (2 item):**
-1. `Name '\Illuminate\Http\Request' can be simplified with 'Request'.`
-2. `Name '\Symfony\Component\HttpFoundation\Response' can be simplified with 'Response'.`
-
-**Penjelasan:** Sama seperti `EnsureIsAdmin.php` — nama class tidak perlu ditulis dengan fully-qualified namespace jika sudah ada `use` statement.
-
-**Kemungkinan Perbaikan:** Sama seperti perbaikan pada `EnsureIsAdmin.php` di atas.
-
----
-
-## ℹ️ INFO — `bootstrap/app.php` (Line 25)
-
-**Pesan:** `Function 'validateCsrfTokens' has been deprecated. Use preventRequestForgery() instead.`
-
-**Penjelasan:** Method `validateCsrfTokens()` sudah di-deprecate di versi Laravel terbaru. Perlu diganti dengan `preventRequestForgery()` agar kompatibel ke depan.
-
-**Kemungkinan Perbaikan:**
-- Di `bootstrap/app.php`, cari baris yang memanggil `->validateCsrfTokens(...)` dan ganti dengan `->preventRequestForgery(...)`.
-- Pastikan untuk mengecek dokumentasi Laravel terkait parameter yang diperlukan (jika ada pengecualian route tertentu).
+> **Catatan**: Pastikan label X-axis (waktu) tetap terbaca. Jika terlalu padat, aktifkan opsi `maxTicksLimit` di konfigurasi chart:
+```js
+scales: {
+    x: {
+        grid: { display: false },
+        ticks: {
+            color: '#94a3b8',
+            maxTicksLimit: 12,  // ← tambahkan ini agar label tidak tumpang tindih
+            maxRotation: 45,
+            minRotation: 0,
+        }
+    }
+}
+```
 
 ---
 
-## Ringkasan
+### 2. Pindahkan Model 3D — ke Bawah Samping Kanan Monitoring Panel
 
-| File | Severity | Status | Masalah |
-|---|---|---|---|
-| `ProcessSessionService.php:168` | ⚠️ Warning | ✅ Fixed | `latest('started_at')` → `orderBy('started_at', 'desc')` |
-| `HistoryController.php:118` | ⚠️ Warning | ✅ Fixed | `latest('started_at')` → `orderBy('started_at', 'desc')` |
-| `app.css:1-3` | ⚠️ Warning | ⏭️ Skip | False positive — install Tailwind IntelliSense |
-| `EnsureIsAdmin.php:14` | ℹ️ Info | ⏭️ Skip | Docblock only, kode sudah benar |
-| `EnsureIsOperator.php:14` | ℹ️ Info | ⏭️ Skip | Docblock only, kode sudah benar |
-| `bootstrap/app.php:25` | ℹ️ Info | ✅ Fixed | `validateCsrfTokens()` → `preventRequestForgery()` |
+**Perubahan besar pada struktur layout.** Saat ini layout-nya:
+
+```
+[Grafik Suhu (2/3 lebar)] [Model 3D (1/3 lebar)]   ← baris pertama
+[Monitoring Panel (full width)]                      ← baris kedua
+```
+
+**Layout baru yang diinginkan:**
+
+```
+[Grafik Suhu (full width)]                           ← baris pertama (grafik lebih lebar)
+[Monitoring Panel (2/3 atau 3/4 lebar)] [Model 3D (1/3 atau 1/4 lebar)]  ← baris kedua
+```
+
+**Cara implementasinya — edit bagian layout di `Dashboard.jsx`:**
+
+```jsx
+{/* ── SEBELUM (hapus/ganti seluruh blok ini) ── */}
+{/* Charts + 3D Model Row */}
+<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    {/* Line Chart */}
+    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg lg:col-span-2">
+        <h3 className="text-lg font-medium text-white mb-4">Grafik Suhu</h3>
+        <div className="h-72 w-full">
+            <Line data={lineChartData} options={lineChartOptions} />
+        </div>
+    </div>
+
+    {/* 3D Retort Model Card */}
+    <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
+</div>
+
+{/* Monitoring Panel - Full Width */}
+<div className="grid grid-cols-1 lg:grid-cols-1">
+    <MonitoringPanel
+        pv={stats.currentTemperature}
+        sv={stats.sv}
+        mv={stats.mv}
+        status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
+        processStep={stats.processStep}
+        timerTot={stats.timerTot}
+        timerStp={stats.timerStp}
+        timerRem={stats.timerRem}
+        isOnline={stats.isOnline}
+    />
+</div>
+```
+
+```jsx
+{/* ── SESUDAH (ganti dengan layout baru ini) ── */}
+
+{/* Grafik Suhu — Full Width */}
+<div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
+    <h3 className="text-lg font-medium text-white mb-4">Grafik Suhu</h3>
+    <div className="h-[420px] w-full">
+        <Line data={lineChartData} options={lineChartOptions} />
+    </div>
+</div>
+
+{/* Monitoring Panel + Model 3D (side by side) */}
+<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+    {/* Monitoring Panel — 2/3 lebar */}
+    <div className="lg:col-span-2">
+        <MonitoringPanel
+            pv={stats.currentTemperature}
+            sv={stats.sv}
+            mv={stats.mv}
+            status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
+            processStep={stats.processStep}
+            timerTot={stats.timerTot}
+            timerStp={stats.timerStp}
+            timerRem={stats.timerRem}
+            isOnline={stats.isOnline}
+        />
+    </div>
+
+    {/* Model 3D — 1/3 lebar, di sebelah kanan monitoring panel */}
+    <div className="lg:col-span-1">
+        <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
+    </div>
+
+</div>
+```
+
+---
+
+## Ringkasan Perubahan
+
+| # | Komponen | Perubahan |
+|---|----------|-----------|
+| 1 | Grafik Suhu | Tinggi diubah dari `h-72` → `h-[420px]` |
+| 2 | Grafik Suhu | Limit data di backend dinaikkan ke 100 record |
+| 3 | Grafik Suhu | Tambahkan `maxTicksLimit: 12` di konfigurasi X-axis |
+| 4 | Layout | Grafik dilepas dari grid 3-kolom, dijadikan full width sendiri |
+| 5 | Layout | Monitoring Panel + Model 3D dijadikan satu baris grid baru |
+| 6 | Model 3D | Dipindahkan ke kolom kanan (1/3 lebar) berdampingan dengan Monitoring Panel |
+
+---
+
+## File yang Perlu Diedit
+
+1. `resources/js/Pages/Dashboard.jsx` — perubahan layout & tinggi grafik
+2. `app/Http/Controllers/DashboardController.php` (atau controller yang relevan) — naikkan limit data chart
+
+---
+
+## Catatan Tambahan
+
+- Pastikan `MonitoringPanel` tetap memiliki `h-full` agar tingginya menyesuaikan model 3D di sebelahnya.
+- `Retort3DCard` sudah memiliki `minHeight: 340` — itu sudah cukup, tidak perlu diubah.
+- Setelah perubahan, jalankan `npm run dev` dan reload browser untuk melihat hasilnya.

@@ -69,8 +69,8 @@ function AlarmPopups({ alarms }) {
                 <div
                     key={alarm.id}
                     className={`flex items-start gap-3 rounded-2xl border p-4 shadow-2xl backdrop-blur-xl ${alarm.severity === 'critical'
-                            ? 'bg-red-900/80 border-red-500/60 text-red-100'
-                            : 'bg-amber-900/80 border-amber-500/60 text-amber-100'
+                        ? 'bg-red-900/80 border-red-500/60 text-red-100'
+                        : 'bg-amber-900/80 border-amber-500/60 text-amber-100'
                         }`}
                     style={{ animation: 'slideIn 0.3s ease' }}
                 >
@@ -136,9 +136,9 @@ function Retort3DCard({ temperature, processStatus }) {
             processStatus === 'error' ? 'Error' : 'Standby';
 
     return (
-        <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg flex flex-col" style={{ minHeight: 340 }}>
+        <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-lg flex flex-col h-full">
             {/* Card header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-shrink-0">
                 <h3 className="text-sm font-semibold text-white">Model 3D Retort</h3>
                 <div className="flex items-center gap-1.5">
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block', boxShadow: `0 0 6px ${statusColor}` }} />
@@ -146,11 +146,11 @@ function Retort3DCard({ temperature, processStatus }) {
                 </div>
             </div>
 
-            {/* Canvas area — MUST have explicit width+height */}
-            <div style={{ flex: 1, position: 'relative', minHeight: 280 }}>
+            {/* Canvas area — fills remaining height */}
+            <div style={{ flex: 1, position: 'relative', minHeight: 300 }}>
                 <Canvas
-                    style={{ width: '100%', height: '100%', display: 'block', position: 'absolute', inset: 0 }}
-                    camera={{ position: [0, 0.5, 3], fov: 50, near: 0.01, far: 500 }}
+                    style={{ width: '100%', height: '100%', display: 'block' }}
+                    camera={{ position: [0, 0.2, 5.5], fov: 40, near: 0.01, far: 500 }}
                     gl={{ antialias: true }}
                     shadows
                 >
@@ -181,12 +181,13 @@ function Retort3DCard({ temperature, processStatus }) {
                     </Suspense>
 
                     <OrbitControls
-                        target={[0, 0, 0]}
+                        target={[0, 0.5, 0]}
                         enableDamping
                         dampingFactor={0.07}
                         minDistance={1}
                         maxDistance={8}
                         enablePan={false}
+                        enableZoom={false}
                         autoRotate={processStatus !== 'running'}
                         autoRotateSpeed={0.5}
                     />
@@ -250,26 +251,59 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
     const lineChartOptions = {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
         plugins: {
             legend: {
                 display: true,
-                labels: { color: '#e2e8f0' }
+                position: 'top',
+                labels: { color: '#94a3b8' }
             },
             tooltip: {
-                mode: 'index',
-                intersect: false,
                 backgroundColor: 'rgba(15,23,42,0.9)',
-                titleColor: '#e2e8f0',
-                bodyColor: '#e2e8f0',
+                titleColor: '#f1f5f9',
+                bodyColor: '#cbd5e1',
                 borderColor: 'rgba(255,255,255,0.1)',
                 borderWidth: 1,
             },
         },
         scales: {
-            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
-            x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+            y: {
+                grid: { color: 'rgba(255,255,255,0.05)' },
+                ticks: { color: '#94a3b8' },
+                title: {
+                    display: true,
+                    text: 'Suhu (°C)',
+                    color: '#f97316',
+                },
+            },
+            x: {
+                grid: { color: 'rgba(255,255,255,0.05)' },
+                ticks: {
+                    color: '#94a3b8',
+                    maxTicksLimit: 100,
+                    maxRotation: 90,
+                    minRotation: 45,
+                    callback: function(value, index) {
+                        // Tampilkan label setiap data point
+                        return this.getLabelForValue(value);
+                    }
+                }
+            }
         },
-        elements: { line: { tension: 0.4 } }
+    };
+
+    // Helper: resolusi warna per segmen/titik berdasarkan menit dari data pertama
+    const resolveColor = (index, recordedAts, { yellow, red, blue }) => {
+        if (!recordedAts || !recordedAts[0] || index === undefined || index === null) return yellow;
+        const start = new Date(recordedAts[0]).getTime();
+        const current = new Date(recordedAts[index]).getTime();
+        const minutes = (current - start) / 60000;
+        if (minutes <= 25) return yellow;
+        if (minutes <= 50) return red;
+        return blue;
     };
 
     const lineChartData = {
@@ -277,39 +311,27 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
         datasets: [
             {
                 fill: true,
-                label: 'PV (°C)',
+                label: 'PV',
                 data: chartData.data,
                 segment: {
-                    borderColor: ctx => {
-                        if (!chartData.recordedAts || !chartData.recordedAts[0]) return '#eab308';
-                        const start = new Date(chartData.recordedAts[0]).getTime();
-                        const current = new Date(chartData.recordedAts[ctx.p1DataIndex]).getTime();
-                        const minutes = (current - start) / 60000;
-                        if (minutes <= 25) return '#eab308'; // yellow
-                        if (minutes <= 50) return '#ef4444'; // red
-                        return '#3b82f6'; // blue
-                    },
-                    backgroundColor: ctx => {
-                        if (!chartData.recordedAts || !chartData.recordedAts[0]) return 'rgba(234,179,8,0.1)';
-                        const start = new Date(chartData.recordedAts[0]).getTime();
-                        const current = new Date(chartData.recordedAts[ctx.p1DataIndex]).getTime();
-                        const minutes = (current - start) / 60000;
-                        if (minutes <= 25) return 'rgba(234,179,8,0.1)';
-                        if (minutes <= 50) return 'rgba(239,68,68,0.1)';
-                        return 'rgba(59,130,246,0.1)';
-                    }
+                    borderColor: ctx => resolveColor(ctx.p1DataIndex, chartData.recordedAts, {
+                        yellow: '#eab308',
+                        red: '#ef4444',
+                        blue: '#3b82f6',
+                    }),
+                    backgroundColor: ctx => resolveColor(ctx.p1DataIndex, chartData.recordedAts, {
+                        yellow: 'rgba(234,179,8,0.1)',
+                        red: 'rgba(239,68,68,0.1)',
+                        blue: 'rgba(59,130,246,0.1)',
+                    }),
                 },
-                pointBackgroundColor: ctx => {
-                    if (ctx.dataIndex === undefined || !chartData.recordedAts || !chartData.recordedAts[0]) return '#eab308';
-                    const start = new Date(chartData.recordedAts[0]).getTime();
-                    const current = new Date(chartData.recordedAts[ctx.dataIndex]).getTime();
-                    const minutes = (current - start) / 60000;
-                    if (minutes <= 25) return '#eab308';
-                    if (minutes <= 50) return '#ef4444';
-                    return '#3b82f6';
-                },
-                borderWidth: 2,
+                pointBackgroundColor: ctx => resolveColor(ctx.dataIndex, chartData.recordedAts, {
+                    yellow: '#eab308',
+                    red: '#ef4444',
+                    blue: '#3b82f6',
+                }),
                 pointRadius: 2,
+                borderWidth: 2,
                 tension: 0.3,
             },
             {
@@ -350,11 +372,10 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
             <div className="space-y-6">
 
                 {flashMsg && (
-                    <div className={`rounded-xl border px-4 py-3 text-sm ${
-                        flashType === 'success'
-                            ? 'bg-green-500/10 border-green-500/30 text-green-200'
-                            : 'bg-red-500/10 border-red-500/30 text-red-200'
-                    }`}>
+                    <div className={`rounded-xl border px-4 py-3 text-sm ${flashType === 'success'
+                        ? 'bg-green-500/10 border-green-500/30 text-green-200'
+                        : 'bg-red-500/10 border-red-500/30 text-red-200'
+                        }`}>
                         {flashMsg}
                     </div>
                 )}
@@ -499,34 +520,37 @@ export default function Dashboard({ stats, recentActivities, chartData, machineN
                     </div>
                 </div>
 
-                {/* Charts + 3D Model Row */}
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-
-                    {/* Line Chart */}
-                    <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg lg:col-span-2">
-                        <h3 className="text-lg font-medium text-white mb-4">Grafik Suhu</h3>
-                        <div className="h-72 w-full">
-                            <Line data={lineChartData} options={lineChartOptions} />
-                        </div>
+                {/* Grafik Suhu — Full Width */}
+                <div className="overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6 shadow-lg">
+                    <h3 className="text-lg font-medium text-white mb-4">Grafik Suhu</h3>
+                    <div className="h-[420px] w-full">
+                        <Line data={lineChartData} options={lineChartOptions} />
                     </div>
-
-                    {/* 3D Retort Model Card */}
-                    <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
                 </div>
 
-                {/* Monitoring Panel - Full Width */}
-                <div className="grid grid-cols-1 lg:grid-cols-1">
-                    <MonitoringPanel
-                        pv={stats.currentTemperature}
-                        sv={stats.sv}
-                        mv={stats.mv}
-                        status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
-                        processStep={stats.processStep}
-                        timerTot={stats.timerTot}
-                        timerStp={stats.timerStp}
-                        timerRem={stats.timerRem}
-                        isOnline={stats.isOnline}
-                    />
+                {/* Monitoring Panel + Model 3D (side by side, equal height) */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-5" style={{ minHeight: 500 }}>
+
+                    {/* Monitoring Panel — 40% lebar */}
+                    <div className="lg:col-span-2 h-full">
+                        <MonitoringPanel
+                            pv={stats.currentTemperature}
+                            sv={stats.sv}
+                            mv={stats.mv}
+                            status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
+                            processStep={stats.processStep}
+                            timerTot={stats.timerTot}
+                            timerStp={stats.timerStp}
+                            timerRem={stats.timerRem}
+                            isOnline={stats.isOnline}
+                        />
+                    </div>
+
+                    {/* Model 3D — 60% lebar */}
+                    <div className="lg:col-span-3 h-full">
+                        <Retort3DCard temperature={currentTemp} processStatus={processStatus} />
+                    </div>
+
                 </div>
 
                 {/* Recent Activity Table */}
