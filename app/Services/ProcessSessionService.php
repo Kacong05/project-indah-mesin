@@ -26,8 +26,11 @@ class ProcessSessionService
      */
     public function getOrCreateSession(Carbon $timestamp, int $machineId): ProcessSession
     {
+        // Gunakan orderByDesc yang stabil: recorded_at DESC, id DESC
+        // Ini penting untuk menghindari race condition saat data masuk bersamaan
         $lastReading = SensorReading::where('machine_id', $machineId)
-            ->latest('recorded_at')
+            ->orderByDesc('recorded_at')
+            ->orderByDesc('id')
             ->first();
 
         if ($lastReading && $lastReading->process_session_id) {
@@ -37,9 +40,10 @@ class ProcessSessionService
                 $diffInMinutes = $lastReading->recorded_at->diffInMinutes($timestamp);
 
                 if ($diffInMinutes < $this->gapThresholdMinutes) {
+                    // Update ended_at langsung dari recorded_at data terbaru
+                    // untuk akurasi timestamp perangkat ESP
                     $lastSession->update([
                         'ended_at' => $timestamp,
-                        'data_count' => $lastSession->data_count + 1,
                     ]);
 
                     return $lastSession;
@@ -115,8 +119,10 @@ class ProcessSessionService
                 if ($currentSession === null) {
                     $shouldCreateNewSession = true;
                 } else {
+                    // Gunakan orderBy yang stabil untuk mendapatkan data terakhir
                     $lastReadingInSession = $currentSession->sensorReadings()
-                        ->latest('recorded_at')
+                        ->orderByDesc('recorded_at')
+                        ->orderByDesc('id')
                         ->first();
 
                     if ($lastReadingInSession) {
@@ -183,5 +189,32 @@ class ProcessSessionService
         $this->gapThresholdMinutes = $minutes;
 
         return $this;
+    }
+
+    /**
+     * Fix ended_at untuk semua sesi yang aktif berdasarkan data reading terakhir.
+     * Ini berguna untuk memperbaiki data yang ended_at-nya tidak ter-update.
+     */
+    public function fixSessionsEndedAt(): int
+    {
+        $fixed = 0;
+
+        $sessions = ProcessSession::where('status', 'active')
+            ->orWhereNull('ended_at')
+            ->with(['sensorReadings' => function ($query) {
+                $query->orderByDesc('recorded_at')->orderByDesc('id')->limit(1);
+            }])
+            ->get();
+
+        foreach ($sessions as $session) {
+            $lastReading = $session->sensorReadings->first();
+
+            if ($lastReading && $lastReading->recorded_at) {
+                $session->update(['ended_at' => $lastReading->recorded_at]);
+                $fixed++;
+            }
+        }
+
+        return $fixed;
     }
 }

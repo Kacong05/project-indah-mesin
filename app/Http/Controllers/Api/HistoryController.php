@@ -26,9 +26,10 @@ class HistoryController extends Controller
         $sessions = ProcessSession::query()
             ->withCount('sensorReadings')
             ->with(['sensorReadings' => function ($query) {
-                $query->latest('recorded_at')->limit(1);
+                // Urutkan dengan recorded_at DESC, id DESC untuk stabilitas
+                $query->orderByDesc('recorded_at')->orderByDesc('id')->limit(1);
             }])
-            ->latest('started_at')
+            ->orderByDesc('started_at')
             ->get()
             ->map(function ($session) {
                 $latestReading = $session->sensorReadings->first();

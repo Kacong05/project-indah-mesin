@@ -86,12 +86,18 @@ class ProcessSession extends Model
 
     /**
      * Format rentang waktu (17.00 - 17.18)
+     * Jika started_at == ended_at, tampilkan hanya satu waktu
      */
     public function getTimeRangeAttribute(): string
     {
         $start = $this->started_at->format('H:i');
-        $end = $this->ended_at ? $this->ended_at->format('H:i') : '...';
 
+        // Jika ended_at null atau sama dengan started_at, tampilkan hanya waktu mulai
+        if (!$this->ended_at || $this->started_at->equalTo($this->ended_at)) {
+            return $start;
+        }
+
+        $end = $this->ended_at->format('H:i');
         return "{$start} - {$end}";
     }
 
