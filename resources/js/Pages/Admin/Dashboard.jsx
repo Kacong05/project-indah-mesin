@@ -4,7 +4,6 @@ import {
     Users,
     Activity,
     CheckCircle,
-    XCircle,
     Clock,
     BarChart3,
     CalendarDays,
@@ -107,17 +106,17 @@ export default function AdminDashboard({ userBatchStats, summary }) {
                             <Clock className="w-6 h-6 text-yellow-500" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-500">Sedang Berjalan</p>
+                            <p className="text-sm text-gray-500">Aktif</p>
                             <p className="text-2xl font-bold text-gray-900">{summary.in_progress_batches}</p>
                         </div>
                     </div>
                     <div className="card p-5 flex items-center gap-4">
-                        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-red-100">
-                            <XCircle className="w-6 h-6 text-red-500" />
+                        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-blue-100">
+                            <Activity className="w-6 h-6 text-blue-500" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-500">Gagal</p>
-                            <p className="text-2xl font-bold text-gray-900">{summary.failed_batches}</p>
+                            <p className="text-sm text-gray-500">Total Hari Ini</p>
+                            <p className="text-2xl font-bold text-gray-900">{summary.batches_today}</p>
                         </div>
                     </div>
                 </div>
@@ -205,15 +204,8 @@ export default function AdminDashboard({ userBatchStats, summary }) {
                                                     {user.in_progress_batches > 0 && (
                                                         <StatusBadge
                                                             count={user.in_progress_batches}
-                                                            label="Berjalan"
+                                                            label="Aktif"
                                                             colorClass="bg-yellow-100 text-yellow-700"
-                                                        />
-                                                    )}
-                                                    {user.failed_batches > 0 && (
-                                                        <StatusBadge
-                                                            count={user.failed_batches}
-                                                            label="Gagal"
-                                                            colorClass="bg-red-100 text-red-700"
                                                         />
                                                     )}
                                                     {user.total_batches === 0 && (

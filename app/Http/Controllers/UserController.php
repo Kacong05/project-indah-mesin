@@ -26,7 +26,7 @@ class UserController extends Controller
             ];
         });
 
-        return Inertia::render('Users/Index', [
+        return Inertia::render('Admin/Users/Index', [
             'users' => $users
         ]);
     }
@@ -35,7 +35,7 @@ class UserController extends Controller
     {
         $this->authorizeAdmin();
 
-        return Inertia::render('Users/Create');
+        return Inertia::render('Admin/Users/Create');
     }
 
     public function store(Request $request)
@@ -78,7 +78,7 @@ class UserController extends Controller
     {
         $this->authorizeAdmin();
 
-        return Inertia::render('Users/Edit', [
+        return Inertia::render('Admin/Users/Edit', [
             'user' => [
                 'id'           => $user->id,
                 'name'         => $user->name,
