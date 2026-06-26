@@ -145,6 +145,11 @@ bool isSessionValid(AsyncWebServerRequest* req) {
   if (req->hasHeader("X-Session")) {
     if (tokenMatchesSession(req->header("X-Session"))) return true;
   }
+  // Token via query (?t=) untuk link download (navigasi `location=` tak bisa
+  // mengirim header X-Session, dan cookie sering tak tersimpan di webview HP).
+  if (req->hasParam("t")) {
+    if (tokenMatchesSession(req->getParam("t")->value())) return true;
+  }
   if (!req->hasHeader("Cookie")) return false;
   String c = req->header("Cookie");
   int i = c.indexOf("session=");

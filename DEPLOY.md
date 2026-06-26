@@ -493,3 +493,35 @@ bash deploy.sh
 ```
 
 Lalu lanjutkan Bagian 5 (mqtt-bridge) dan Bagian 6 (kode mesin) secara manual.
+
+---
+
+## Restart & cek koneksi cepat (`restart_check.sh`)
+
+Skrip **sekali jalan** untuk dipakai saat MQTT ESP32 "off" atau setelah ganti
+kredensial. Skrip akan: menyamakan password user MQTT ESP di broker dengan nilai
+di `RetortLogger/config.ino`, me-restart semua service (Mosquitto, PHP-FPM,
+Nginx, mqtt-bridge, queue, PostgreSQL), lalu menguji listener MQTT, round-trip
+publish/subscribe, dan endpoint `POST /api/sensor`.
+
+> **Catatan port:** `82.153.226.85:8080` = web/API Laravel. `82.153.226.85:1883`
+> = broker MQTT (yang dipakai ESP32). ESP32 **tidak** terhubung ke 8080.
+
+Jalankan di VPS sebagai root:
+
+```bash
+cd /var/www/project-indah-mesin
+git pull                      # ambil restart_check.sh terbaru
+sudo bash restart_check.sh
+```
+
+Sebelum menjalankan, pastikan variabel di bagian atas `restart_check.sh` cocok
+dengan `RetortLogger/config.ino` (`MQTT_ESP_USER`, `MQTT_ESP_PASS`, `VPS_IP`,
+`APP_PORT`). Setelah skrip selesai dan semua cek `[OK]`, **re-flash ESP32**
+dengan `config.ino` (broker `82.153.226.85`, port `1883`).
+
+Pantau data masuk:
+
+```bash
+journalctl -fu mqtt-bridge
+```

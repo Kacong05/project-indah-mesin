@@ -58,7 +58,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <div class="m">
 <h1>Log &amp; Storage</h1>
 <div class="warn" id="w">SD Card tidak tersedia.</div>
-<button class="dlt" id="bl" onclick="location='/api/dl?latest=1'">Download CSV Terbaru</button>
+<button class="dlt" id="bl" onclick="location='/api/dl?latest=1&t='+tok()">Download CSV Terbaru</button>
 <div class="cap" id="ca"></div>
 <div class="path" id="pb"></div>
 <div class="tw"><table><thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>
@@ -74,6 +74,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 </div></div></div>
 <script>
 var cp='/retort',dp='';
+function tok(){return encodeURIComponent(sessionStorage.getItem('st')||'');}
 function fs(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';
 if(b<1073741824)return(b/1048576).toFixed(2)+' MB';return(b/1073741824).toFixed(2)+' GB';}
 function go(p){
@@ -117,7 +118,7 @@ var t3=document.createElement('td');
 if(!f.dir){
 var fp=p+(p.endsWith('/')?'':'/')+f.name;
 var db=document.createElement('button');db.className='dl';db.textContent='DL';
-db.addEventListener('click',function(){location='/api/stor/dl?path='+encodeURIComponent(fp);});
+db.addEventListener('click',function(){location='/api/stor/dl?path='+encodeURIComponent(fp)+'&t='+tok();});
 t3.appendChild(db);
 var rb=document.createElement('button');rb.className='rm';rb.textContent='Del';
 rb.addEventListener('click',function(){sm(fp,f.name);});
