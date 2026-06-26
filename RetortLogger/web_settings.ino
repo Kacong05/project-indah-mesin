@@ -11,24 +11,28 @@ static const char SET_HTML[] PROGMEM = R"rawliteral(
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Settings</title>
 <style>
-body{font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222;margin:0;display:flex}
-nav{width:150px;background:#1f2937;min-height:100vh}
+*{box-sizing:border-box}
+body{font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222;margin:0;display:flex;min-height:100vh}
+nav{width:160px;flex-shrink:0;background:#1f2937}
 nav a{display:block;padding:11px 16px;color:#cbd5e1;text-decoration:none;font-size:14px}
 nav a:hover{background:#374151;color:#fff}
 nav a.a{background:#374151;color:#fff;border-left:3px solid #2563eb}
-.m{flex:1;padding:18px;max-width:480px}
+.m{flex:1;min-width:0;padding:18px;max-width:520px}
 h1{font-size:19px;margin:0 0 14px}
 h3{color:#2563eb;margin:16px 0 6px;font-size:15px}
 label{display:block;color:#666;font-size:13px;margin-top:8px}
-input{width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;
-box-sizing:border-box;margin-top:2px;font-size:14px}
-button{padding:10px 24px;background:#2563eb;color:#fff;border:none;
-border-radius:4px;cursor:pointer;margin-top:16px;font-size:14px}
+input{width:100%;padding:11px;border:1px solid #ccc;border-radius:4px;
+margin-top:2px;font-size:16px}
+button{padding:12px 24px;background:#2563eb;color:#fff;border:none;
+border-radius:4px;cursor:pointer;margin-top:16px;font-size:15px;width:100%}
 .msg{margin-top:10px;padding:8px;border-radius:4px;font-size:13px;display:none}
 .msg.ok{background:#dcfce7;color:#15803d;display:block}
 .msg.er{background:#fee2e2;color:#b91c1c;display:block}
-@media(max-width:600px){nav{width:100%;min-height:auto;display:flex;flex-wrap:wrap}
-nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
+@media(min-width:641px){button{width:auto}}
+@media(max-width:640px){body{flex-direction:column}
+nav{width:100%;display:flex;flex-wrap:wrap}
+nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
+.m{padding:12px}}
 </style></head><body>
 <nav>
 <a href="/dashboard">Dashboard</a>

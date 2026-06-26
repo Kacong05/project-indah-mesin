@@ -11,36 +11,40 @@ static const char STOR_HTML[] PROGMEM = R"rawliteral(
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Storage</title>
 <style>
-body{font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222;margin:0;display:flex}
-nav{width:150px;background:#1f2937;min-height:100vh}
+*{box-sizing:border-box}
+body{font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222;margin:0;display:flex;min-height:100vh}
+nav{width:160px;flex-shrink:0;background:#1f2937}
 nav a{display:block;padding:11px 16px;color:#cbd5e1;text-decoration:none;font-size:14px}
 nav a:hover{background:#374151;color:#fff}
 nav a.a{background:#374151;color:#fff;border-left:3px solid #2563eb}
-.m{flex:1;padding:18px}
+.m{flex:1;min-width:0;padding:18px}
 h1{font-size:19px;margin:0 0 12px}
 .warn{background:#fef3c7;color:#92400e;padding:10px;border-radius:4px;margin-bottom:12px;display:none}
 .cap{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-.ci{background:#fff;border:1px solid #e3e3e3;padding:8px 14px;border-radius:4px}
+.ci{background:#fff;border:1px solid #e3e3e3;padding:8px 14px;border-radius:4px;flex:1 1 90px}
 .ci small{color:#777;font-size:12px}
 .ci b{color:#2563eb}
-.path{color:#666;margin-bottom:8px;font-size:14px}
+.path{color:#666;margin-bottom:8px;font-size:14px;word-break:break-all}
 .path span{cursor:pointer;color:#2563eb}
-table{width:100%;border-collapse:collapse;font-size:14px;background:#fff}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:14px;background:#fff;min-width:340px}
 th{background:#f0f1f3;padding:8px;text-align:left;color:#555}
 td{padding:8px;border-top:1px solid #e3e3e3}
-.dl{background:#2563eb;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:13px;margin-right:4px}
-.rm{background:#dc2626;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:13px}
+.dl{background:#2563eb;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px;margin-right:4px}
+.rm{background:#dc2626;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px}
 .dir{cursor:pointer;color:#2563eb;background:none;border:none;font-family:inherit;font-size:14px}
 .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);
-align-items:center;justify-content:center;z-index:10}
+align-items:center;justify-content:center;z-index:10;padding:16px}
 .modal.show{display:flex}
-.mbox{background:#fff;padding:20px;border-radius:8px;max-width:350px;width:90%}
+.mbox{background:#fff;padding:20px;border-radius:8px;max-width:350px;width:100%}
 .mbox p{color:#555;margin:8px 0 16px;word-break:break-all;font-size:14px}
 .mbtn{display:flex;gap:8px;justify-content:flex-end}
-.mbtn button{padding:7px 16px;border:none;border-radius:4px;cursor:pointer;color:#fff}
+.mbtn button{padding:9px 16px;border:none;border-radius:4px;cursor:pointer;color:#fff}
 .mc{background:#6b7280}.md{background:#dc2626}
-@media(max-width:600px){nav{width:100%;min-height:auto;display:flex;flex-wrap:wrap}
-nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
+@media(max-width:640px){body{flex-direction:column}
+nav{width:100%;display:flex;flex-wrap:wrap}
+nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
+.m{padding:12px}}
 </style></head><body>
 <nav>
 <a href="/dashboard">Dashboard</a>
@@ -54,8 +58,8 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 <div class="warn" id="w">SD Card tidak tersedia.</div>
 <div class="cap" id="ca"></div>
 <div class="path" id="pb"></div>
-<table><thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>
-<tbody id="tb"></tbody></table>
+<div class="tw"><table><thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>
+<tbody id="tb"></tbody></table></div>
 </div>
 <div class="modal" id="dm">
 <div class="mbox">
@@ -66,7 +70,7 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 <button class="md" id="dc">Hapus</button>
 </div></div></div>
 <script>
-var cp='/',dp='';
+var cp='/retort',dp='';
 function fs(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';
 if(b<1073741824)return(b/1048576).toFixed(2)+' MB';return(b/1073741824).toFixed(2)+' GB';}
 function go(p){
@@ -128,7 +132,7 @@ body:'path='+encodeURIComponent(dp)}).then(function(r){
 if(r.status==401){location='/login';return null}return r.json()
 }).then(function(){cm();go(cp);}).catch(function(){cm();});
 });
-go('/');
+go('/retort');
 </script>
 </body></html>
 )rawliteral";
@@ -146,7 +150,7 @@ void setupWebStorage() {
     }
 #if USE_SD
     if (!state.sdReady) { req->send(200, "application/json", "{\"sd\":false}"); return; }
-    String path = "/";
+    String path = "/retort";
     if (req->hasParam("path")) path = req->getParam("path")->value();
     if (path.indexOf("..") >= 0) { req->send(403, "application/json", "{\"ok\":false}"); return; }
 

@@ -3,35 +3,49 @@
 //  Lightweight HTML
 // ============================================================
 
+#include "esp_heap_caps.h"
+
 extern AppConfig      cfg;
 extern RetortState    state;
 extern AsyncWebServer server;
 extern int gLastStaDiscReason;
 extern int gLastMqttState;
+extern uint8_t gCpuPct;
 
 static const char DASH_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dashboard</title>
 <style>
-body{font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222;margin:0;display:flex}
-nav{width:150px;background:#1f2937;min-height:100vh}
+*{box-sizing:border-box}
+body{font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222;margin:0;display:flex;min-height:100vh}
+nav{width:160px;flex-shrink:0;background:#1f2937}
 nav a{display:block;padding:11px 16px;color:#cbd5e1;text-decoration:none;font-size:14px}
 nav a:hover{background:#374151;color:#fff}
 nav a.a{background:#374151;color:#fff;border-left:3px solid #2563eb}
-.m{flex:1;padding:18px}
+.m{flex:1;min-width:0;padding:18px}
 h1{font-size:19px;margin:0 0 14px}
-.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.tg{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:16px;margin-bottom:14px;text-align:center}
+.tn{font-size:clamp(36px,12vw,52px);font-weight:700;line-height:1}
+.tn span{font-size:.45em;font-weight:600;color:#666}
+.tbar{height:10px;background:#e5e7eb;border-radius:5px;margin:12px 0 8px;overflow:hidden}
+.tfill{height:100%;width:0;border-radius:5px;background:#16a34a;transition:width .4s}
+.tfill.wr{background:#d97706}.tfill.er{background:#dc2626}
+.tlbl{font-size:13px;color:#666}
+.tlbl b{color:#2563eb;font-weight:600}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:16px}
 .c{background:#fff;border:1px solid #e3e3e3;padding:12px;border-radius:6px}
 .c small{color:#777;font-size:12px}
-.c .v{font-size:19px;font-weight:700;margin-top:3px}
+.c .v{font-size:clamp(16px,4vw,19px);font-weight:700;margin-top:3px}
 .ok{color:#16a34a}.er{color:#dc2626}.wr{color:#d97706}
 .btns{display:flex;gap:8px;flex-wrap:wrap}
-button{padding:9px 20px;border:none;border-radius:4px;cursor:pointer;color:#fff;font-size:14px}
+button{padding:11px 20px;border:none;border-radius:4px;cursor:pointer;color:#fff;font-size:14px;flex:1 1 auto;min-width:90px}
 .bs{background:#16a34a}.bt{background:#dc2626}.br{background:#6b7280}
 button:disabled{opacity:.4;cursor:not-allowed}
-@media(max-width:600px){nav{width:100%;min-height:auto;display:flex;flex-wrap:wrap}
-nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
+@media(max-width:640px){body{flex-direction:column}
+nav{width:100%;display:flex;flex-wrap:wrap}
+nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
+.m{padding:12px}}
 </style></head><body>
 <nav>
 <a href="/dashboard" class="a">Dashboard</a>
@@ -42,6 +56,11 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 </nav>
 <div class="m">
 <h1>Dashboard</h1>
+<div class="tg">
+<div class="tn" id="tbig">--<span>°C</span></div>
+<div class="tbar"><div class="tfill" id="tbar"></div></div>
+<div class="tlbl">Setting <b id="tsp">--°C</b> · <span id="tph">--</span></div>
+</div>
 <div class="g">
 <div class="c"><small>WiFi</small><div class="v" id="wifi">--</div></div>
 <div class="c"><small>MQTT</small><div class="v" id="mqtt">--</div></div>
@@ -49,6 +68,8 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 <div class="c"><small>Actual</small><div class="v" id="temp">--</div></div>
 <div class="c"><small>Setting</small><div class="v" id="sp">--</div></div>
 <div class="c"><small>SD Card</small><div class="v" id="sd">--</div></div>
+<div class="c"><small>RAM</small><div class="v" id="ram">--</div></div>
+<div class="c"><small>CPU</small><div class="v" id="cpu">--</div></div>
 </div>
 <p id="hint" style="font-size:12px;color:#555;line-height:1.5;margin:0 0 14px"></p>
 <div class="btns">
@@ -68,9 +89,21 @@ return r.json();
 var w=document.getElementById('wifi');w.textContent=d.wifi?'OK':'OFF';w.className='v '+(d.wifi?'ok':'er');
 var mq=document.getElementById('mqtt');mq.textContent=d.mqtt?'OK':'OFF';mq.className='v '+(d.mqtt?'ok':'er');
 var p=document.getElementById('phase');p.textContent=d.phase||'--';p.className='v '+(d.log?'wr':'ok');
-document.getElementById('temp').textContent=(d.temp!=null?Number(d.temp).toFixed(1):'--')+'\u00B0C';
-document.getElementById('sp').textContent=(d.sp!=null?Number(d.sp).toFixed(1):'--')+'\u00B0C';
+var t=d.temp!=null?Number(d.temp):null,sp=d.sp!=null?Number(d.sp):null;
+document.getElementById('temp').textContent=t!=null?t.toFixed(1)+'\u00B0C':'--';
+document.getElementById('sp').textContent=sp!=null?sp.toFixed(1)+'\u00B0C':'--';
+if(t!=null){
+document.getElementById('tbig').innerHTML=t.toFixed(1)+'<span>°C</span>';
+var pct=Math.min(100,Math.max(0,t/130*100));
+var bar=document.getElementById('tbar');bar.style.width=pct+'%';
+bar.className='tfill '+(t>=116&&t<=126?'':t>126?'er':t>=100?'wr':'');
+}else{document.getElementById('tbig').innerHTML='--<span>°C</span>';document.getElementById('tbar').style.width='0';}
+document.getElementById('tsp').textContent=sp!=null?sp.toFixed(1)+'°C':'--°C';
+document.getElementById('tph').textContent=d.phase||'--';
 var s=document.getElementById('sd');s.textContent=d.sd?'OK':'N/A';s.className='v '+(d.sd?'ok':'er');
+function pct(id,v){var e=document.getElementById(id);if(v==null){e.textContent='--';e.className='v';return;}
+e.textContent=v+'%';e.className='v '+(v>=90?'er':v>=75?'wr':'ok');}
+pct('ram',d.ram);pct('cpu',d.cpu);
 document.getElementById('b1').disabled=!!d.log;
 document.getElementById('b2').disabled=!d.log;
 var h=document.getElementById('hint');
@@ -106,11 +139,8 @@ void setupWebDashboard() {
       req->send(401, "application/json", "{\"ok\":false}");
       return;
     }
-#if USE_FAKE_SENSOR
+    // Fase nyata (heating/holding/cooling) — di mode Modbus dihitung dari PV/SV.
     const char* st = phaseName(state.phase);
-#else
-    const char* st = state.logging ? "LOGGING" : "IDLE";
-#endif
     StaticJsonDocument<512> doc;
     doc["wifi"]  = state.wifiConnected;
     doc["mqtt"]  = state.mqttConnected;
@@ -124,15 +154,15 @@ void setupWebDashboard() {
     doc["mport"] = cfg.mqttPort;
     doc["wfail"] = gLastStaDiscReason;
     doc["mfail"] = gLastMqttState;
-    char buf[512];
-    size_t n = serializeJson(doc, buf, sizeof(buf));
-    AsyncWebServerResponse* resp =
-    req->beginResponse(
-        200,
-        "application/json",
-        reinterpret_cast<const uint8_t*>(buf),
-        n
-    );
+    uint32_t freeH  = ESP.getFreeHeap();
+    uint32_t totalH = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
+    uint8_t ramPct  = 0;
+    if (totalH > freeH) ramPct = (uint8_t)(((totalH - freeH) * 100UL) / totalH);
+    doc["ram"] = ramPct;
+    doc["cpu"] = gCpuPct;
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
   });
 
   server.on("/api/cmd", HTTP_POST, [](AsyncWebServerRequest* req) {

@@ -13,14 +13,15 @@ static const char LOGIN_HTML[] PROGMEM = R"rawliteral(
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>RetortLogger</title>
 <style>
+*{box-sizing:border-box}
 body{font-family:system-ui,Arial,sans-serif;background:#f4f5f7;color:#222;margin:0;
-display:flex;align-items:center;justify-content:center;min-height:100vh}
-.box{background:#fff;padding:24px;border:1px solid #ddd;border-radius:6px;width:300px}
+display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.box{background:#fff;padding:24px;border:1px solid #ddd;border-radius:6px;width:100%;max-width:320px}
 h2{margin:0 0 16px;text-align:center;font-size:18px}
-input{width:100%;padding:9px;margin:5px 0;border:1px solid #ccc;
-border-radius:4px;box-sizing:border-box;font-size:14px}
-button{width:100%;padding:10px;margin-top:10px;background:#2563eb;color:#fff;
-border:none;border-radius:4px;cursor:pointer;font-size:14px}
+input{width:100%;padding:11px;margin:5px 0;border:1px solid #ccc;
+border-radius:4px;font-size:16px}
+button{width:100%;padding:12px;margin-top:10px;background:#2563eb;color:#fff;
+border:none;border-radius:4px;cursor:pointer;font-size:15px}
 .e{color:#c00;margin-top:8px;display:none;font-size:13px}
 </style></head><body>
 <div class="box">

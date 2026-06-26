@@ -13,8 +13,8 @@
 #include "mbedtls/sha256.h"
 
 // --- Feature Flags ---
-#define USE_FAKE_SENSOR true  // Simulasi sensor (set true HANYA tanpa Modbus)
-#define USE_MODBUS      false   // RS485 Modbus RTU - Autonics TNL
+#define USE_FAKE_SENSOR false  // Simulasi sensor (set true HANYA tanpa Modbus)
+#define USE_MODBUS      true   // RS485 Modbus RTU - Autonics TNL
 #define USE_RTC         true   // DS3231M RTC
 #define USE_SD          true   // MicroSD logging
 #define USE_OTA         false  // OTA update
@@ -28,6 +28,7 @@
 #define PIN_SD_MISO     13
 #define PIN_RS485_RX    15
 #define PIN_RS485_TX    16
+#define PIN_RS485_DE    -1   // RS485 onboard auto-direction/internal DE
 
 // --- Constants ---
 #define SESSION_TIMEOUT_MS   600000UL  // 10 menit
@@ -83,6 +84,22 @@ unsigned long sessionStart = 0;
 // Diagnostik koneksi (ditampilkan di dashboard)
 int gLastStaDiscReason = 0;  // kode putus WiFi STA (15=password salah)
 int gLastMqttState     = 0;  // PubSubClient state saat gagal (-2=jaringan, 4=user, 5=ACL)
+uint8_t gCpuPct          = 0;  // estimasi beban CPU main loop (%)
+
+// Estimasi CPU: durasi kerja loop() vs 1 detik (butuh delay di akhir loop())
+void loopCpuSample(uint32_t loopUs) {
+  static uint32_t busyUs = 0;
+  static uint32_t winMs  = 0;
+  busyUs += loopUs;
+  uint32_t now = millis();
+  if (winMs == 0) { winMs = now; return; }
+  if (now - winMs >= 1000) {
+    gCpuPct = (uint8_t)((busyUs * 100UL) / 1000000UL);
+    if (gCpuPct > 99) gCpuPct = 99;
+    busyUs = 0;
+    winMs  = now;
+  }
+}
 
 // --- SHA256 ---
 void sha256Hex(const char* input, char* output) {
@@ -232,6 +249,7 @@ void setup() {
 }
 
 void loop() {
+  uint32_t t0 = micros();
   loopWiFiAP();
   loopMQTT();
 #if USE_RTC
@@ -249,4 +267,6 @@ void loop() {
 #if USE_OTA
   loopOTA();
 #endif
+  loopCpuSample(micros() - t0);
+  delay(1);  // yield — cegah busy-spin & ukuran CPU lebih akurat
 }

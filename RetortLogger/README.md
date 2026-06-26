@@ -45,10 +45,11 @@ simulasi akan menimpa data nyata dari controller.
 | Fungsi | Pin |
 |--------|-----|
 | RTC DS3231 SDA / SCL | 8 / 9 |
-| RS485 (Serial1) RX / TX | 15 / 16 |
+| RS485 onboard (Serial1) RX2 / TX2 | 15 / 16 |
 | MicroSD CS / MOSI / CLK / MISO | 10 / 11 / 12 / 13 |
 
-> Catatan RS485: jika tidak ada komunikasi, tukar RX↔TX (15↔16).
+> Catatan RS485: untuk board logger onboard, hubungkan terminal A+ dan B- saja
+> ke controller. Jika tidak ada komunikasi, tukar A+↔B- di terminal RS485.
 
 ---
 
@@ -131,3 +132,25 @@ Perintah lain: `STOP` (tutup file), `STATUS` (publish state).
 
 Pada mode hardware, suhu (PV) dan setpoint (SV) selalu dibaca dari controller
 TNL; tombol Start/Stop hanya mengontrol sesi perekaman ke SD card.
+
+---
+
+## Catatan Perubahan UI Web (Responsive)
+
+Semua halaman web embedded (Login, Dashboard, Settings, Log, Storage) dibuat
+responsive agar nyaman dibuka dari HP maupun desktop, tetap ringan untuk ESP32-S3
+(CSS inline di dalam `<style>`, tanpa file/library eksternal).
+
+- Reset `*{box-sizing:border-box}` agar padding tidak merusak lebar elemen.
+- Layout sidebar fleksibel: nav 160px di desktop, otomatis menjadi top bar
+  (`flex-direction:column`) pada layar ≤ 640px.
+- Input form `font-size:16px` untuk mencegah auto-zoom di iOS; tombol & target
+  sentuh diperbesar (padding lebih tinggi) agar ramah layar sentuh.
+- Tabel (Log & Storage) dibungkus `.tw{overflow-x:auto}` + `min-width` sehingga
+  bisa di-scroll horizontal tanpa merusak layout di layar sempit.
+- Kartu status dashboard memakai grid `auto-fill` + `clamp()` pada ukuran font
+  nilai agar menyesuaikan lebar layar.
+- Tombol form (Login/Settings) full-width di mobile, kembali `auto` di desktop.
+- Modal hapus (Storage) diberi padding & lebar adaptif (`max-width` + `width:100%`).
+
+Tidak ada perubahan logika/endpoint; murni penyesuaian markup & CSS tampilan.
