@@ -1,6 +1,7 @@
 <?php
 
-use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Route;
+
 Route::get('/', function () {
     return redirect()->route('login');
 });
@@ -10,6 +11,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware([\App\Http\Middleware\EnsureIsOperator::class])->group(function () {
         Route::get('/monitoring', [\App\Http\Controllers\MonitoringController::class, 'index'])->name('monitoring');
         Route::get('/history', [\App\Http\Controllers\HistoryController::class, 'index'])->name('history');
+        Route::delete('/history/sessions/{session}', [\App\Http\Controllers\HistoryController::class, 'destroySession'])->name('history.sessions.destroy');
         Route::get('/history/export', [\App\Http\Controllers\HistoryController::class, 'export'])->name('history.export');
         Route::post('/history/log-export', [\App\Http\Controllers\HistoryController::class, 'logExport'])->name('history.log-export');
         Route::get('/retort-monitor', fn () => inertia('RetortMonitor'))->name('retort.monitor');

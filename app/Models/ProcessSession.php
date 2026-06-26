@@ -58,30 +58,35 @@ class ProcessSession extends Model
     }
 
     /**
-     * Scope: urutkan dari terbaru
+     * Scope: urutkan dari terbaru (berdasarkan started_at).
+     *
+     * Sengaja TIDAK memakai nama `latest` agar tidak menimpa method bawaan
+     * Eloquent `latest()` yang mengurutkan berdasarkan `created_at`.
      */
-    public function scopeLatest($query)
+    public function scopeLatestStarted($query)
     {
         return $query->orderBy('started_at', 'desc');
     }
 
     /**
-     * Format display name (Proses 1, Proses 2, dst)
+     * Format display name (Proses 1, Proses 2, dst).
+     *
+     * Nomor proses DI-RESET setiap hari: proses pertama pada suatu tanggal
+     * selalu "Proses 1" (mis. Senin "Proses 1", Selasa "Proses 1"). Dihitung
+     * dinamis dari posisi sesi pada tanggal yang sama (per mesin) sehingga
+     * tetap benar walau ada sesi yang dihapus — tidak bergantung kolom `name`.
      */
     public function getDisplayNameAttribute(): string
     {
-        if ($this->name) {
-            return $this->name;
-        }
+        $query = self::query()
+            ->whereDate('started_at', $this->started_at->toDateString())
+            ->where('id', '<=', $this->id);
 
-        // Hitung nomor proses per mesin
-        $query = self::query()->where('id', '<=', $this->id);
         if ($this->machine_id) {
             $query->where('machine_id', $this->machine_id);
         }
-        $count = $query->count();
 
-        return "Proses {$count}";
+        return 'Proses ' . $query->count();
     }
 
     /**

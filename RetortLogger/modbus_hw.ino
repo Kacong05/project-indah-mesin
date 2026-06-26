@@ -16,14 +16,24 @@ extern AppConfig   cfg;
 extern RetortState state;
 
 // Autonics TN/TNL register map — Read Input Registers (FC04), blok kontigu:
-//   0x03E8 PV | 0x03E9 decimal point | 0x03EA display unit | 0x03EB Set Value
-// (SV LIVE dari controller, bukan holding 0x0000 yang berisi RUN-STOP).
-#define TNL_REG_BLOCK 0x03E8  // mulai baca dari sini, 4 register sekaligus
-#define TNL_BLOCK_N   4
-#define TNL_SLAVE_ID  1       // Unit address default Autonics = 1
-#define MB_BAUD       9600
-#define MB_FORMAT     SERIAL_8N1   // terbukti terbaca (TNL default 8N2 juga OK)
-#define MB_TIMEOUT_MS 150          // batas tunggu jawaban (cukup utk 9600bps)
+//   0x03E8 PV | 0x03E9 decimal point | 0x03EA unit | 0x03EB Set Value |
+//   0x03EC Heating_MV (0..1000 = 0..100.0%) | 0x03ED Cooling_MV
+// RUN/STOP ada di Holding Register (FC03) 0x0000 → 0=RUN, 1=STOP.
+#define TNL_REG_BLOCK   0x03E8  // mulai baca dari sini
+#define TNL_BLOCK_N     6       // PV, dp, unit, SV, Heating_MV, Cooling_MV
+#define TNL_REG_RUNSTOP 0x0000  // FC03 holding: 0=RUN, 1=STOP
+#define TNL_SLAVE_ID    1       // Unit address default Autonics = 1
+#define MB_BAUD         9600
+#define MB_FORMAT       SERIAL_8N1   // terbukti terbaca (TNL default 8N2 juga OK)
+#define MB_TIMEOUT_MS   150          // batas tunggu jawaban (cukup utk 9600bps)
+
+// --- Auto-trigger perekaman (sesuai flow logger) ---
+// Rekam otomatis saat controller aktif (katup terbuka): status RUN ATAU MV>0.
+// Berhenti & tutup sesi saat controller STOP DAN MV=0 (di-debounce agar tak
+// terhenti karena output PID sesaat 0 saat holding — status RUN menahannya).
+#define USE_AUTO_TRIGGER true
+#define MV_ON_RAW        0    // MV raw > nilai ini → output kontrol aktif
+#define STOP_DEBOUNCE_N  5    // siklus (detik) berturut non-aktif sebelum stop
 
 // Kode khusus PV controller (sensor error)
 #define TNL_PV_OPEN   31000  // sensor terbuka / putus
@@ -147,6 +157,32 @@ static void updatePhaseFromData() {
   }
 }
 
+// MV raw terakhir (0..1000) untuk evaluasi trigger.
+static uint16_t gMvRaw = 0;
+
+// Auto-trigger perekaman mengikuti flow logger:
+//   running = (status RUN) ATAU (MV > 0)  → katup terbuka / proses jalan
+//   • running & belum rekam   → mulai sesi (buka file CSV, simpan ts mulai)
+//   • !running (di-debounce) & sedang rekam → tutup sesi (flush + close file)
+// Karena pakai OR, selama status RUN perekaman tetap jalan walau MV PID
+// sesaat 0 saat holding; berhenti hanya bila STOP sekaligus MV=0.
+static void updateAutoTrigger() {
+  if (!USE_AUTO_TRIGGER) return;
+
+  static uint8_t stopCnt = 0;
+  bool running = state.ctrlRun || (gMvRaw > MV_ON_RAW);
+
+  if (running) {
+    stopCnt = 0;
+    if (!state.logging) startProcess();   // buka sesi/rekam baru
+  } else if (state.logging) {
+    if (++stopCnt >= STOP_DEBOUNCE_N) {    // tahan glitch sebelum benar-benar stop
+      stopCnt = 0;
+      stopProcess();                       // flush buffer + tutup sesi
+    }
+  }
+}
+
 void setupModbus() {
 #if PIN_RS485_DE >= 0
   pinMode(PIN_RS485_DE, OUTPUT);
@@ -159,11 +195,11 @@ void setupModbus() {
                 TNL_SLAVE_ID, MB_BAUD, MB_TIMEOUT_MS);
 }
 
-// Satu kali poll PV + SV. Dipanggil dari loggerTask tiap 1 detik.
+// Satu kali poll PV/SV/MV + status RUN/STOP. Dipanggil loggerTask tiap 1 detik.
 // Tidak ada timing internal: kadensi diatur task (vTaskDelayUntil).
 void loopModbus() {
-  // Baca blok FC04 0x03E8..0x03EB sekaligus: PV, decimal point, unit, SV.
-  // PV dan SV memakai skala decimal point yang sama.
+  // 1) Blok FC04 0x03E8..0x03ED: PV, dp, unit, SV, Heating_MV, Cooling_MV.
+  //    PV & SV memakai skala decimal point yang sama; MV skala tetap (raw/10=%).
   uint16_t r[TNL_BLOCK_N];
   if (mbRead(0x04, TNL_REG_BLOCK, TNL_BLOCK_N, r)) {
     int16_t  pvRaw = (int16_t)r[0];
@@ -178,12 +214,25 @@ void loopModbus() {
       state.temperature = (float)pvRaw / div;
     }
     state.setpoint = (float)svRaw / div;  // SV LIVE dari controller (dinamis)
+
+    // MV = output kontrol terbesar (heating/cooling). 0..1000 = 0..100.0%.
+    uint16_t hmv = r[4], cmv = r[5];
+    gMvRaw   = (hmv >= cmv) ? hmv : cmv;
+    state.mv = (float)gMvRaw / 10.0f;
   } else {
     // Gagal sekali: pertahankan nilai terakhir, jangan block.
-    Serial.println(F("[MODBUS] read miss (pakai PV/SV terakhir)"));
+    Serial.println(F("[MODBUS] read miss (pakai PV/SV/MV terakhir)"));
   }
 
+  // 2) Status RUN/STOP (FC03 holding 0x0000). 0=RUN, 1=STOP.
+  uint16_t rs;
+  if (mbRead(0x03, TNL_REG_RUNSTOP, 1, &rs)) {
+    state.ctrlRun = (rs == 0);
+  }
+  // Bila gagal baca: pertahankan status terakhir (hindari stop palsu).
+
   updatePhaseFromData();
+  updateAutoTrigger();   // auto mulai/stop perekaman sesuai katup/MV/RUN
 }
 
 #else

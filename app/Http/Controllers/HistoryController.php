@@ -7,6 +7,7 @@ use App\Models\SensorReading;
 use App\Models\ActivityLog;
 use App\Services\F0Calculator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -89,6 +90,32 @@ class HistoryController extends Controller
             'machines' => $machines,
             'filters' => $request->only(['machine_id', 'start_date', 'end_date'])
         ]);
+    }
+
+    /**
+     * Hapus satu sesi proses beserta seluruh data sensornya.
+     * Dibatasi pada mesin milik operator yang login.
+     */
+    public function destroySession(Request $request, ProcessSession $session)
+    {
+        $machineId = $request->user()->machine_id;
+        if ($machineId && $session->machine_id !== $machineId) {
+            abort(403);
+        }
+
+        $sessionName = $session->display_name;
+
+        DB::transaction(function () use ($session) {
+            $session->sensorReadings()->delete();
+            $session->delete();
+        });
+
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'action' => "Menghapus proses: {$sessionName}",
+        ]);
+
+        return back();
     }
 
     public function export(Request $request)

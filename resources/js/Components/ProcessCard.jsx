@@ -3,7 +3,8 @@
  * Komponen kartu untuk menampilkan satu sesi proses - Light Theme
  */
 
-import { Clock, Thermometer, Activity } from 'lucide-react';
+import { useState } from 'react';
+import { Clock, Thermometer, Activity, MoreVertical, Trash2 } from 'lucide-react';
 
 const F0_TARGET = 6;
 
@@ -41,7 +42,7 @@ function getCardBgColor(f0) {
     return 'bg-red-50 border-red-200';
 }
 
-export default function ProcessCard({ session, isSelected, onClick }) {
+export default function ProcessCard({ session, isSelected, onClick, onDelete }) {
     const {
         name,
         time_range,
@@ -53,6 +54,8 @@ export default function ProcessCard({ session, isSelected, onClick }) {
         process_status,
     } = session;
 
+    const [menuOpen, setMenuOpen] = useState(false);
+
     const isActive = status === 'active';
 
     const dateStr = new Date(started_at).toLocaleDateString('id-ID', {
@@ -62,16 +65,28 @@ export default function ProcessCard({ session, isSelected, onClick }) {
         year: 'numeric',
     });
 
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick?.();
+        }
+    };
+
     return (
-        <button
+        <div
+            role="button"
+            tabIndex={0}
             onClick={onClick}
-            className={`w-full text-left p-5 rounded-xl border-2 transition-all duration-200 hover-lift ${
+            onKeyDown={handleKeyDown}
+            className={`relative w-full text-left p-5 rounded-xl border-2 transition-all duration-200 hover-lift cursor-pointer ${
+                menuOpen ? 'z-30' : ''
+            } ${
                 isSelected
                     ? 'bg-yellow-50 border-[#FFB800] shadow-lg shadow-[#FFB800]/10'
                     : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md'
             }`}
         >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-2">
                     <h3 className="font-bold text-gray-800">{name}</h3>
                     {isActive && (
@@ -81,7 +96,49 @@ export default function ProcessCard({ session, isSelected, onClick }) {
                         </span>
                     )}
                 </div>
-                <span className="text-xs text-gray-400">{dateStr}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-sm font-semibold text-gray-500">{dateStr}</span>
+                    {onDelete && (
+                        <div className="relative">
+                            <button
+                                type="button"
+                                aria-label="Opsi proses"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuOpen((o) => !o);
+                                }}
+                                className="p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                            >
+                                <MoreVertical className="w-4 h-4" />
+                            </button>
+                            {menuOpen && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-10"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setMenuOpen(false);
+                                        }}
+                                    />
+                                    <div className="absolute right-0 top-8 z-20 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setMenuOpen(false);
+                                                onDelete();
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                            Hapus Proses
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className={`flex items-center gap-4 mb-4 p-3 rounded-lg border ${getCardBgColor(f0)}`}>
@@ -103,9 +160,9 @@ export default function ProcessCard({ session, isSelected, onClick }) {
             </div>
 
             <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-100">
-                <div className="flex items-center gap-1.5 text-xs">
-                    <Clock className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-gray-500 font-medium">{time_range}</span>
+                <div className="flex items-center gap-1.5 text-sm">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600 font-semibold">{time_range}</span>
                 </div>
 
                 <div className="flex items-center gap-1.5 text-xs">
@@ -120,6 +177,6 @@ export default function ProcessCard({ session, isSelected, onClick }) {
                     <span className="text-gray-500 font-medium">{data_count} data</span>
                 </div>
             </div>
-        </button>
+        </div>
     );
 }

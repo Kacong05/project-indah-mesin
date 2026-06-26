@@ -67,11 +67,13 @@ struct RetortState {
   float temperature;  // PV (actual)
   float setpoint;     // SV (setting)
   float pressure;
+  float mv;           // MV output kontrol (%) — Heating/Cooling MV terbesar
+  bool ctrlRun;       // status RUN/STOP controller (true = RUN)
   unsigned long phaseStartMs;
   bool wifiConnected;
   bool mqttConnected;
   bool sdReady;
-  bool logging;       // true = sesi perekaman CSV aktif
+  bool logging;       // true = sesi perekaman CSV aktif (auto-trigger)
 };
 
 // --- Globals ---
@@ -191,6 +193,7 @@ void loopModbus();
 void setupRTC();
 void loopRTC();
 void getTimestamp(char* buf, size_t len);
+void getTimestampFile(char* buf, size_t len);
 void setupSDLogger();
 void loopSDLogger();
 void sdLogEntry();
@@ -241,6 +244,8 @@ void setup() {
   state.temperature  = 25.0f;
   state.setpoint     = 121.0f;
   state.pressure     = 1.013f;
+  state.mv           = 0.0f;
+  state.ctrlRun      = false;
   state.phaseStartMs = 0;
   state.wifiConnected = false;
   state.mqttConnected = false;

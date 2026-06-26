@@ -61,7 +61,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <button class="dlt" id="bl" onclick="location='/api/dl?latest=1&t='+tok()">Download CSV Terbaru</button>
 <div class="cap" id="ca"></div>
 <div class="path" id="pb"></div>
-<div class="tw"><table><thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>
+<div class="tw"><table><thead><tr><th>Tanggal Jam</th><th>Size</th><th></th></tr></thead>
 <tbody id="tb"></tbody></table></div>
 </div>
 <div class="modal" id="dm">
@@ -78,6 +78,9 @@ function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
 function tok(){return encodeURIComponent(sessionStorage.getItem('st')||'');}
 function fs(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';
 if(b<1073741824)return(b/1048576).toFixed(2)+' MB';return(b/1073741824).toFixed(2)+' GB';}
+// Nama file log "YYYYMMDD_HHMMSS.csv" → "DD-MM-YYYY HH:MM:SS" (tgl bln thn jam mnt dtk).
+function fmtName(n){var m=/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.csv$/i.exec(n);
+return m?m[3]+'-'+m[2]+'-'+m[1]+' '+m[4]+':'+m[5]+':'+m[6]:n;}
 function go(p){
 cp=p;
 fetch('/api/stor?path='+encodeURIComponent(p),{headers:ah(),credentials:'same-origin'}).then(function(r){
@@ -104,6 +107,10 @@ acc+=pt+'/';var s=document.createElement('span');s.textContent=pt;
 var t=acc;s.addEventListener('click',function(){go(t);});pb.appendChild(s);
 });
 var tb=document.getElementById('tb');tb.textContent='';
+// Folder dulu, lalu file TERBARU di atas (nama YYYYMMDD_HHMMSS → sort desc).
+if(d.files)d.files.sort(function(a,b){
+if(a.dir!==b.dir)return a.dir?-1:1;
+return a.name<b.name?1:(a.name>b.name?-1:0);});
 if(d.files)d.files.forEach(function(f){
 var tr=document.createElement('tr');
 var t1=document.createElement('td');
@@ -113,7 +120,7 @@ btn.textContent='\uD83D\uDCC1 '+f.name;
 var tgt=p+(p.endsWith('/')?'':'/')+f.name;
 btn.addEventListener('click',function(){go(tgt);});
 t1.appendChild(btn);
-}else{t1.textContent='\uD83D\uDCC4 '+f.name;}
+}else{t1.textContent='\uD83D\uDCC4 '+fmtName(f.name);t1.title=f.name;}
 var t2=document.createElement('td');t2.textContent=f.dir?'--':fs(f.size);
 var t3=document.createElement('td');
 if(!f.dir){

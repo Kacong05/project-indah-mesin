@@ -78,6 +78,21 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
         router.reload({ only: ['sessions'] });
     };
 
+    const handleDeleteSession = (session) => {
+        if (!window.confirm(`Hapus ${session.name}? Seluruh data proses ini akan dihapus permanen.`)) {
+            return;
+        }
+        router.delete(route('history.sessions.destroy', session.id), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                if (selectedSession?.id === session.id) {
+                    handleBackToList();
+                }
+            },
+        });
+    };
+
     return (
         <AuthenticatedLayout header="Riwayat Data">
             <Head title="Riwayat Data" />
@@ -182,6 +197,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                                         session={session}
                                         isSelected={selectedSession?.id === session.id}
                                         onClick={() => handleSessionClick(session)}
+                                        onDelete={() => handleDeleteSession(session)}
                                     />
                                 ))}
                             </div>

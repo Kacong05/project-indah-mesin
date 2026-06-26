@@ -27,14 +27,11 @@ static void ensureDir() {
 }
 
 static void openNewLog() {
-  const char* ts = gLastTs;  // timestamp cache dari task logger
-  // Bersihkan jadi filename-safe
+  // Nama file sortable & tak ambigu: "YYYYMMDD_HHMMSS.csv" (24 jam).
+  // Aman dibaca RTC di sini karena openNewLog dipanggil dari loggerTask
+  // (task yang sama yang memiliki akses I2C/RTC → tak ada race).
   char clean[20] = {0};
-  int ci = 0;
-  for (int i = 0; ts[i] && ci < 19; i++) {
-    if (ts[i] >= '0' && ts[i] <= '9') clean[ci++] = ts[i];
-    else if ((ts[i] == ' ' || ts[i] == '/') && ci > 0) clean[ci++] = '_';
-  }
+  getTimestampFile(clean, sizeof(clean));
   if (clean[0] == '\0') snprintf(clean, sizeof(clean), "%lu", millis());
   snprintf(logPath, sizeof(logPath), "%s/%s.csv", SD_LOG_DIR, clean);
   ensureDir();

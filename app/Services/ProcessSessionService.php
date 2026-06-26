@@ -66,7 +66,10 @@ class ProcessSessionService
                 ->active()
                 ->update(['status' => 'completed']);
 
-            $processNumber = ProcessSession::where('machine_id', $machineId)->count() + 1;
+            // Nomor proses di-reset per hari (lihat ProcessSession::display_name).
+            $processNumber = ProcessSession::where('machine_id', $machineId)
+                ->whereDate('started_at', $timestamp->toDateString())
+                ->count() + 1;
 
             return ProcessSession::create([
                 'machine_id' => $machineId,

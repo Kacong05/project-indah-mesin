@@ -45,6 +45,16 @@ void getTimestamp(char* buf, size_t len) {
            h, now.minute(), now.second(), ampm);
 }
 
+// Nama file log sortable & tak ambigu: "YYYYMMDD_HHMMSS" (24 jam).
+// Urut leksikografis = urut kronologis → list "terbaru dulu" cukup sort desc.
+void getTimestampFile(char* buf, size_t len) {
+  if (!rtcOk) { snprintf(buf, len, "00000000_000000"); return; }
+  DateTime now = rtcModule.now();
+  snprintf(buf, len, "%04d%02d%02d_%02d%02d%02d",
+           now.year(), now.month(), now.day(),
+           now.hour(), now.minute(), now.second());
+}
+
 #else
 
 void setupRTC() {}
@@ -52,6 +62,9 @@ void loopRTC() {}
 void getTimestamp(char* buf, size_t len) {
   unsigned long s = millis() / 1000;
   snprintf(buf, len, "UP_%lus", s);
+}
+void getTimestampFile(char* buf, size_t len) {
+  snprintf(buf, len, "UP_%010lu", millis() / 1000);
 }
 
 #endif

@@ -92,9 +92,11 @@ void mqttPublishState() {
   char buf[256];
   snprintf(buf, sizeof(buf),
     "{\"id\":\"%s\",\"ts\":\"%s\",\"phase\":\"%s\","
-    "\"actual\":%.1f,\"setting\":%.1f,\"logging\":%s}",
+    "\"actual\":%.1f,\"setting\":%.1f,\"mv\":%.1f,"
+    "\"run\":%s,\"logging\":%s}",
     cfg.machineId, gLastTs, phaseName(state.phase),
-    state.temperature, state.setpoint,
+    state.temperature, state.setpoint, state.mv,
+    state.ctrlRun ? "true" : "false",
     state.logging ? "true" : "false");
   mqtt.publish(cfg.mqttPubTopic, buf, false);
 }

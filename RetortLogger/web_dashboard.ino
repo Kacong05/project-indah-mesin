@@ -51,12 +51,13 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <div class="tg">
 <div class="tn" id="tbig">--<span>°C</span></div>
 <div class="tbar"><div class="tfill" id="tbar"></div></div>
-<div class="tlbl">Setting <b id="tsp">--°C</b> · <span id="tph">--</span></div>
+<div class="tlbl">Setting <b id="tsp">--°C</b> · <span id="tph">--</span> · <span id="trec">--</span></div>
 </div>
 <div class="g">
 <div class="c"><small>WiFi</small><div class="v" id="wifi">--</div></div>
 <div class="c"><small>MQTT</small><div class="v" id="mqtt">--</div></div>
 <div class="c"><small>Status</small><div class="v" id="phase">--</div></div>
+<div class="c"><small>Output MV</small><div class="v" id="mv">--</div></div>
 <div class="c"><small>SD Card</small><div class="v" id="sd">--</div></div>
 </div>
 <p id="hint" style="font-size:12px;color:#555;line-height:1.5;margin:0 0 14px"></p>
@@ -81,6 +82,8 @@ bar.className='tfill '+(t>=116&&t<=126?'':t>126?'er':t>=100?'wr':'');
 }else{document.getElementById('tbig').innerHTML='--<span>°C</span>';document.getElementById('tbar').style.width='0';}
 document.getElementById('tsp').textContent=sp!=null?sp.toFixed(1)+'°C':'--°C';
 document.getElementById('tph').textContent=d.phase||'--';
+var rec=document.getElementById('trec');rec.textContent=d.log?'● REC':(d.run?'RUN':'idle');
+var mv=document.getElementById('mv');mv.textContent=d.mv!=null?Number(d.mv).toFixed(1)+'%':'--';mv.className='v '+(d.mv>0?'wr':'');
 var s=document.getElementById('sd');s.textContent=d.sd?'OK':'N/A';s.className='v '+(d.sd?'ok':'er');
 var h=document.getElementById('hint');
 if(d.wifi&&d.mqtt){h.textContent='';}
@@ -119,6 +122,8 @@ void setupWebDashboard() {
     doc["phase"] = st;
     doc["temp"]  = state.temperature;
     doc["sp"]    = state.setpoint;
+    doc["mv"]    = state.mv;
+    doc["run"]   = state.ctrlRun;
     doc["sd"]    = state.sdReady;
     doc["log"]   = state.logging;
     doc["ssid"]  = cfg.wifiSSID;

@@ -63,7 +63,7 @@ simulasi akan menimpa data nyata dari controller.
 
 Firmware memakai **raw Modbus RTU** (tanpa library) dengan timeout pendek
 (150 ms) agar tidak pernah mem-block siklus 1 detik. **Satu transaksi**
-Read Input Registers (FC04) membaca blok kontigu `0x03E8`–`0x03EB`:
+Read Input Registers (FC04) membaca blok kontigu `0x03E8`–`0x03ED`:
 
 | Index | Register | Isi |
 |-------|----------|-----|
@@ -71,9 +71,17 @@ Read Input Registers (FC04) membaca blok kontigu `0x03E8`–`0x03EB`:
 | 1 | `0x03E9` | Decimal point (skala otomatis) |
 | 2 | `0x03EA` | Display unit |
 | 3 | `0x03EB` | **Set Value (SV / Setting) — LIVE dari controller** |
+| 4 | `0x03EC` | **Heating MV** (`0..1000` = `0..100.0%`) |
+| 5 | `0x03ED` | **Cooling MV** (`0..1000` = `0..100.0%`) |
 
 PV dan SV memakai skala decimal point yang sama (mis. `dp=1` → /10).
-Keduanya **dinamis dibaca dari TNL**, bukan nilai statis.
+MV memakai skala tetap (`raw / 10 = %`). `state.mv` = MV terbesar (heating/cooling).
+
+Transaksi kedua membaca **status RUN/STOP** via Holding Register (FC03):
+
+| Register | Isi |
+|----------|-----|
+| `0x0000` | RUN/STOP — `0 = RUN`, `1 = STOP` |
 
 > SV **bukan** di holding register `0x0000` — itu adalah RUN-STOP. SV live
 > read-only ada di input register `0x03EB` (FC04), sumber: TN Series
@@ -116,15 +124,20 @@ buka/tutup file CSV dikerjakan `loggerTask` agar seluruh I/O SD satu konteks.
 
 ## Output CSV
 
-File `/retort/<timestamp>.csv` dengan kolom:
+File `/retort/YYYYMMDD_HHMMSS.csv` (nama = waktu mulai sesi, 24 jam). Format ini
+**sortable** (urut leksikografis = kronologis) sehingga halaman *Log & Storage*
+bisa menampilkan **file terbaru di atas** cukup dengan sort desc, dan nama file
+ditampilkan rapi sebagai `DD-MM-YYYY HH:MM:SS`. Isi kolom:
 
 ```
 Tanggal Jam,Actual,Setting
 1/16/2026 5:02:14PM,97.0,121.2
 ```
 
-Perekaman dimulai saat tombol **Start** (atau MQTT `START`) dan berhenti saat
-**Stop**. Tiap sesi membuat file baru.
+> Kolom **Tanggal Jam** di dalam CSV tetap format 12 jam (`M/D/YYYY h:mm:ssPM`)
+> agar cocok dengan laporan Indah Mesin; yang berubah hanya **nama file**.
+
+Tiap sesi perekaman membuat file baru (lihat *auto-trigger* di atas).
 
 ---
 
@@ -168,19 +181,38 @@ Untuk sementara dengan **ESP32 DevKit** gunakan board `ESP32 Dev Module`.
 
 ---
 
-## Mulai / Berhenti Perekaman
+## Mulai / Berhenti Perekaman — Auto-Trigger
 
-Lewat dashboard (**Start** / **Stop**) atau MQTT:
+Perekaman **otomatis** mengikuti kondisi controller (tanpa tombol manual).
+Alur (lihat diagram *trigger logic flow*):
+
+1. **Monitor** — PV, SV, MV, status RUN/STOP terus dibaca tiap 1 detik. Data
+   pra-proses (suhu ambient, status STOP) **tidak** direkam ke sesi.
+2. **Trigger aktif** — saat **katup terbuka** (`status RUN` **atau** `MV > 0`),
+   firmware membuka sesi CSV baru (timestamp mulai = nama file) dan mulai rekam.
+3. **Loop rekam** — PV/SV/MV ditulis ke SD tiap 1 detik selama proses jalan.
+4. **Proses selesai** — saat `status STOP` **dan** `MV = 0` (di-*debounce*
+   `STOP_DEBOUNCE_N` detik agar output PID sesaat 0 saat holding tidak
+   menghentikan rekaman), sesi di-*flush* dan file ditutup. Siap proses berikut.
+
+Logika OR (`RUN || MV>0`) memastikan rekaman tetap jalan selama status RUN walau
+MV PID sesaat 0; berhenti hanya bila benar-benar STOP + MV 0.
+
+Konstanta di `modbus_hw.ino`:
+
+```cpp
+#define USE_AUTO_TRIGGER true  // false = kembali ke mode manual (MQTT START/STOP)
+#define MV_ON_RAW        0     // MV raw > nilai ini → output aktif (katup terbuka)
+#define STOP_DEBOUNCE_N  5     // detik non-aktif berturut sebelum tutup sesi
+```
+
+PV/SV selalu dibaca dari TNL. Bila `USE_AUTO_TRIGGER false`, perekaman kembali
+dikontrol manual via MQTT:
 
 ```
 Topic : retort/cmd
-Payload: START   (mulai rekam CSV baru)
+Payload: START | STOP | STATUS
 ```
-
-Perintah lain: `STOP` (tutup file), `STATUS` (publish state).
-
-Pada mode hardware, suhu (PV) dan setpoint (SV) selalu dibaca dari controller
-TNL; tombol Start/Stop hanya mengontrol sesi perekaman ke SD card.
 
 ---
 
@@ -212,6 +244,8 @@ PostgreSQL  (tabel sensor_readings)
   "phase": "HOLDING",
   "actual": 121.3,
   "setting": 121.0,
+  "mv": 42.5,
+  "run": true,
   "logging": true
 }
 ```
@@ -223,7 +257,9 @@ PostgreSQL  (tabel sensor_readings)
 | `phase` | string | `IDLE` / `HEATING` / `HOLDING` / `COOLING` |
 | `actual` | float | PV (suhu aktual) dari TNL |
 | `setting` | float | SV (setpoint) dari TNL |
-| `logging` | bool | `true` saat sesi perekaman aktif |
+| `mv` | float | Output kontrol (%) — Heating/Cooling MV terbesar |
+| `run` | bool | Status controller (`true` = RUN, `false` = STOP) |
+| `logging` | bool | `true` saat sesi perekaman aktif (auto-trigger) |
 
 ### Pemetaan oleh `mqtt_bridge.py` → `/api/sensor`
 

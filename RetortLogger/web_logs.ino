@@ -26,13 +26,20 @@ void setupWebLogs() {
     if (!state.sdReady) { req->send(503, "text/plain", "SD error"); return; }
 
     if (req->hasParam("latest")) {
-      String last = "";
+      // Nama file = "YYYYMMDD_HHMMSS.csv" → terbaru = nama terbesar (leksikografis).
+      // Tak bergantung urutan enumerasi direktori (FAT tak menjamin terurut).
+      String latest = "";
       if (sdLock(600)) {
         File dir = SD.open("/retort");
         if (dir && dir.isDirectory()) {
           File e = dir.openNextFile();
           while (e) {
-            if (!e.isDirectory()) last = String(e.name());
+            if (!e.isDirectory()) {
+              String n = String(e.name());
+              int sl = n.lastIndexOf('/');
+              if (sl >= 0) n = n.substring(sl + 1);
+              if (n.endsWith(".csv") && n > latest) latest = n;
+            }
             e.close();
             e = dir.openNextFile();
           }
@@ -40,9 +47,8 @@ void setupWebLogs() {
         }
         sdUnlock();
       }
-      if (last.length() == 0) { req->send(404, "text/plain", "No files"); return; }
-      if (!last.startsWith("/")) last = "/" + last;
-      req->send(SD, last, "text/csv", true);
+      if (latest.length() == 0) { req->send(404, "text/plain", "No files"); return; }
+      req->send(SD, "/retort/" + latest, "text/csv", true);
       return;
     }
 
