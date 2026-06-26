@@ -153,34 +153,59 @@ function buildChartOptions(forExport = false) {
 
 async function renderFullWidthChartImage(chartReadings, currentSV) {
     const pointCount = chartReadings.length;
-    const width = Math.max(pointCount * PIXELS_PER_POINT, 600);
-    const height = EXPORT_CHART_HEIGHT;
+    const logicalWidth = Math.max(pointCount * PIXELS_PER_POINT, 600);
+    const logicalHeight = EXPORT_CHART_HEIGHT;
 
+    // Render 2x untuk ketajaman (menghindari blur saat di-embed ke Excel)
+    const scale = 2;
     const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = logicalWidth * scale;
+    canvas.height = logicalHeight * scale;
+    canvas.style.width = `${logicalWidth}px`;
+    canvas.style.height = `${logicalHeight}px`;
     canvas.style.position = 'fixed';
     canvas.style.left = '-9999px';
     canvas.style.top = '0';
     document.body.appendChild(canvas);
 
+    // Scale context agar chart tergambar pada resolusi tinggi
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+
     const chart = new ChartJS(canvas, {
         type: 'line',
         data: buildChartData(chartReadings, currentSV),
-        options: buildChartOptions(true),
+        options: {
+            ...buildChartOptions(true),
+            // Override agar chart menggunakan ukuran logical (bukan pixel fisik)
+            responsive: false,
+            animation: false,
+        },
+        plugins: [{
+            id: 'customCanvasBackgroundColor',
+            beforeDraw(c) {
+                const ctx2 = c.ctx;
+                ctx2.save();
+                ctx2.globalCompositeOperation = 'destination-over';
+                ctx2.fillStyle = '#ffffff';
+                ctx2.fillRect(0, 0, c.width, c.height);
+                ctx2.restore();
+            }
+        }],
     });
 
+    chart.resize(logicalWidth, logicalHeight);
     chart.update();
 
     await new Promise((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(resolve));
     });
 
-    const base64 = canvas.toDataURL('image/png');
+    const base64 = canvas.toDataURL('image/png', 1.0);
     chart.destroy();
     document.body.removeChild(canvas);
 
-    return { base64, width, height };
+    return { base64, width: logicalWidth, height: logicalHeight };
 }
 
 // Format tanggal/jam mengikuti report Indah Mesin (zona Asia/Jakarta).
@@ -339,12 +364,12 @@ export default function ProcessDetail({ session, onBack }) {
                     <span className="font-medium">Kembali ke Daftar</span>
                 </button>
 
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="flex items-center gap-2">
                     <select
                         value={exportMode}
                         onChange={(e) => setExportMode(e.target.value)}
                         disabled={exporting}
-                        className="input text-sm py-2 min-w-[180px]"
+                        className="input text-sm py-2 min-w-[160px]"
                     >
                         <option value="data">Data saja</option>
                         <option value="both">Data + Grafik</option>
@@ -352,9 +377,9 @@ export default function ProcessDetail({ session, onBack }) {
                     <button
                         onClick={handleExport}
                         disabled={exporting}
-                        className="btn btn-success"
+                        className="btn btn-success whitespace-nowrap"
                     >
-                        <Download className="w-4 h-4" />
+                        <Download className="w-4 h-4 flex-shrink-0" />
                         {exporting ? 'Exporting...' : 'Download Excel'}
                     </button>
                 </div>
