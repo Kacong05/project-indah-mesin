@@ -189,6 +189,7 @@ def send_data(
             "machine_code": machine_code,
             "temperature": temperature,
             "sv": sv,
+            "mv": mv,
             "pressure": pressure,
             "process_status": phase,
             "recorded_at": recorded_at,

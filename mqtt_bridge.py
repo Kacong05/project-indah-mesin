@@ -101,6 +101,8 @@ def on_message(client, userdata, msg):
         "temperature": _to_float(raw.get("actual", raw.get("temperature", 0))),
         # SV / setpoint dari controller (ESP kirim field "setting"). Nullable di API.
         "sv": _to_float_or_none(raw.get("setting", raw.get("sv"))),
+        # MV = output kontrol (%). API hanya menyimpan data saat MV > 0.
+        "mv": _to_float(raw.get("mv", 0)),
         "pressure": _to_float(raw.get("pressure", 0)),
         "process_status": process_status,
     }

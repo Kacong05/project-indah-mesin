@@ -24,6 +24,7 @@ class SensorController extends Controller
             'machine_code' => 'required|string|exists:retort_machines,machine_code',
             'temperature' => 'required|numeric',
             'sv' => 'nullable|numeric',
+            'mv' => 'nullable|numeric',
             'pressure' => 'required|numeric',
             'process_status' => 'nullable|string',
             'recorded_at' => 'nullable|date',
@@ -35,6 +36,29 @@ class SensorController extends Controller
         $timestamp = isset($validated['recorded_at'])
             ? Carbon::parse($validated['recorded_at'])
             : now();
+
+        // ============================================
+        // GATE PEREKAMAN: hanya simpan saat katup terbuka (MV > 0).
+        // MV = 0 berarti mesin idle / proses selesai, sehingga data ambient
+        // tidak boleh membuat sesi & reading baru di database. Mesin tetap
+        // dianggap online (heartbeat) namun statusnya standby.
+        // Catatan: bila MV tidak dikirim (null), perilaku lama dipertahankan
+        // agar klien lama tetap kompatibel.
+        // ============================================
+        $mv = isset($validated['mv']) ? (float) $validated['mv'] : null;
+
+        if ($mv !== null && $mv <= 0) {
+            $machine->update([
+                'last_heartbeat_at' => now(),
+                'status' => RetortMachine::STATUS_STANDBY,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'recorded' => false,
+                'message' => 'MV <= 0 (mesin idle) — data tidak disimpan.',
+            ]);
+        }
 
         // ============================================
         // LOGIKA UTAMA: Dapatkan atau buat sesi proses
@@ -60,6 +84,7 @@ class SensorController extends Controller
 
         return response()->json([
             'success' => true,
+            'recorded' => true,
             'message' => 'Sensor reading recorded successfully.',
             'data' => [
                 'reading' => $reading,
