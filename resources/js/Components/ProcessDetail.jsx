@@ -153,11 +153,13 @@ function buildChartOptions(forExport = false) {
 
 async function renderFullWidthChartImage(chartReadings, currentSV) {
     const pointCount = chartReadings.length;
-    const logicalWidth = Math.max(pointCount * PIXELS_PER_POINT, 600);
+    // Batasi lebar maksimal agar tidak terlalu besar — pakai pixel per point lebih kecil untuk data banyak
+    const pxPerPoint = pointCount > 300 ? 8 : pointCount > 100 ? 14 : PIXELS_PER_POINT;
+    const logicalWidth = Math.min(Math.max(pointCount * pxPerPoint, 600), 2400);
     const logicalHeight = EXPORT_CHART_HEIGHT;
 
-    // Render 2x untuk ketajaman (menghindari blur saat di-embed ke Excel)
-    const scale = 2;
+    // Render 3x resolusi untuk ketajaman maksimal
+    const scale = 3;
     const canvas = document.createElement('canvas');
     canvas.width = logicalWidth * scale;
     canvas.height = logicalHeight * scale;
@@ -168,8 +170,10 @@ async function renderFullWidthChartImage(chartReadings, currentSV) {
     canvas.style.top = '0';
     document.body.appendChild(canvas);
 
-    // Scale context agar chart tergambar pada resolusi tinggi
+    // Isi background putih dulu
     const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.scale(scale, scale);
 
     const chart = new ChartJS(canvas, {
@@ -177,25 +181,19 @@ async function renderFullWidthChartImage(chartReadings, currentSV) {
         data: buildChartData(chartReadings, currentSV),
         options: {
             ...buildChartOptions(true),
-            // Override agar chart menggunakan ukuran logical (bukan pixel fisik)
             responsive: false,
             animation: false,
+            elements: {
+                point: {
+                    // Kurangi titik untuk data banyak agar tidak penuh
+                    radius: pointCount > 200 ? 0 : 3,
+                },
+            },
         },
-        plugins: [{
-            id: 'customCanvasBackgroundColor',
-            beforeDraw(c) {
-                const ctx2 = c.ctx;
-                ctx2.save();
-                ctx2.globalCompositeOperation = 'destination-over';
-                ctx2.fillStyle = '#ffffff';
-                ctx2.fillRect(0, 0, c.width, c.height);
-                ctx2.restore();
-            }
-        }],
     });
 
     chart.resize(logicalWidth, logicalHeight);
-    chart.update();
+    chart.update('none');
 
     await new Promise((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(resolve));
@@ -277,31 +275,62 @@ export default function ProcessDetail({ session, onBack }) {
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Logger Data');
 
-            // Kop perusahaan (format report Indah Mesin)
-            worksheet.mergeCells('A1:C1');
-            worksheet.getCell('A1').value = 'INDAHMESIN.COM';
-            worksheet.getCell('A1').font = { bold: true, size: 16 };
+            // ── Load logo dari public folder ──────────────────────────
+            let logoImageId = null;
+            try {
+                const logoResp = await fetch('/logo.png');
+                const logoBlob = await logoResp.blob();
+                const logoBase64 = await new Promise((res) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => res(reader.result.split(',')[1]);
+                    reader.readAsDataURL(logoBlob);
+                });
+                logoImageId = workbook.addImage({ base64: logoBase64, extension: 'png' });
+            } catch (_) { /* logo gagal load, lanjut tanpa logo */ }
 
-            worksheet.mergeCells('A2:C2');
-            worksheet.getCell('A2').value = 'INDAH JAYA TEKNIK, CV';
-            worksheet.getCell('A2').font = { bold: true, size: 11 };
+            // ── Kop perusahaan ────────────────────────────────────────
+            // Logo di kolom A baris 1-3, teks di kolom B-J
+            worksheet.mergeCells('B1:J1');
+            worksheet.getCell('B1').value = 'INDAHMESIN.COM';
+            worksheet.getCell('B1').font = { bold: true, size: 16 };
 
-            worksheet.mergeCells('A3:C3');
-            worksheet.getCell('A3').value = 'Jalan Raya Randugading No.137 RT 12 RW 03 Kel. Randugading Kec. Tajinan, Kabupaten Malang, Jawa Timur 65172';
-            worksheet.getCell('A3').font = { size: 9, color: { argb: 'FF666666' } };
-            worksheet.getCell('A3').alignment = { wrapText: true };
+            worksheet.mergeCells('B2:J2');
+            worksheet.getCell('B2').value = 'INDAH JAYA TEKNIK, CV';
+            worksheet.getCell('B2').font = { bold: true, size: 11 };
 
-            // Judul rentang waktu logger (MULAI .. SAMPAI ..) dari data sesi
+            worksheet.mergeCells('B3:J3');
+            worksheet.getCell('B3').value = 'Jalan Raya Randugading No.137 RT 12 RW 03 Kel. Randugading Kec. Tajinan, Kabupaten Malang, Jawa Timur 65172';
+            worksheet.getCell('B3').font = { size: 9, color: { argb: 'FF666666' } };
+            worksheet.getCell('B3').alignment = { wrapText: false };
+
+            // Set tinggi baris kop agar logo muat
+            worksheet.getRow(1).height = 30;
+            worksheet.getRow(2).height = 18;
+            worksheet.getRow(3).height = 30;
+
+            // Embed logo jika berhasil di-load
+            if (logoImageId !== null) {
+                worksheet.addImage(logoImageId, {
+                    tl: { col: 0, row: 0 },
+                    ext: { width: 70, height: 70 },
+                });
+            }
+
+            // Garis pemisah bawah kop
+            worksheet.addRow([]); // baris 4 kosong
+
+            // ── Judul rentang waktu (merge A:J agar tidak terpotong) ──
             const startIso = readings.length ? readings[0].recorded_at : sessionInfo.started_at;
             const endIso = readings.length ? readings[readings.length - 1].recorded_at : sessionInfo.ended_at;
-            worksheet.mergeCells('A5:C5');
+            worksheet.mergeCells('A5:J5');
             worksheet.getCell('A5').value =
                 `LOGGER DATA TEMPERATURE MULAI ${fmtFull(startIso)} SAMPAI ${fmtFull(endIso)}`;
             worksheet.getCell('A5').font = { bold: true, size: 11 };
+            worksheet.getCell('A5').alignment = { wrapText: false };
 
             worksheet.addRow([]); // baris 6 kosong
 
-            // Header tabel: Tanggal Jam | Actual | Setting (sama dgn CSV ESP)
+            // ── Header tabel ──────────────────────────────────────────
             const headerRow = worksheet.addRow(['Tanggal Jam', 'Actual', 'Setting']);
             headerRow.eachCell((cell) => {
                 cell.font = { bold: true };
@@ -320,6 +349,8 @@ export default function ProcessDetail({ session, onBack }) {
             worksheet.getColumn(1).width = 22;
             worksheet.getColumn(2).width = 10;
             worksheet.getColumn(3).width = 10;
+            worksheet.getColumn(4).width = 10;
+            worksheet.getColumn(5).width = 10;
 
             if (chartBase64) {
                 const chartImage = workbook.addImage({
