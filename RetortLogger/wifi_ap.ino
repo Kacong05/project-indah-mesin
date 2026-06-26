@@ -5,6 +5,7 @@
 extern AppConfig   cfg;
 extern RetortState state;
 extern DNSServer   dnsServer;
+extern int gLastStaDiscReason;
 
 static const IPAddress AP_IP(192, 168, 4, 1);
 static const IPAddress AP_MASK(255, 255, 255, 0);
@@ -34,9 +35,13 @@ static void stopConfigAP() {
 static void staConnect() {
   if (cfg.wifiSSID[0] == '\0') return;
   Serial.printf("[WiFi] STA connect → %s\n", cfg.wifiSSID);
-  WiFi.disconnect(true);
+  WiFi.disconnect(false);
   delay(100);
-  WiFi.begin(cfg.wifiSSID, cfg.wifiPass);
+  if (cfg.wifiPass[0] == '\0') {
+    WiFi.begin(cfg.wifiSSID);
+  } else {
+    WiFi.begin(cfg.wifiSSID, cfg.wifiPass);
+  }
   lastStaAttemptMs = millis();
 }
 
@@ -50,9 +55,9 @@ static void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
                     WiFi.localIP().toString().c_str());
       break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-      Serial.printf("[WiFi] STA putus, reason=%d\n",
-                    info.wifi_sta_disconnected.reason);
-      // 2=no AP found, 15=wrong password, 201=no AP
+      gLastStaDiscReason = info.wifi_sta_disconnected.reason;
+      Serial.printf("[WiFi] STA putus, reason=%d\n", gLastStaDiscReason);
+      // 2=SSID tidak ketemu, 15=password salah, 201=tidak ada AP
       state.wifiConnected = false;
       startConfigAP();
       break;
@@ -87,8 +92,9 @@ void loopWiFiAP() {
   bool connected = (WiFi.status() == WL_CONNECTED);
 
   if (connected && !state.wifiConnected) {
+    gLastStaDiscReason = 0;
     state.wifiConnected = true;
-    stopConfigAP();
+    // AP config tetap hidup — dashboard 192.168.4.1 tetap bisa diakses
     Serial.printf("[WiFi] STA OK  IP=%s  RSSI=%d\n",
                   WiFi.localIP().toString().c_str(), WiFi.RSSI());
   } else if (!connected && state.wifiConnected) {

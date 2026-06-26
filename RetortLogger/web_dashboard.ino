@@ -6,6 +6,8 @@
 extern AppConfig      cfg;
 extern RetortState    state;
 extern AsyncWebServer server;
+extern int gLastStaDiscReason;
+extern int gLastMqttState;
 
 static const char DASH_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -48,6 +50,7 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 <div class="c"><small>Setting</small><div class="v" id="sp">--</div></div>
 <div class="c"><small>SD Card</small><div class="v" id="sd">--</div></div>
 </div>
+<p id="hint" style="font-size:12px;color:#555;line-height:1.5;margin:0 0 14px"></p>
 <div class="btns">
 <button class="bs" id="b1" onclick="cmd('start')">Start</button>
 <button class="bt" id="b2" onclick="cmd('stop')">Stop</button>
@@ -55,23 +58,38 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 </div>
 </div>
 <script>
+function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
 function u(){
-fetch('/api/status').then(function(r){
-if(r.status==401){location='/login';return null}return r.json()
+fetch('/api/status',{headers:ah(),credentials:'same-origin'}).then(function(r){
+if(r.status===401){sessionStorage.removeItem('st');location='/login';return null}
+if(!r.ok)throw new Error('http');
+return r.json();
 }).then(function(d){if(!d)return;
 var w=document.getElementById('wifi');w.textContent=d.wifi?'OK':'OFF';w.className='v '+(d.wifi?'ok':'er');
-var m=document.getElementById('mqtt');m.textContent=d.mqtt?'OK':'OFF';m.className='v '+(d.mqtt?'ok':'er');
-var p=document.getElementById('phase');p.textContent=d.phase;p.className='v '+(d.log?'wr':'ok');
-document.getElementById('temp').textContent=d.temp.toFixed(1)+'\u00B0C';
-document.getElementById('sp').textContent=d.sp.toFixed(1)+'\u00B0C';
+var mq=document.getElementById('mqtt');mq.textContent=d.mqtt?'OK':'OFF';mq.className='v '+(d.mqtt?'ok':'er');
+var p=document.getElementById('phase');p.textContent=d.phase||'--';p.className='v '+(d.log?'wr':'ok');
+document.getElementById('temp').textContent=(d.temp!=null?Number(d.temp).toFixed(1):'--')+'\u00B0C';
+document.getElementById('sp').textContent=(d.sp!=null?Number(d.sp).toFixed(1):'--')+'\u00B0C';
 var s=document.getElementById('sd');s.textContent=d.sd?'OK':'N/A';s.className='v '+(d.sd?'ok':'er');
-document.getElementById('b1').disabled=d.log;
+document.getElementById('b1').disabled=!!d.log;
 document.getElementById('b2').disabled=!d.log;
-}).catch(function(){});}
+var h=document.getElementById('hint');
+if(d.wifi&&d.mqtt){h.textContent='';}
+else if(!d.wifi){
+var wr={2:'SSID tidak ketemu',15:'Password WiFi salah',201:'Tidak ada AP'};
+h.textContent='WiFi router: '+(d.ssid||'?')+' - '+(wr[d.wfail]||'belum terhubung (kode '+(d.wfail||0)+')')+'. Isi ulang SSID & password di Settings.';
+}else{
+var me={ '-2':'Broker tidak terjangkau','4':'User MQTT salah','5':'MQTT tidak diizinkan'};
+var mk=d.mfail!=null?String(d.mfail):'0';
+h.textContent='MQTT '+(d.broker||'?')+':'+(d.mport||1883)+' - '+(me[mk]||'gagal (kode '+mk+')')+'. Cek broker & password di config.ino.';
+}
+}).catch(function(){
+document.getElementById('hint').textContent='API tidak merespons. Logout lalu login ulang.';
+});}
 function cmd(c){
-fetch('/api/cmd',{method:'POST',
-headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'cmd='+c})
-.then(function(r){if(r.status==401)location='/login';u();}).catch(function(){});}
+fetch('/api/cmd',{method:'POST',headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
+credentials:'same-origin',body:'cmd='+c})
+.then(function(r){if(r.status===401){sessionStorage.removeItem('st');location='/login';}u();}).catch(function(){});}
 u();setInterval(u,2000);
 </script>
 </body></html>
@@ -93,20 +111,28 @@ void setupWebDashboard() {
 #else
     const char* st = state.logging ? "LOGGING" : "IDLE";
 #endif
-    char buf[192];
-    snprintf(buf, sizeof(buf),
-      "{\"wifi\":%s,\"mqtt\":%s,\"phase\":\"%s\","
-      "\"temp\":%.1f,\"sp\":%.1f,\"sd\":%s,\"log\":%s}",
-      state.wifiConnected ? "true" : "false",
-      state.mqttConnected ? "true" : "false",
-      st,
-      state.temperature, state.setpoint,
-      state.sdReady ? "true" : "false",
-      state.logging ? "true" : "false");
-    AsyncWebServerResponse* resp = req->beginResponse(200,
-      "application/json", buf);
-    resp->addHeader("Cache-Control", "no-store");
-    req->send(resp);
+    StaticJsonDocument<512> doc;
+    doc["wifi"]  = state.wifiConnected;
+    doc["mqtt"]  = state.mqttConnected;
+    doc["phase"] = st;
+    doc["temp"]  = state.temperature;
+    doc["sp"]    = state.setpoint;
+    doc["sd"]    = state.sdReady;
+    doc["log"]   = state.logging;
+    doc["ssid"]  = cfg.wifiSSID;
+    doc["broker"]= cfg.mqttBroker;
+    doc["mport"] = cfg.mqttPort;
+    doc["wfail"] = gLastStaDiscReason;
+    doc["mfail"] = gLastMqttState;
+    char buf[512];
+    size_t n = serializeJson(doc, buf, sizeof(buf));
+    AsyncWebServerResponse* resp =
+    req->beginResponse(
+        200,
+        "application/json",
+        reinterpret_cast<const uint8_t*>(buf),
+        n
+    );
   });
 
   server.on("/api/cmd", HTTP_POST, [](AsyncWebServerRequest* req) {

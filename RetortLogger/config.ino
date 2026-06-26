@@ -31,7 +31,7 @@ static const char DEFAULT_PASS_HASH[] =
 //  (Broker & Port tetap diatur lewat halaman Settings / web.)
 // ============================================================
 #define MQTT_USER       "retort_esp"
-#define MQTT_PASS       "indah-Mesin.123"
+#define MQTT_PASS       "RetortEsp_1f1dafaf9d570f46"
 #define MQTT_PUB_TOPIC  "retort/data"
 #define MQTT_CMD_TOPIC  "retort/cmd"
 

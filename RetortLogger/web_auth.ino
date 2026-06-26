@@ -42,8 +42,10 @@ document.getElementById('f').onsubmit=function(ev){
     headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b})
   .then(function(r){return r.json()})
   .then(function(d){
-    if(d.ok)window.location='/dashboard';
-    else{e.textContent=d.msg||'Login gagal';e.style.display='block';}
+    if(d.ok){
+      if(d.token)sessionStorage.setItem('st',d.token);
+      window.location='/dashboard';
+    }else{e.textContent=d.msg||'Login gagal';e.style.display='block';}
   }).catch(function(){e.textContent='Error koneksi';e.style.display='block';});
 };
 </script>
@@ -97,9 +99,11 @@ void setupWebAuth() {
     generateSession();
     char cookie[128];
     snprintf(cookie, sizeof(cookie),
-      "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=600", sessionToken);
+      "session=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=600", sessionToken);
+    char body[160];
+    snprintf(body, sizeof(body), "{\"ok\":true,\"token\":\"%s\"}", sessionToken);
     AsyncWebServerResponse* resp = req->beginResponse(200,
-      "application/json", "{\"ok\":true}");
+      "application/json", body);
     resp->addHeader("Set-Cookie", cookie);
     req->send(resp);
   });

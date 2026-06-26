@@ -42,7 +42,7 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 <div id="msg" class="msg"></div>
 <h3>WiFi</h3>
 <label>SSID</label><input id="wssid" maxlength="32">
-<label>Password</label><input id="wpass" type="password" maxlength="64" placeholder="Kosongkan jika tidak diubah">
+<label>Password</label><input id="wpass" type="password" maxlength="64" placeholder="Wajib diisi ulang saat simpan">
 <h3>MQTT</h3>
 <label>Broker</label><input id="mhost" maxlength="64">
 <label>Port</label><input id="mport" type="number" min="1" max="65535">
@@ -52,9 +52,10 @@ nav a{flex:1;text-align:center;padding:9px 4px;font-size:13px}.m{padding:12px}}
 <button onclick="save()">Simpan</button>
 </div>
 <script>
+function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
 function load(){
-fetch('/api/settings').then(function(r){
-if(r.status==401){location='/login';return null}return r.json()
+fetch('/api/settings',{headers:ah(),credentials:'same-origin'}).then(function(r){
+if(r.status===401){sessionStorage.removeItem('st');location='/login';return null}return r.json()
 }).then(function(d){if(!d)return;
 document.getElementById('wssid').value=d.wssid||'';
 document.getElementById('mhost').value=d.mhost||'';
@@ -66,8 +67,8 @@ var ks=['wssid','wpass','mhost','mport','mid','lpass'];
 var b=ks.map(function(k){
 return k+'='+encodeURIComponent(document.getElementById(k).value);}).join('&');
 var m=document.getElementById('msg');
-fetch('/api/settings',{method:'POST',
-headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b})
+fetch('/api/settings',{method:'POST',headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
+credentials:'same-origin',body:b})
 .then(function(r){
 if(r.status==401){location='/login';return null}return r.json()
 }).then(function(d){if(!d)return;
@@ -107,35 +108,25 @@ void setupWebSettings() {
       return;
     }
 
-    bool needRestart = false;
-
     if (req->hasParam("wssid", true)) {
       String v = req->getParam("wssid", true)->value();
-      if (v.length() > 0 && !v.equals(cfg.wifiSSID)) {
+      if (v.length() > 0)
         strncpy(cfg.wifiSSID, v.c_str(), sizeof(cfg.wifiSSID) - 1);
-        needRestart = true;
-      }
     }
     if (req->hasParam("wpass", true)) {
       String v = req->getParam("wpass", true)->value();
-      if (v.length() > 0) {
+      if (v.length() > 0)
         strncpy(cfg.wifiPass, v.c_str(), sizeof(cfg.wifiPass) - 1);
-        needRestart = true;
-      }
     }
     if (req->hasParam("mhost", true)) {
       String v = req->getParam("mhost", true)->value();
-      if (v.length() > 0) {
-        if (!v.equals(cfg.mqttBroker)) needRestart = true;
+      if (v.length() > 0)
         strncpy(cfg.mqttBroker, v.c_str(), sizeof(cfg.mqttBroker) - 1);
-      }
     }
     if (req->hasParam("mport", true)) {
       int p = req->getParam("mport", true)->value().toInt();
-      if (p > 0 && p <= 65535) {
-        if ((uint16_t)p != cfg.mqttPort) needRestart = true;
+      if (p > 0 && p <= 65535)
         cfg.mqttPort = (uint16_t)p;
-      }
     }
     if (req->hasParam("mid", true)) {
       String v = req->getParam("mid", true)->value();
@@ -151,10 +142,9 @@ void setupWebSettings() {
 
     char resp[96];
     snprintf(resp, sizeof(resp),
-      "{\"ok\":true,\"msg\":\"Tersimpan.\",\"restart\":%s}",
-      needRestart ? "true" : "false");
+      "{\"ok\":true,\"msg\":\"Tersimpan. Restart...\",\"restart\":true}");
     req->send(200, "application/json", resp);
-
-    if (needRestart) { delay(1500); ESP.restart(); }
+    delay(1500);
+    ESP.restart();
   });
 }

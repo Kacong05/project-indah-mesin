@@ -80,6 +80,10 @@ AsyncWebServer server(80);
 char sessionToken[65]      = {0};
 unsigned long sessionStart = 0;
 
+// Diagnostik koneksi (ditampilkan di dashboard)
+int gLastStaDiscReason = 0;  // kode putus WiFi STA (15=password salah)
+int gLastMqttState     = 0;  // PubSubClient state saat gagal (-2=jaringan, 4=user, 5=ACL)
+
 // --- SHA256 ---
 void sha256Hex(const char* input, char* output) {
   unsigned char hash[32];
@@ -104,11 +108,22 @@ void generateSession() {
   sessionStart = millis();
 }
 
+static bool tokenMatchesSession(const String& v) {
+  if (v.length() == 0 || v.length() > 64) return false;
+  if (!v.equals(sessionToken)) return false;
+  sessionStart = millis();
+  return true;
+}
+
 bool isSessionValid(AsyncWebServerRequest* req) {
   if (sessionToken[0] == '\0') return false;
   if (millis() - sessionStart > SESSION_TIMEOUT_MS) {
     sessionToken[0] = '\0';
     return false;
+  }
+  // Header X-Session — lebih andal di browser HP / captive portal
+  if (req->hasHeader("X-Session")) {
+    if (tokenMatchesSession(req->header("X-Session"))) return true;
   }
   if (!req->hasHeader("Cookie")) return false;
   String c = req->header("Cookie");
@@ -118,11 +133,7 @@ bool isSessionValid(AsyncWebServerRequest* req) {
   int s = v.indexOf(';');
   if (s > 0) v = v.substring(0, s);
   v.trim();
-  if (v.equals(sessionToken)) {
-    sessionStart = millis();
-    return true;
-  }
-  return false;
+  return tokenMatchesSession(v);
 }
 
 void redirectToLogin(AsyncWebServerRequest* req) {

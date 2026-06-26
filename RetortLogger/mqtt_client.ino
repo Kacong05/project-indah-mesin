@@ -7,6 +7,7 @@
 
 extern AppConfig   cfg;
 extern RetortState state;
+extern int gLastMqttState;
 
 static WiFiClient   mqttWifi;
 static PubSubClient mqtt(mqttWifi);
@@ -44,9 +45,13 @@ static bool mqttRecon() {
   if (ok) {
     mqtt.subscribe(cfg.mqttCmdTopic);
     state.mqttConnected = true;
+    gLastMqttState = 0;
     Serial.printf("[MQTT] Connected. Sub: %s\n", cfg.mqttCmdTopic);
   } else {
     state.mqttConnected = false;
+    gLastMqttState = mqtt.state();
+    Serial.printf("[MQTT] Gagal, state=%d (broker=%s:%d)\n",
+                  gLastMqttState, cfg.mqttBroker, cfg.mqttPort);
   }
   return ok;
 }
