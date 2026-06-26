@@ -89,6 +89,9 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                 if (selectedSession?.id === deleteTarget.id) handleBackToList();
                 setDeleteTarget(null);
             },
+            onError: () => {
+                setDeleteTarget(null);
+            },
             onFinish: () => setDeleting(false),
         });
     };
@@ -230,11 +233,7 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                         {/* Body */}
                         <div className="px-6 py-5">
                             <p className="text-gray-700">
-                                Apakah Anda yakin ingin menghapus{' '}
-                                <span className="font-semibold text-gray-900">{deleteTarget.name}</span>?
-                            </p>
-                            <p className="text-sm text-gray-500 mt-2">
-                                Seluruh data sensor dalam sesi ini akan dihapus secara permanen.
+                                Apakah kamu yakin hapus proses ini?
                             </p>
                         </div>
                         {/* Footer */}

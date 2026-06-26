@@ -69,15 +69,17 @@ class ProcessSession extends Model
     }
 
     /**
-     * Format display name (Proses 1, Proses 2, dst).
-     *
-     * Nomor proses DI-RESET setiap hari: proses pertama pada suatu tanggal
-     * selalu "Proses 1" (mis. Senin "Proses 1", Selasa "Proses 1"). Dihitung
-     * dinamis dari posisi sesi pada tanggal yang sama (per mesin) sehingga
-     * tetap benar walau ada sesi yang dihapus — tidak bergantung kolom `name`.
+     * Format display name — gunakan nama yang tersimpan di DB.
+     * Nama di-set permanen saat sesi dibuat sehingga tidak berubah
+     * meski ada sesi lain yang dihapus.
      */
     public function getDisplayNameAttribute(): string
     {
+        if (!empty($this->name)) {
+            return $this->name;
+        }
+
+        // Fallback: hitung dari posisi sesi pada hari yang sama
         $query = self::query()
             ->whereDate('started_at', $this->started_at->toDateString())
             ->where('id', '<=', $this->id);
