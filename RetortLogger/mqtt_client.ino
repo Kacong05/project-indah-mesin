@@ -8,6 +8,7 @@
 extern AppConfig   cfg;
 extern RetortState state;
 extern int gLastMqttState;
+extern char gLastTs[24];
 
 static WiFiClient   mqttWifi;
 static PubSubClient mqtt(mqttWifi);
@@ -65,6 +66,10 @@ void setupMQTT() {
   mqtt.setCallback(mqttCb);
   mqtt.setKeepAlive(30);
   mqtt.setBufferSize(512);
+  // Default PubSubClient = 15 dtk: bila broker tak terjangkau, mqtt.connect()
+  // bisa mem-block loop sampai 15 dtk. Pangkas ke 2 dtk. (Sampling data tetap
+  // aman karena ada di task terpisah, ini hanya merapikan responsivitas web.)
+  mqtt.setSocketTimeout(2);
 }
 
 void loopMQTT() {
@@ -82,13 +87,13 @@ void loopMQTT() {
 
 void mqttPublishState() {
   if (!mqtt.connected()) return;
-  char ts[24];
-  getTimestamp(ts, sizeof(ts));
+  // Pakai timestamp cache dari task logger (hindari baca RTC/I2C dari loop ini,
+  // supaya tak bentrok dengan task yang juga memakai I2C).
   char buf[256];
   snprintf(buf, sizeof(buf),
     "{\"id\":\"%s\",\"ts\":\"%s\",\"phase\":\"%s\","
     "\"actual\":%.1f,\"setting\":%.1f,\"logging\":%s}",
-    cfg.machineId, ts, phaseName(state.phase),
+    cfg.machineId, gLastTs, phaseName(state.phase),
     state.temperature, state.setpoint,
     state.logging ? "true" : "false");
   mqtt.publish(cfg.mqttPubTopic, buf, false);

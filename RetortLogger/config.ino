@@ -8,12 +8,6 @@ extern Preferences prefs;
 #define PREF_NS       "retort"
 #define K_SSID        "wf_ssid"
 #define K_WPASS       "wf_pass"
-#define K_MQTT_HOST   "mq_host"
-#define K_MQTT_PORT   "mq_port"
-#define K_MQTT_USER   "mq_user"
-#define K_MQTT_PASS   "mq_pass"
-#define K_MQTT_PUB    "mq_pub"
-#define K_MQTT_CMD    "mq_cmd"
 #define K_TTEMP       "tgt_temp"
 #define K_HOLD_SEC    "hold_sec"
 #define K_HEAT_RATE   "heat_rate"
@@ -26,10 +20,12 @@ static const char DEFAULT_PASS_HASH[] =
   "e5b1fc40362a7df203a27e457de2ec78792b8990f10a2afaeb0976b7996c8516";
 
 // ============================================================
-//  MQTT credentials & topics — SET MANUAL DI SINI sebelum flash.
-//  Harus sama dengan user Mosquitto di VPS (retort_esp).
-//  (Broker & Port tetap diatur lewat halaman Settings / web.)
+//  MQTT broker, port, credentials & topics — SET MANUAL DI SINI sebelum flash.
+//  Harus sama dengan setting Mosquitto di VPS (user retort_esp).
+//  Untuk pindah broker/port: ubah konstanta di bawah lalu RE-FLASH.
 // ============================================================
+#define MQTT_BROKER     "192.168.1.100"   // WAJIB ganti ke IP/host broker, lalu reflash
+#define MQTT_PORT       1883
 #define MQTT_USER       "retort_esp"
 #define MQTT_PASS       "RetortEsp_1f1dafaf9d570f46"
 #define MQTT_PUB_TOPIC  "retort/data"
@@ -40,10 +36,11 @@ void loadConfig() {
 
   prefs.getString(K_SSID,      cfg.wifiSSID,     sizeof(cfg.wifiSSID));
   prefs.getString(K_WPASS,     cfg.wifiPass,     sizeof(cfg.wifiPass));
-  prefs.getString(K_MQTT_HOST, cfg.mqttBroker,   sizeof(cfg.mqttBroker));
-  cfg.mqttPort = prefs.getUShort(K_MQTT_PORT, 1883);
 
-  // User/password/topic MQTT diambil dari konstanta kode (bukan web/NVS).
+  // Broker/port/user/password/topic MQTT diambil dari konstanta kode
+  // (bukan web/NVS). Ganti di atas lalu reflash untuk mengubahnya.
+  strncpy(cfg.mqttBroker,   MQTT_BROKER,    sizeof(cfg.mqttBroker) - 1);
+  cfg.mqttPort = MQTT_PORT;
   strncpy(cfg.mqttUser,     MQTT_USER,      sizeof(cfg.mqttUser) - 1);
   strncpy(cfg.mqttPass,     MQTT_PASS,      sizeof(cfg.mqttPass) - 1);
   strncpy(cfg.mqttPubTopic, MQTT_PUB_TOPIC, sizeof(cfg.mqttPubTopic) - 1);
@@ -74,8 +71,6 @@ void saveConfig() {
   prefs.begin(PREF_NS, false);  // read-write
   prefs.putString(K_SSID,      cfg.wifiSSID);
   prefs.putString(K_WPASS,     cfg.wifiPass);
-  prefs.putString(K_MQTT_HOST, cfg.mqttBroker);
-  prefs.putUShort(K_MQTT_PORT, cfg.mqttPort);
   prefs.putFloat(K_TTEMP,      cfg.targetTemp);
   prefs.putUInt(K_HOLD_SEC,    cfg.holdingTimeSec);
   prefs.putFloat(K_HEAT_RATE,  cfg.heatingRate);

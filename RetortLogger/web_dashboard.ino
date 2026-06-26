@@ -3,14 +3,11 @@
 //  Lightweight HTML
 // ============================================================
 
-#include "esp_heap_caps.h"
-
 extern AppConfig      cfg;
 extern RetortState    state;
 extern AsyncWebServer server;
 extern int gLastStaDiscReason;
 extern int gLastMqttState;
-extern uint8_t gCpuPct;
 
 static const char DASH_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -38,10 +35,6 @@ h1{font-size:19px;margin:0 0 14px}
 .c small{color:#777;font-size:12px}
 .c .v{font-size:clamp(16px,4vw,19px);font-weight:700;margin-top:3px}
 .ok{color:#16a34a}.er{color:#dc2626}.wr{color:#d97706}
-.btns{display:flex;gap:8px;flex-wrap:wrap}
-button{padding:11px 20px;border:none;border-radius:4px;cursor:pointer;color:#fff;font-size:14px;flex:1 1 auto;min-width:90px}
-.bs{background:#16a34a}.bt{background:#dc2626}.br{background:#6b7280}
-button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:640px){body{flex-direction:column}
 nav{width:100%;display:flex;flex-wrap:wrap}
 nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
@@ -50,8 +43,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <nav>
 <a href="/dashboard" class="a">Dashboard</a>
 <a href="/settings">Settings</a>
-<a href="/logs">Log</a>
-<a href="/storage">Storage</a>
+<a href="/storage">Log &amp; Storage</a>
 <a href="/logout">Logout</a>
 </nav>
 <div class="m">
@@ -65,18 +57,9 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <div class="c"><small>WiFi</small><div class="v" id="wifi">--</div></div>
 <div class="c"><small>MQTT</small><div class="v" id="mqtt">--</div></div>
 <div class="c"><small>Status</small><div class="v" id="phase">--</div></div>
-<div class="c"><small>Actual</small><div class="v" id="temp">--</div></div>
-<div class="c"><small>Setting</small><div class="v" id="sp">--</div></div>
 <div class="c"><small>SD Card</small><div class="v" id="sd">--</div></div>
-<div class="c"><small>RAM</small><div class="v" id="ram">--</div></div>
-<div class="c"><small>CPU</small><div class="v" id="cpu">--</div></div>
 </div>
 <p id="hint" style="font-size:12px;color:#555;line-height:1.5;margin:0 0 14px"></p>
-<div class="btns">
-<button class="bs" id="b1" onclick="cmd('start')">Start</button>
-<button class="bt" id="b2" onclick="cmd('stop')">Stop</button>
-<button class="br" onclick="cmd('restart')">Restart</button>
-</div>
 </div>
 <script>
 function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
@@ -90,8 +73,6 @@ var w=document.getElementById('wifi');w.textContent=d.wifi?'OK':'OFF';w.classNam
 var mq=document.getElementById('mqtt');mq.textContent=d.mqtt?'OK':'OFF';mq.className='v '+(d.mqtt?'ok':'er');
 var p=document.getElementById('phase');p.textContent=d.phase||'--';p.className='v '+(d.log?'wr':'ok');
 var t=d.temp!=null?Number(d.temp):null,sp=d.sp!=null?Number(d.sp):null;
-document.getElementById('temp').textContent=t!=null?t.toFixed(1)+'\u00B0C':'--';
-document.getElementById('sp').textContent=sp!=null?sp.toFixed(1)+'\u00B0C':'--';
 if(t!=null){
 document.getElementById('tbig').innerHTML=t.toFixed(1)+'<span>°C</span>';
 var pct=Math.min(100,Math.max(0,t/130*100));
@@ -101,11 +82,6 @@ bar.className='tfill '+(t>=116&&t<=126?'':t>126?'er':t>=100?'wr':'');
 document.getElementById('tsp').textContent=sp!=null?sp.toFixed(1)+'°C':'--°C';
 document.getElementById('tph').textContent=d.phase||'--';
 var s=document.getElementById('sd');s.textContent=d.sd?'OK':'N/A';s.className='v '+(d.sd?'ok':'er');
-function pct(id,v){var e=document.getElementById(id);if(v==null){e.textContent='--';e.className='v';return;}
-e.textContent=v+'%';e.className='v '+(v>=90?'er':v>=75?'wr':'ok');}
-pct('ram',d.ram);pct('cpu',d.cpu);
-document.getElementById('b1').disabled=!!d.log;
-document.getElementById('b2').disabled=!d.log;
 var h=document.getElementById('hint');
 if(d.wifi&&d.mqtt){h.textContent='';}
 else if(!d.wifi){
@@ -119,10 +95,6 @@ h.textContent='MQTT '+(d.broker||'?')+':'+(d.mport||1883)+' - '+(me[mk]||'gagal 
 }).catch(function(){
 document.getElementById('hint').textContent='API tidak merespons. Logout lalu login ulang.';
 });}
-function cmd(c){
-fetch('/api/cmd',{method:'POST',headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
-credentials:'same-origin',body:'cmd='+c})
-.then(function(r){if(r.status===401){sessionStorage.removeItem('st');location='/login';}u();}).catch(function(){});}
 u();setInterval(u,2000);
 </script>
 </body></html>
@@ -154,39 +126,8 @@ void setupWebDashboard() {
     doc["mport"] = cfg.mqttPort;
     doc["wfail"] = gLastStaDiscReason;
     doc["mfail"] = gLastMqttState;
-    uint32_t freeH  = ESP.getFreeHeap();
-    uint32_t totalH = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
-    uint8_t ramPct  = 0;
-    if (totalH > freeH) ramPct = (uint8_t)(((totalH - freeH) * 100UL) / totalH);
-    doc["ram"] = ramPct;
-    doc["cpu"] = gCpuPct;
     String out;
     serializeJson(doc, out);
     req->send(200, "application/json", out);
-  });
-
-  server.on("/api/cmd", HTTP_POST, [](AsyncWebServerRequest* req) {
-    if (!isSessionValid(req)) {
-      req->send(401, "application/json", "{\"ok\":false}");
-      return;
-    }
-    if (!req->hasParam("cmd", true)) {
-      req->send(400, "application/json", "{\"ok\":false}");
-      return;
-    }
-    String c = req->getParam("cmd", true)->value();
-    if (c == "start") {
-      startProcess();
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Started\"}");
-    } else if (c == "stop") {
-      stopProcess();
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Stopped\"}");
-    } else if (c == "restart") {
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restarting\"}");
-      delay(500);
-      ESP.restart();
-    } else {
-      req->send(400, "application/json", "{\"ok\":false}");
-    }
   });
 }

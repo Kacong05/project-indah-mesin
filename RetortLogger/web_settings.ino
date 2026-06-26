@@ -37,8 +37,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <nav>
 <a href="/dashboard">Dashboard</a>
 <a href="/settings" class="a">Settings</a>
-<a href="/logs">Log</a>
-<a href="/storage">Storage</a>
+<a href="/storage">Log &amp; Storage</a>
 <a href="/logout">Logout</a>
 </nav>
 <div class="m">
@@ -48,8 +47,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <label>SSID</label><input id="wssid" maxlength="32">
 <label>Password</label><input id="wpass" type="password" maxlength="64" placeholder="Wajib diisi ulang saat simpan">
 <h3>MQTT</h3>
-<label>Broker</label><input id="mhost" maxlength="64">
-<label>Port</label><input id="mport" type="number" min="1" max="65535">
+<p style="font-size:13px;color:#666;margin:4px 0;line-height:1.5">Broker: <b id="mqinfo">--</b><br>Diatur di firmware (<code>config.ino</code>) — reflash untuk mengubah.</p>
 <h3>Identity</h3>
 <label>Nomor Mesin</label><input id="mid" maxlength="32">
 <label>Password Login Baru</label><input id="lpass" type="password" maxlength="64" placeholder="Min 6 karakter">
@@ -62,12 +60,11 @@ fetch('/api/settings',{headers:ah(),credentials:'same-origin'}).then(function(r)
 if(r.status===401){sessionStorage.removeItem('st');location='/login';return null}return r.json()
 }).then(function(d){if(!d)return;
 document.getElementById('wssid').value=d.wssid||'';
-document.getElementById('mhost').value=d.mhost||'';
-document.getElementById('mport').value=d.mport||1883;
+document.getElementById('mqinfo').textContent=(d.mhost||'-')+':'+(d.mport||1883);
 document.getElementById('mid').value=d.mid||'';
 }).catch(function(){});}
 function save(){
-var ks=['wssid','wpass','mhost','mport','mid','lpass'];
+var ks=['wssid','wpass','mid','lpass'];
 var b=ks.map(function(k){
 return k+'='+encodeURIComponent(document.getElementById(k).value);}).join('&');
 var m=document.getElementById('msg');
@@ -122,16 +119,7 @@ void setupWebSettings() {
       if (v.length() > 0)
         strncpy(cfg.wifiPass, v.c_str(), sizeof(cfg.wifiPass) - 1);
     }
-    if (req->hasParam("mhost", true)) {
-      String v = req->getParam("mhost", true)->value();
-      if (v.length() > 0)
-        strncpy(cfg.mqttBroker, v.c_str(), sizeof(cfg.mqttBroker) - 1);
-    }
-    if (req->hasParam("mport", true)) {
-      int p = req->getParam("mport", true)->value().toInt();
-      if (p > 0 && p <= 65535)
-        cfg.mqttPort = (uint16_t)p;
-    }
+    // Broker & port MQTT TIDAK lagi dari web — konstanta di config.ino (reflash).
     if (req->hasParam("mid", true)) {
       String v = req->getParam("mid", true)->value();
       if (v.length() > 0 && v.length() <= 32)

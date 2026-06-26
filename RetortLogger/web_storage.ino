@@ -5,6 +5,8 @@
 
 extern RetortState    state;
 extern AsyncWebServer server;
+extern bool sdLock(uint32_t ms);
+extern void sdUnlock();
 
 static const char STOR_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -30,6 +32,7 @@ h1{font-size:19px;margin:0 0 12px}
 table{width:100%;border-collapse:collapse;font-size:14px;background:#fff;min-width:340px}
 th{background:#f0f1f3;padding:8px;text-align:left;color:#555}
 td{padding:8px;border-top:1px solid #e3e3e3}
+.dlt{background:#16a34a;color:#fff;border:none;padding:10px 16px;border-radius:4px;cursor:pointer;margin-bottom:12px;font-size:14px}
 .dl{background:#2563eb;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px;margin-right:4px}
 .rm{background:#dc2626;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px}
 .dir{cursor:pointer;color:#2563eb;background:none;border:none;font-family:inherit;font-size:14px}
@@ -49,13 +52,13 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <nav>
 <a href="/dashboard">Dashboard</a>
 <a href="/settings">Settings</a>
-<a href="/logs">Log</a>
-<a href="/storage" class="a">Storage</a>
+<a href="/storage" class="a">Log &amp; Storage</a>
 <a href="/logout">Logout</a>
 </nav>
 <div class="m">
-<h1>Storage</h1>
+<h1>Log &amp; Storage</h1>
 <div class="warn" id="w">SD Card tidak tersedia.</div>
+<button class="dlt" id="bl" onclick="location='/api/dl?latest=1'">Download CSV Terbaru</button>
 <div class="cap" id="ca"></div>
 <div class="path" id="pb"></div>
 <div class="tw"><table><thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>
@@ -78,7 +81,8 @@ cp=p;
 fetch('/api/stor?path='+encodeURIComponent(p)).then(function(r){
 if(r.status==401){location='/login';return null}return r.json()
 }).then(function(d){if(!d)return;
-if(!d.sd){document.getElementById('w').style.display='block';return;}
+if(!d.sd){document.getElementById('w').style.display='block';
+document.getElementById('bl').style.display='none';return;}
 var ca=document.getElementById('ca');ca.textContent='';
 var items=[{l:'Used',v:fs(d.used)},{l:'Free',v:fs(d.free)},{l:'Total',v:fs(d.total)}];
 items.forEach(function(it){
@@ -165,6 +169,7 @@ void setupWebStorage() {
       (unsigned long long)(tot - usd));
     String json = cap;
 
+    if (!sdLock(600)) { req->send(200, "application/json", json + "]}"); return; }
     File dir = SD.open(path);
     bool first = true;
     if (dir && dir.isDirectory()) {
@@ -184,6 +189,7 @@ void setupWebStorage() {
       dir.close();
     }
     json += "]}";
+    sdUnlock();
     req->send(200, "application/json", json);
 #else
     req->send(200, "application/json", "{\"sd\":false}");
@@ -215,7 +221,11 @@ void setupWebStorage() {
       return;
     }
     if (!SD.exists(p)) { req->send(404, "application/json", "{\"ok\":false}"); return; }
-    if (SD.remove(p)) req->send(200, "application/json", "{\"ok\":true}");
+    bool ok;
+    if (!sdLock(800)) { req->send(503, "application/json", "{\"ok\":false,\"busy\":true}"); return; }
+    ok = SD.remove(p);
+    sdUnlock();
+    if (ok) req->send(200, "application/json", "{\"ok\":true}");
     else req->send(500, "application/json", "{\"ok\":false}");
 #else
     req->send(503, "application/json", "{\"ok\":false}");

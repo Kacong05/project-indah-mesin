@@ -11,21 +11,23 @@
 
 extern AppConfig   cfg;
 extern RetortState state;
+extern volatile bool gLogStartReq;
+extern volatile bool gLogStopReq;
+extern char gLastTs[24];
+extern bool sdLock(uint32_t ms);
+extern void sdUnlock();
 
 #define SD_LOG_DIR "/retort"
 
 static File logFile;
 static char logPath[48] = {0};
-static unsigned long lastLogMs = 0;
-static const unsigned long LOG_INTERVAL_MS = 1000;
 
 static void ensureDir() {
   if (!SD.exists(SD_LOG_DIR)) SD.mkdir(SD_LOG_DIR);
 }
 
 static void openNewLog() {
-  char ts[24];
-  getTimestamp(ts, sizeof(ts));
+  const char* ts = gLastTs;  // timestamp cache dari task logger
   // Bersihkan jadi filename-safe
   char clean[20] = {0};
   int ci = 0;
@@ -60,36 +62,20 @@ void setupSDLogger() {
   // File log dibuka saat sesi dimulai (Start), bukan saat boot.
 }
 
-// Mulai sesi log: buat file CSV baru.
-void sdStartLog() {
-  if (!state.sdReady) return;
-  if (logFile) { logFile.flush(); logFile.close(); }
-  openNewLog();
-}
+// Mulai/akhiri sesi log dipanggil dari web/MQTT (core lain). JANGAN sentuh SD
+// di sini — cukup set flag. Pembukaan/penutupan file dilakukan task logger
+// (lewat sdServiceLog) agar SEMUA akses SD terjadi di satu konteks.
+void sdStartLog() { gLogStartReq = true; }
+void sdStopLog()  { gLogStopReq  = true; }
 
-// Akhiri sesi log: tutup file.
-void sdStopLog() {
-  if (logFile) {
-    logFile.flush();
-    logFile.close();
-    Serial.printf("[SD] Log closed: %s\n", logPath);
-  }
-}
+// loop() utama tidak lagi menulis SD (pindah ke task logger).
+void loopSDLogger() {}
 
-void loopSDLogger() {
-  if (!state.sdReady || !state.logging || !logFile) return;
-  unsigned long now = millis();
-  if (now - lastLogMs < LOG_INTERVAL_MS) return;
-  lastLogMs = now;
-  sdLogEntry();
-}
-
+// Tulis satu baris CSV. Dipanggil sdServiceLog (sudah memegang kunci SD).
 void sdLogEntry() {
   if (!state.sdReady || !logFile) return;
-  char ts[24];
-  getTimestamp(ts, sizeof(ts));
   // CSV: Tanggal Jam, Actual, Setting
-  logFile.printf("%s,%.1f,%.1f\n", ts, state.temperature, state.setpoint);
+  logFile.printf("%s,%.1f,%.1f\n", gLastTs, state.temperature, state.setpoint);
   logFile.flush();
   // Rotasi di 5MB
   if (logFile.size() > 5UL * 1024UL * 1024UL) {
@@ -98,11 +84,38 @@ void sdLogEntry() {
   }
 }
 
+// Dipanggil tiap 1 detik dari loggerTask. Menangani start/stop rekam dan
+// menulis baris CSV, SEMUA di bawah kunci SD (aman terhadap akses web).
+void sdServiceLog() {
+  if (!state.sdReady) return;
+  if (!sdLock(800)) return;  // bus dipakai web sebentar → coba siklus berikutnya
+
+  if (gLogStartReq) {
+    gLogStartReq = false;
+    if (logFile) { logFile.flush(); logFile.close(); }
+    openNewLog();
+  }
+  if (gLogStopReq) {
+    gLogStopReq = false;
+    if (logFile) {
+      logFile.flush();
+      logFile.close();
+      Serial.printf("[SD] Log closed: %s\n", logPath);
+    }
+  }
+  if (state.logging && logFile) {
+    sdLogEntry();
+  }
+
+  sdUnlock();
+}
+
 #else
 
 void setupSDLogger() {}
 void loopSDLogger() {}
 void sdLogEntry() {}
+void sdServiceLog() {}
 void sdStartLog() {}
 void sdStopLog() {}
 

@@ -21,10 +21,11 @@
 
 #include <ModbusMaster.h>
 
-// --- Pin RS485 onboard ESP32-S3 IoT Logger (sesuai label casing) ---
-#define PIN_RS485_RX  15   // RX2
-#define PIN_RS485_TX  16   // TX2
-#define PIN_RS485_DE  -1   // tidak diekspos; onboard auto-direction/internal DE
+// --- Pin RS485 onboard (SESUAI PINOUT RESMI khurs ESP32-S3 IoT Logger) ---
+// "485 PIN OUT: TX2=15, RX2=16". Tidak ada pin DE -> board auto-direction.
+#define PIN_RS485_TX  15   // ESP TX -> MAX485 DI
+#define PIN_RS485_RX  16   // ESP RX <- MAX485 RO
+#define PIN_RS485_DE  -1   // auto-direction (tak ada pin DE di pinout resmi)
 
 // --- Parameter scan ---
 #define TNL_REG_PV    0x03E8   // FC04: PV
@@ -48,29 +49,6 @@ const SerialFmt FMTS[] = {
 const uint8_t FMT_N = sizeof(FMTS) / sizeof(FMTS[0]);
 
 ModbusMaster modbus;
-
-// --- Kandidat pin DE/RE (kontrol arah) untuk auto-deteksi ---
-// Banyak board RS485 (SP3485/MAX485) BUTUH GPIO ini digerakkan saat TX.
-// -1 = coba mode auto/tanpa DE. Pin RTC(8,9), SD(10-13), UART485(15,16),
-// USB(19,20), U0(43,44), strapping(0,3,45,46) sengaja TIDAK dicoba.
-const int DE_CANDIDATES[] = { -1, 17, 18, 21, 4, 5, 6, 7, 1, 2, 38, 39, 40, 41, 42, 47, 48 };
-const uint8_t DE_N = sizeof(DE_CANDIDATES) / sizeof(DE_CANDIDATES[0]);
-
-// --- Kandidat pasangan UART (TX, RX) untuk transceiver RS485 ---
-// Tiap board menaruh transceiver di pin berbeda. Label "TX2/RX2" di casing
-// belum tentu = pin internal RS485. Coba yang paling umum lebih dulu.
-struct UartPins { int tx; int rx; };
-const UartPins UARTS[] = {
-  { 16, 15 },  // label board (asumsi awal)
-  { 17, 18 },  // SANGAT umum (Waveshare/khurs ESP32-S3 RS485)
-  { 18, 17 },
-  { 15, 16 },
-  { 17, 16 },
-  { 16, 17 },
-  {  4,  5 },
-  {  5,  4 },
-};
-const uint8_t UART_N = sizeof(UARTS) / sizeof(UARTS[0]);
 
 // Pin UART RS485 aktif (runtime; diubah saat scan).
 int gTxPin = PIN_RS485_TX;
@@ -211,35 +189,8 @@ static bool probeRange(uint32_t baud, const SerialFmt& f, uint8_t idMax) {
   return false;
 }
 
-// 2a) DISCOVERY: tebak pasangan pin (TX, RX) + DE dengan probe cepat
-//     (baud 9600/19200, parity N/E, ID 1..3). Begitu controller menjawab,
-//     kombinasi pin dikunci. Ini ~2-3 menit.
-static bool discoverPins() {
-  const uint32_t dBauds[] = { 9600, 19200 };
-  const SerialFmt dFmts[] = { { SERIAL_8N1, "8N1" }, { SERIAL_8E1, "8E1" } };
-  for (uint8_t ui = 0; ui < UART_N; ui++) {
-    gTxPin = UARTS[ui].tx; gRxPin = UARTS[ui].rx;
-    Serial.printf("\n[PIN-SCAN] UART TX=%d RX=%d", gTxPin, gRxPin);
-    for (uint8_t di = 0; di < DE_N; di++) {
-      int de = DE_CANDIDATES[di];
-      if (de == gTxPin || de == gRxPin) continue;  // jangan pakai pin sama
-      deSelect(de);
-      Serial.printf("\n  DE=%d ", de);
-      for (uint8_t bi = 0; bi < 2; bi++) {
-        for (uint8_t fi = 0; fi < 2; fi++) {
-          if (probeRange(dBauds[bi], dFmts[fi], 3)) {
-            Serial.printf("\n[PIN-OK] TX=%d RX=%d DE=%d (controller menjawab)\n",
-                          gTxPin, gRxPin, de);
-            return true;
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
-
-// 2b) FULL SCAN: setelah pin diketahui, cari ID+baud+format yang persis.
+// FULL SCAN: pin SUDAH pasti (TX=15, RX=16, DE=auto) dari pinout resmi.
+// Tinggal cari ID + baud + format yang persis. Coba semua parity x baud x ID.
 static bool scanBus() {
   for (uint8_t fi = 0; fi < FMT_N; fi++) {
     for (uint8_t bi = 0; bi < BAUD_N; bi++) {
@@ -251,17 +202,12 @@ static bool scanBus() {
   return false;
 }
 
-// Orkestrasi: temukan pin (TX/RX/DE) dulu, lalu scan lengkap pada pin itu.
+// Orkestrasi: kunci pin resmi board, lalu scan semua parameter.
 static bool findDevice() {
-  if (discoverPins()) {
-    int lockedDe = gDePin, lockedTx = gTxPin, lockedRx = gRxPin;
-    Serial.println(F("\n[SCAN] Pin terkunci, cari ID/baud/format persis..."));
-    if (scanBus()) return true;
-    // discovery sudah menemukan jawaban; anggap sukses walau full-scan lewat
-    deSelect(lockedDe); gTxPin = lockedTx; gRxPin = lockedRx;
-    return found;
-  }
-  return false;
+  gTxPin = PIN_RS485_TX;   // 15
+  gRxPin = PIN_RS485_RX;   // 16
+  deSelect(PIN_RS485_DE);  // -1 = auto-direction
+  return scanBus();
 }
 
 // Heartbeat visual: kedipkan pin TX (GPIO16 -> LED TX2) sebagai GPIO biasa.
@@ -285,16 +231,18 @@ void setup() {
   Serial.begin(115200);
   delay(600);
   Serial.println();
-  Serial.println(F("=== Modbus RS485 Wire Test (auto-detect pin) ==="));
+  Serial.println(F("=== Modbus RS485 Wire Test (pin TERKUNCI dari pinout resmi) ==="));
   Serial.println(F("Target: Autonics TNL-P46RR-RS-035"));
-  Serial.println(F("Auto-scan pasangan pin (TX,RX) + DE + baud + parity + ID."));
-  Serial.println(F("Wiring: terminal RS485 A+ dan B- board ke TNL (A+->A+, B-->B-)"));
+  Serial.println(F("Pin board (pinout resmi): TX=15  RX=16  DE=auto (tak ada pin DE)"));
+  Serial.println(F("Scan: semua baud x parity x ID 1..32 (cepat, ~30 dtk/putaran)."));
+  Serial.println(F("Wiring: terminal A+ board -> A+ TNL, B- board -> B- TNL."));
 
   // Langkah 1: sniffer cepat di 9600 (deteksi ada-tidaknya sinyal)
+  gTxPin = PIN_RS485_TX; gRxPin = PIN_RS485_RX; deSelect(PIN_RS485_DE);
   sniffRaw(9600, 1500);
 
-  // Langkah 2: auto-deteksi pin TX/RX/DE -> lalu slave ID + baud + format
-  Serial.println(F("\n[SCAN] Auto-deteksi pin TX/RX/DE (butuh ~2-3 menit)..."));
+  // Langkah 2: scan parameter pada pin resmi board
+  Serial.println(F("\n[SCAN] Cari ID + baud + parity (pin sudah pasti)..."));
   if (findDevice()) {
     deSelect(foundDe); gTxPin = foundTx; gRxPin = foundRx;
     beginBus(foundBaud, foundCfg, foundId);  // set ke hasil temuan untuk monitor
@@ -303,14 +251,13 @@ void setup() {
                   foundTx, foundRx, foundDe, foundId, foundBaud, foundFmtName);
     Serial.println(F(">>> Pakai nilai ini di RetortLogger (PIN_RS485_*, TNL_SLAVE_ID, MB_BAUD, Serial1). <<<"));
   } else {
-    Serial.println(F("\n[GAGAL] Tak ada jawaban di semua pin/DE/ID/baud/parity."));
+    Serial.println(F("\n[GAGAL] Pin sudah benar (15/16) tapi tak ada jawaban."));
     Serial.println(F("Software PC BISA baca di terminal sama -> controller & kabel OK."));
-    Serial.println(F("Yang masih mungkin di sisi ESP:"));
-    Serial.println(F("  1. A+/B- masih kebalik (tukar sekali lagi)"));
-    Serial.println(F("  2. Slave ID controller > 3 (discovery cek ID 1..3 saja)"));
-    Serial.println(F("  3. Modul RS485 belum dapat power (cek jumper/VCC board)"));
-    Serial.println(F("  4. Pin RS485 board di luar daftar -> kirim foto/skema board"));
-    Serial.println(F("  5. Pastikan PC software DITUTUP saat tes (1 master di bus)"));
+    Serial.println(F("Sisa kemungkinan (urut paling sering):"));
+    Serial.println(F("  1. A+/B- KEBALIK -> TUKAR 2 kabel itu (penyebab #1)."));
+    Serial.println(F("  2. PC software masih KEBUKA -> tutup dulu (cuma 1 master)."));
+    Serial.println(F("  3. Slave ID controller > 32 -> beri tahu ID-nya."));
+    Serial.println(F("  4. Kabel nyolok ke GPIO/I2C, bukan terminal A+/B- RS485."));
   }
 }
 

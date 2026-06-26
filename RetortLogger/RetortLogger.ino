@@ -5,6 +5,9 @@
 // ============================================================
 
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 #include <WiFi.h>
 #include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
@@ -26,9 +29,9 @@
 #define PIN_SD_MOSI     11
 #define PIN_SD_CLK      12
 #define PIN_SD_MISO     13
-#define PIN_RS485_RX    15
-#define PIN_RS485_TX    16
-#define PIN_RS485_DE    -1   // RS485 onboard auto-direction/internal DE
+#define PIN_RS485_TX    15   // pinout resmi: TX2=GPIO15 (-> MAX485 DI)
+#define PIN_RS485_RX    16   // pinout resmi: RX2=GPIO16 (<- MAX485 RO)
+#define PIN_RS485_DE    -1   // board auto-direction (tak ada pin DE)
 
 // --- Constants ---
 #define SESSION_TIMEOUT_MS   600000UL  // 10 menit
@@ -81,25 +84,25 @@ AsyncWebServer server(80);
 char sessionToken[65]      = {0};
 unsigned long sessionStart = 0;
 
+// --- Sinkronisasi task logger (akuisisi data) vs loop (jaringan/web) ---
+// Modbus + tulis SD dijalankan di task khusus berprioritas tinggi (core 1)
+// agar pengambilan data per-detik TIDAK pernah tertahan oleh WiFi/MQTT/web.
+SemaphoreHandle_t gSdMutex = NULL;     // lindungi akses SD lintas task/core
+volatile bool gLogStartReq = false;    // permintaan mulai rekam (dari web/MQTT)
+volatile bool gLogStopReq  = false;    // permintaan stop rekam
+char gLastTs[24] = "0/0/0000 0:00:00AM";  // timestamp cache (RTC dibaca di task)
+
+// Ambil/lepas kunci SD. Timeout supaya task logger tak menunggu terlalu lama.
+bool sdLock(uint32_t ms) {
+  return gSdMutex && xSemaphoreTake(gSdMutex, pdMS_TO_TICKS(ms)) == pdTRUE;
+}
+void sdUnlock() {
+  if (gSdMutex) xSemaphoreGive(gSdMutex);
+}
+
 // Diagnostik koneksi (ditampilkan di dashboard)
 int gLastStaDiscReason = 0;  // kode putus WiFi STA (15=password salah)
 int gLastMqttState     = 0;  // PubSubClient state saat gagal (-2=jaringan, 4=user, 5=ACL)
-uint8_t gCpuPct          = 0;  // estimasi beban CPU main loop (%)
-
-// Estimasi CPU: durasi kerja loop() vs 1 detik (butuh delay di akhir loop())
-void loopCpuSample(uint32_t loopUs) {
-  static uint32_t busyUs = 0;
-  static uint32_t winMs  = 0;
-  busyUs += loopUs;
-  uint32_t now = millis();
-  if (winMs == 0) { winMs = now; return; }
-  if (now - winMs >= 1000) {
-    gCpuPct = (uint8_t)((busyUs * 100UL) / 1000000UL);
-    if (gCpuPct > 99) gCpuPct = 99;
-    busyUs = 0;
-    winMs  = now;
-  }
-}
 
 // --- SHA256 ---
 void sha256Hex(const char* input, char* output) {
@@ -186,6 +189,7 @@ void getTimestamp(char* buf, size_t len);
 void setupSDLogger();
 void loopSDLogger();
 void sdLogEntry();
+void sdServiceLog();
 void sdStartLog();
 void sdStopLog();
 void setupOTA();
@@ -197,8 +201,30 @@ void setupWebLogs();
 void setupWebStorage();
 
 // ============================================================
+//  Task logger: akuisisi Modbus + tulis SD, presisi 1 detik.
+//  Prioritas lebih tinggi dari loop() Arduino, dipin ke core 1, jadi
+//  walaupun loop() ke-block oleh mqtt.connect()/web, sampling tetap jalan.
+// ============================================================
+static void loggerTask(void* pv) {
+  TickType_t last = xTaskGetTickCount();
+  const TickType_t period = pdMS_TO_TICKS(1000);
+  for (;;) {
+    // Refresh cache timestamp (RTC/I2C HANYA dibaca di task ini → tak ada race)
+    getTimestamp(gLastTs, sizeof(gLastTs));
+#if USE_MODBUS
+    loopModbus();      // 1x poll PV+SV (timeout pendek, tak pernah block lama)
+#endif
+#if USE_SD
+    sdServiceLog();    // tangani start/stop rekam + tulis 1 baris CSV
+#endif
+    vTaskDelayUntil(&last, period);  // jaga periode tepat 1000 ms
+  }
+}
+
 void setup() {
   Serial.begin(115200);
+  // Cegah USB-CDC mem-block task bila tak ada host yang membaca Serial.
+  Serial.setTxTimeoutMs(0);
   delay(300);
   Serial.println(F("\n=== RetortLogger ==="));
 
@@ -245,28 +271,30 @@ void setup() {
   setupOTA();
 #endif
 
+  // Buat mutex SD & seed timestamp SEBELUM task logger jalan.
+  gSdMutex = xSemaphoreCreateMutex();
+  getTimestamp(gLastTs, sizeof(gLastTs));
+
+  // Task logger di core 1, prioritas 3 (di atas loop Arduino = prioritas 1).
+  // Stack 8 KB cukup untuk SD + snprintf.
+  xTaskCreatePinnedToCore(loggerTask, "logger", 8192, NULL, 3, NULL, 1);
+
   Serial.println(F("=== Ready ==="));
 }
 
 void loop() {
-  uint32_t t0 = micros();
   loopWiFiAP();
   loopMQTT();
 #if USE_RTC
   loopRTC();
 #endif
-#if USE_MODBUS
-  loopModbus();
-#endif
 #if USE_FAKE_SENSOR
   loopRetortSim();
-#endif
-#if USE_SD
-  loopSDLogger();
 #endif
 #if USE_OTA
   loopOTA();
 #endif
-  loopCpuSample(micros() - t0);
-  delay(1);  // yield — cegah busy-spin & ukuran CPU lebih akurat
+  // Modbus & SD logging pindah ke loggerTask (core 1, prioritas tinggi)
+  // agar tidak terganggu blocking jaringan di sini.
+  delay(1);  // yield — beri waktu task lain & cegah busy-spin
 }

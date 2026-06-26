@@ -65,6 +65,22 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
         print(f"[MQTT] Gagal connect, code={reason_code}")
 
 
+def _to_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float_or_none(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def on_message(client, userdata, msg):
     try:
         raw = json.loads(msg.payload.decode("utf-8"))
@@ -82,8 +98,10 @@ def on_message(client, userdata, msg):
 
     payload = {
         "machine_code": esp_id,
-        "temperature": float(raw.get("actual", raw.get("temperature", 0))),
-        "pressure": float(raw.get("pressure", 0)),
+        "temperature": _to_float(raw.get("actual", raw.get("temperature", 0))),
+        # SV / setpoint dari controller (ESP kirim field "setting"). Nullable di API.
+        "sv": _to_float_or_none(raw.get("setting", raw.get("sv"))),
+        "pressure": _to_float(raw.get("pressure", 0)),
         "process_status": process_status,
     }
 
@@ -94,7 +112,9 @@ def on_message(client, userdata, msg):
     try:
         r = requests.post(API_URL, json=payload, headers=api_headers(), timeout=10)
         if r.status_code == 200:
-            print(f"[OK] {esp_id} | {payload['temperature']}°C | {payload['process_status']}")
+            sv = payload["sv"]
+            sv_txt = f" | SV {sv}°C" if sv is not None else ""
+            print(f"[OK] {esp_id} | {payload['temperature']}°C{sv_txt} | {payload['process_status']}")
         else:
             print(f"[GAGAL] HTTP {r.status_code}: {r.text[:120]}")
     except requests.RequestException as e:
