@@ -3,7 +3,7 @@
  * Komponen kartu untuk menampilkan satu sesi proses - Light Theme
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Clock, Thermometer, Activity, MoreVertical, Trash2 } from 'lucide-react';
 
 const F0_TARGET = 6;
@@ -55,6 +55,19 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
     } = session;
 
     const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef(null);
+
+    // Tutup menu saat klik di luar
+    useEffect(() => {
+        if (!menuOpen) return;
+        const handleClickOutside = (e) => {
+            if (menuRef.current && !menuRef.current.contains(e.target)) {
+                setMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [menuOpen]);
 
     const isActive = status === 'active';
 
@@ -78,8 +91,8 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
             tabIndex={0}
             onClick={onClick}
             onKeyDown={handleKeyDown}
-            className={`relative w-full text-left p-5 rounded-xl border-2 transition-all duration-200 hover-lift cursor-pointer ${
-                menuOpen ? 'z-30' : ''
+            className={`relative w-full text-left p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                menuOpen ? 'z-30' : 'hover-lift'
             } ${
                 isSelected
                     ? 'bg-yellow-50 border-[#FFB800] shadow-lg shadow-[#FFB800]/10'
@@ -99,7 +112,7 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
                 <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-sm font-semibold text-gray-500">{dateStr}</span>
                     {onDelete && (
-                        <div className="relative">
+                        <div className="relative" ref={menuRef}>
                             <button
                                 type="button"
                                 aria-label="Opsi proses"
@@ -112,29 +125,20 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
                                 <MoreVertical className="w-4 h-4" />
                             </button>
                             {menuOpen && (
-                                <>
-                                    <div
-                                        className="fixed inset-0 z-10"
+                                <div className="absolute right-0 top-8 z-50 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+                                    <button
+                                        type="button"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             setMenuOpen(false);
+                                            onDelete();
                                         }}
-                                    />
-                                    <div className="absolute right-0 top-8 z-20 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setMenuOpen(false);
-                                                onDelete();
-                                            }}
-                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors rounded-md"
-                                        >
-                                            <Trash2 className="w-4 h-4 flex-shrink-0" />
-                                            Hapus Proses
-                                        </button>
-                                    </div>
-                                </>
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors rounded-md"
+                                    >
+                                        <Trash2 className="w-4 h-4 flex-shrink-0" />
+                                        Hapus Proses
+                                    </button>
+                                </div>
                             )}
                         </div>
                     )}
