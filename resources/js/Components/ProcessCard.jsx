@@ -128,9 +128,9 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
                                                 setMenuOpen(false);
                                                 onDelete();
                                             }}
-                                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors rounded-md"
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            <Trash2 className="w-4 h-4 flex-shrink-0" />
                                             Hapus Proses
                                         </button>
                                     </div>
