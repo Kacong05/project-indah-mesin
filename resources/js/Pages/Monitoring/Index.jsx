@@ -27,16 +27,12 @@ ChartJS.register(
     Filler
 );
 
-const TARGET_TEMP = 121;
-const TEMP_HIGH = TARGET_TEMP + 5;
-
 export default function MonitoringIndex({ stats, chartData, machineName }) {
     const chartScrollRef = useRef(null);
     const lastProcessKeyRef = useRef(null);
-    const userScrollingRef = useRef(false);   // user sedang lihat data lama
+    const userScrollingRef = useRef(false);
     const [showJumpBtn, setShowJumpBtn] = useState(false);
 
-    // ── Auto-refresh data setiap 2 detik ────────────────────────────
     useEffect(() => {
         const interval = setInterval(() => {
             router.reload({
@@ -48,7 +44,6 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
         return () => clearInterval(interval);
     }, []);
 
-    // ── Reset scroll ke kiri saat sesi proses baru dimulai ──────────
     useEffect(() => {
         const processKey = chartData.processStartedAt
             ?? chartData.processSessionId
@@ -67,20 +62,17 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
         lastProcessKeyRef.current = processKey;
     }, [chartData.processStartedAt, chartData.processSessionId, chartData.labels]);
 
-    // ── Auto-scroll ke kanan saat data baru, kecuali user sedang scroll ──
     useEffect(() => {
         const el = chartScrollRef.current;
         if (!el || userScrollingRef.current) return;
         el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' });
     }, [chartData.labels?.length]);
 
-    // ── Deteksi apakah user sedang scroll ke data lama ──────────────
     useEffect(() => {
         const el = chartScrollRef.current;
         if (!el) return;
 
         const handleScroll = () => {
-            // Threshold 80px: dianggap "di ujung kanan" jika sisa < 80px
             const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 80;
             userScrollingRef.current = !atEnd;
             setShowJumpBtn(!atEnd);
@@ -100,6 +92,7 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
 
     const pointCount = chartData.labels?.length ?? 0;
     const chartMinWidth = Math.max(pointCount * 28, 600);
+    const hasChartData = pointCount > 0;
 
     const lineChartOptions = {
         responsive: true,
@@ -147,7 +140,7 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
         },
     };
 
-    // Warna mengikuti fase proses: heating → kuning, sterilisasi → merah, cooling → biru
+    // Warna fase: CUT (heating) → kuning, Sterilization → merah, Cooling → biru
     const resolveColor = (index, statuses, { yellow, red, blue }) => {
         if (!statuses || index === undefined || index === null) return yellow;
         const status = (statuses[index] ?? '').toLowerCase();
@@ -199,12 +192,6 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
         ],
     };
 
-    const currentTemp = parseFloat(stats.currentTemperature) || 0;
-    const processStatus = !stats.isOnline ? 'standby'
-        : currentTemp > TEMP_HIGH ? 'error'
-            : currentTemp >= 10 ? 'running'
-                : 'standby';
-
     return (
         <AuthenticatedLayout header={`Monitoring — ${machineName}`}>
             <Head title="Monitoring" />
@@ -214,12 +201,15 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
                     pv={stats.currentTemperature}
                     sv={stats.sv}
                     mv={stats.mv}
-                    status={processStatus === 'running' ? 'running' : processStatus === 'error' ? 'alarm' : 'stop'}
                     processStep={stats.processStep}
+                    processStepCode={stats.processStepCode}
+                    processPhase={stats.processPhase}
                     timerTot={stats.timerTot}
                     timerStp={stats.timerStp}
-                    timerRem={stats.timerRem}
                     isOnline={stats.isOnline}
+                    displayMode={stats.displayMode}
+                    lastUpdate={stats.lastUpdate}
+                    runState={stats.runState}
                 />
 
                 <div className="card p-6">
@@ -228,7 +218,6 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
                             <TrendingUp className="w-5 h-5 text-[#FFB800]" />
                             Grafik Suhu
                         </h3>
-                        {/* Tombol lompat ke data terbaru */}
                         {showJumpBtn && (
                             <button
                                 onClick={scrollToLatest}
@@ -240,9 +229,17 @@ export default function MonitoringIndex({ stats, chartData, machineName }) {
                         )}
                     </div>
                     <div className="h-[400px] w-full overflow-x-auto" ref={chartScrollRef}>
-                        <div style={{ minWidth: chartMinWidth, height: '100%' }}>
-                            <Line data={lineChartData} options={lineChartOptions} />
-                        </div>
+                        {hasChartData ? (
+                            <div style={{ minWidth: chartMinWidth, height: '100%' }}>
+                                <Line data={lineChartData} options={lineChartOptions} />
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                                {stats.displayMode === 'idle'
+                                    ? 'Siap proses berikutnya'
+                                    : 'Belum ada data grafik'}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

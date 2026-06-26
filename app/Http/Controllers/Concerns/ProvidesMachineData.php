@@ -13,77 +13,153 @@ trait ProvidesMachineData
 
     private const COOLING_TARGET_C = 60.0;
 
-    private const STERILIZING_TARGET_SEC = 50;
+    private const HOLDING_TARGET_SEC = 1200;
 
     private const COOLING_RATE_PER_SEC = 3.05;
 
+    /** Deteksi koneksi aktif (heartbeat server). */
+    private const ONLINE_THRESHOLD_SECONDS = 15;
+
+    /** Tanpa data baru ≥ threshold → kosongkan tampilan monitoring. */
+    private const IDLE_THRESHOLD_MINUTES = 10;
+
     protected function getMachineStats($machine, $latestReading, $today)
     {
-        $currentProcessReadings = $machine
-            ? $this->getCurrentProcessReadings($machine)
-            : collect();
-
-        $currentLatest = $currentProcessReadings->last() ?? $latestReading;
-        $timers = $this->calculateProcessTimers($currentProcessReadings);
-
-        $currentTemperature = $currentLatest ? $currentLatest->temperature : 0;
-        $machineStatus = $machine ? $machine->status : 'Offline';
-
-        $lastHeartbeat = $machine?->last_heartbeat_at;
-        $isOnline = $lastHeartbeat !== null && $lastHeartbeat->greaterThan(now()->subSeconds(15));
+        $displayMode = $this->resolveMonitoringDisplayMode($machine);
+        $isOnline = $displayMode === 'active';
 
         if ($machine && ! $isOnline && $machine->status !== 'offline') {
             $machine->update(['status' => 'offline']);
         }
 
         $totalDataToday = $machine
-            ? SensorReading::where('machine_id', $machine->id)->whereDate('recorded_at', $today)->count()
-            : 0;
+          ? SensorReading::where('machine_id', $machine->id)->whereDate('recorded_at', $today)->count()
+          : 0;
 
-        $lastUpdate = $currentLatest
-            ? $currentLatest->recorded_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s')
-            : 'N/A';
-
-        $dataIntervalMs = null;
-        if ($machine) {
-            $lastTwo = SensorReading::where('machine_id', $machine->id)
-                ->orderByDesc('recorded_at')
-                ->orderByDesc('id')
-                ->take(2)
-                ->get(['recorded_at']);
-
-            if ($lastTwo->count() === 2) {
-                $dataIntervalMs = (int) abs(
-                    $lastTwo[0]->recorded_at->diffInMilliseconds($lastTwo[1]->recorded_at)
-                );
-            }
+        if ($displayMode === 'idle' || ! $machine) {
+            return $this->buildIdleMonitoringStats($machine, $totalDataToday);
         }
 
-        $isLogging = $currentLatest && $this->isLoggingStatus($currentLatest->process_status);
+        $currentProcessReadings = $this->getCurrentProcessReadings($machine);
+        $currentLatest = $currentProcessReadings->last() ?? $latestReading;
+
+        if (! $currentLatest) {
+            return $this->buildIdleMonitoringStats($machine, $totalDataToday);
+        }
+
+        $timers = $this->calculateProcessTimers($currentProcessReadings);
+        $processPhase = $this->normalizePhase($currentLatest->process_status);
+        $isRunning = $processPhase !== 'idle';
+
+        $lastUpdate = $currentLatest->recorded_at
+            ->timezone('Asia/Jakarta')
+            ->format('d/m/Y H:i:s');
+
+        $dataIntervalMs = $this->resolveDataIntervalMs($machine);
 
         return [
-            'currentTemperature' => $currentTemperature,
-            'machineStatus' => $machineStatus,
+            'displayMode' => $displayMode,
+            'currentTemperature' => $isRunning ? (float) $currentLatest->temperature : 0,
+            'machineStatus' => $machine->status,
             'isOnline' => $isOnline,
-            'isLogging' => $isLogging,
+            'isLogging' => $this->isLoggingStatus($currentLatest->process_status),
+            'runState' => $isRunning ? 'run' : 'stop',
             'totalDataToday' => $totalDataToday,
             'lastUpdate' => $lastUpdate,
             'dataIntervalMs' => $dataIntervalMs,
-            'sv' => $currentLatest?->sv ?? 121.1,
-            'mv' => null,
-            'processStep' => $this->formatProcessStepLabel($currentLatest?->process_status),
+            'sv' => $this->formatSvForDisplay($currentLatest, $isRunning),
+            'mv' => 0,
+            'processStep' => $this->formatProcessStepLabel($currentLatest->process_status),
+            'processStepCode' => $this->formatProcessStepCode($currentLatest->process_status),
+            'processPhase' => $processPhase,
             'timerTot' => $timers['timerTot'],
             'timerStp' => $timers['timerStp'],
-            'timerRem' => $timers['timerRem'],
         ];
+    }
+
+    /**
+     * Mode tampilan monitoring berdasarkan waktu server (bukan recorded_at).
+     * - active: data masuk ≤ 15 detik
+     * - paused: putus jaringan < 10 menit — tampilkan proses terakhir
+     * - idle:   tidak ada data ≥ 10 menit — kosongkan tampilan
+     */
+    protected function resolveMonitoringDisplayMode($machine): string
+    {
+        if (! $machine || ! $machine->last_heartbeat_at) {
+            return 'idle';
+        }
+
+        $secondsSinceHeartbeat = abs($machine->last_heartbeat_at->diffInSeconds(now()));
+
+        if ($secondsSinceHeartbeat <= self::ONLINE_THRESHOLD_SECONDS) {
+            return 'active';
+        }
+
+        if ($secondsSinceHeartbeat >= self::IDLE_THRESHOLD_MINUTES * 60) {
+            return 'idle';
+        }
+
+        return 'paused';
+    }
+
+    protected function buildIdleMonitoringStats($machine, int $totalDataToday): array
+    {
+        $lastHeartbeat = $machine?->last_heartbeat_at;
+        $lastUpdate = $lastHeartbeat
+          ? $lastHeartbeat->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
+          : 'N/A';
+
+        return [
+            'displayMode' => 'idle',
+            'currentTemperature' => 0,
+            'machineStatus' => $machine ? $machine->status : 'Offline',
+            'isOnline' => false,
+            'isLogging' => false,
+            'runState' => 'stop',
+            'totalDataToday' => $totalDataToday,
+            'lastUpdate' => $lastUpdate,
+            'dataIntervalMs' => null,
+            'sv' => 'Stop',
+            'mv' => 0,
+            'processStep' => 'Stop',
+            'processStepCode' => '00',
+            'processPhase' => 'idle',
+            'timerTot' => '00:00',
+            'timerStp' => '00:00',
+        ];
+    }
+
+    protected function formatSvForDisplay(?SensorReading $reading, bool $isRunning): string|float
+    {
+        if (! $isRunning || ! $reading) {
+            return 'Stop';
+        }
+
+        return round((float) ($reading->sv ?? 121.1), 1);
+    }
+
+    protected function resolveDataIntervalMs($machine): ?int
+    {
+        $lastTwo = SensorReading::where('machine_id', $machine->id)
+            ->orderByDesc('recorded_at')
+            ->orderByDesc('id')
+            ->take(2)
+            ->get(['recorded_at']);
+
+        if ($lastTwo->count() < 2) {
+            return null;
+        }
+
+        return (int) abs(
+            $lastTwo[0]->recorded_at->diffInMilliseconds($lastTwo[1]->recorded_at)
+        );
     }
 
     protected function calculateProcessTimers(Collection $readings): array
     {
         $empty = [
-            'timerTot' => '00:00:00',
-            'timerStp' => '00:00:00',
-            'timerRem' => '00:00:00',
+            'timerTot' => '00:00',
+            'timerStp' => '00:00',
         ];
 
         if ($readings->isEmpty()) {
@@ -99,14 +175,8 @@ trait ProvidesMachineData
         $stepSeconds = (int) abs($phaseStart->recorded_at->diffInSeconds($last->recorded_at));
 
         return [
-            'timerTot' => $this->formatTimer($totalSeconds),
-            'timerStp' => $this->formatTimer($stepSeconds),
-            'timerRem' => $this->estimatePhaseRemaining(
-                $readings,
-                $currentPhase,
-                $stepSeconds,
-                (float) $last->temperature
-            ),
+            'timerTot' => $this->formatTimerMs($totalSeconds),
+            'timerStp' => $this->formatTimerMs($stepSeconds),
         ];
     }
 
@@ -127,83 +197,13 @@ trait ProvidesMachineData
         return $phaseStart;
     }
 
-    protected function estimatePhaseRemaining(
-        Collection $readings,
-        string $phase,
-        int $stepSeconds,
-        float $currentTemp
-    ): string {
-        return match ($phase) {
-            'sterilizing' => $this->formatTimer(max(0, self::STERILIZING_TARGET_SEC - $stepSeconds)),
-            'heating' => $this->estimateHeatingRemaining($readings, $currentTemp),
-            'cooling' => $this->estimateCoolingRemaining($readings, $currentTemp),
-            default => '00:00:00',
-        };
-    }
-
-    protected function estimateHeatingRemaining(Collection $readings, float $currentTemp): string
-    {
-        if ($currentTemp >= self::HEATING_TARGET_C) {
-            return '00:00:00';
-        }
-
-        $heatingReadings = $readings
-            ->filter(fn ($r) => $this->normalizePhase($r->process_status) === 'heating')
-            ->values();
-
-        if ($heatingReadings->count() < 2) {
-            return '--:--:--';
-        }
-
-        $first = $heatingReadings->first();
-        $last = $heatingReadings->last();
-        $tempDelta = (float) $last->temperature - (float) $first->temperature;
-        $timeDelta = abs($first->recorded_at->diffInSeconds($last->recorded_at));
-
-        if ($timeDelta <= 0 || $tempDelta <= 0) {
-            return '--:--:--';
-        }
-
-        $ratePerSecond = $tempDelta / $timeDelta;
-        $tempToGo = self::HEATING_TARGET_C - $currentTemp;
-        $remainSeconds = (int) ceil($tempToGo / $ratePerSecond);
-
-        return $this->formatTimer($remainSeconds);
-    }
-
-    protected function estimateCoolingRemaining(Collection $readings, float $currentTemp): string
-    {
-        if ($currentTemp <= self::COOLING_TARGET_C) {
-            return '00:00:00';
-        }
-
-        $coolingReadings = $readings
-            ->filter(fn ($r) => $this->normalizePhase($r->process_status) === 'cooling')
-            ->values();
-
-        if ($coolingReadings->count() >= 2) {
-            $first = $coolingReadings->first();
-            $last = $coolingReadings->last();
-            $tempDrop = (float) $first->temperature - (float) $last->temperature;
-            $timeDelta = abs($first->recorded_at->diffInSeconds($last->recorded_at));
-
-            if ($timeDelta > 0 && $tempDrop > 0) {
-                $ratePerSecond = $tempDrop / $timeDelta;
-                $tempToGo = $currentTemp - self::COOLING_TARGET_C;
-                $remainSeconds = (int) ceil($tempToGo / $ratePerSecond);
-
-                return $this->formatTimer($remainSeconds);
-            }
-        }
-
-        $remainSeconds = (int) ceil(( $currentTemp - self::COOLING_TARGET_C) / self::COOLING_RATE_PER_SEC);
-
-        return $this->formatTimer($remainSeconds);
-    }
-
     protected function normalizePhase(?string $status): string
     {
-        $phase = strtolower($status ?? 'heating');
+        $phase = strtolower(trim($status ?? ''));
+
+        if (in_array($phase, ['idle', 'stop', 'standby', ''], true)) {
+            return 'idle';
+        }
 
         if (in_array($phase, ['holding', 'sterilizing'], true)) {
             return 'sterilizing';
@@ -216,25 +216,34 @@ trait ProvidesMachineData
         return 'heating';
     }
 
-    protected function formatProcessStepLabel(?string $status): ?string
+    protected function formatProcessStepLabel(?string $status): string
     {
         return match ($this->normalizePhase($status)) {
-            'sterilizing' => 'STERILISASI',
-            'cooling' => 'PENDINGINAN',
-            default => 'PEMANASAN',
+            'sterilizing' => 'Sterilization',
+            'cooling' => 'Cooling',
+            'idle' => 'Stop',
+            default => 'CUT',
         };
     }
 
-    protected function formatTimer(int $seconds): string
+    protected function formatProcessStepCode(?string $status): string
+    {
+        return match ($this->normalizePhase($status)) {
+            'sterilizing' => '02',
+            'cooling' => '03',
+            'idle' => '00',
+            default => '01',
+        };
+    }
+
+    /** Format menit:detik (TOT M:S / STP M:S) seperti software existing. */
+    protected function formatTimerMs(int $seconds): string
     {
         $seconds = max(0, $seconds);
+        $minutes = intdiv($seconds, 60);
+        $secs = $seconds % 60;
 
-        return sprintf(
-            '%02d:%02d:%02d',
-            intdiv($seconds, 3600),
-            intdiv($seconds % 3600, 60),
-            $seconds % 60
-        );
+        return sprintf('%02d:%02d', $minutes, $secs);
     }
 
     protected function getRecentActivities($userId)
@@ -297,33 +306,44 @@ trait ProvidesMachineData
 
     protected function getTemperatureChartData($machine)
     {
+        $empty = [
+            'labels' => [],
+            'statuses' => [],
+            'data' => [],
+            'svData' => [],
+            'recordedAts' => [],
+            'processSessionId' => null,
+            'processStartedAt' => null,
+        ];
+
+        if (! $machine || $this->resolveMonitoringDisplayMode($machine) === 'idle') {
+            return $empty;
+        }
+
+        $readings = $this->getCurrentProcessReadings($machine);
+
+        if ($readings->isEmpty()) {
+            return $empty;
+        }
+
         $labels = [];
         $data = [];
         $svData = [];
         $recordedAts = [];
         $statuses = [];
-        $processSessionId = null;
-        $processStartedAt = null;
 
-        if ($machine) {
-            $readings = $this->getCurrentProcessReadings($machine);
+        $firstReading = $readings->first();
+        $processSessionId = $firstReading->process_session_id;
+        $processStartedAt = $firstReading->recorded_at
+            ->timezone('Asia/Jakarta')
+            ->toIso8601String();
 
-            if ($readings->isNotEmpty()) {
-                $firstReading = $readings->first();
-
-                $processSessionId = $firstReading->process_session_id;
-                $processStartedAt = $firstReading->recorded_at
-                    ->timezone('Asia/Jakarta')
-                    ->toIso8601String();
-
-                foreach ($readings as $reading) {
-                    $labels[] = $reading->recorded_at->timezone('Asia/Jakarta')->format('H:i:s.v');
-                    $data[] = $reading->temperature;
-                    $svData[] = $reading->sv ?? 121.1;
-                    $recordedAts[] = $reading->recorded_at->toIso8601String();
-                    $statuses[] = $reading->process_status;
-                }
-            }
+        foreach ($readings as $reading) {
+            $labels[] = $reading->recorded_at->timezone('Asia/Jakarta')->format('H:i:s.v');
+            $data[] = $reading->temperature;
+            $svData[] = $reading->sv ?? 121.1;
+            $recordedAts[] = $reading->recorded_at->toIso8601String();
+            $statuses[] = $reading->process_status;
         }
 
         return [
