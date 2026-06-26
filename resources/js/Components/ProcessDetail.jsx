@@ -3,7 +3,7 @@
  * Komponen untuk menampilkan detail satu sesi proses - Light Theme
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -16,7 +16,7 @@ import {
     Legend,
     Filler,
 } from 'chart.js';
-import { ChevronLeft, Download, TrendingUp, TrendingDown } from 'lucide-react';
+import { ChevronLeft, Download, TrendingUp, ArrowUp } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
@@ -141,10 +141,11 @@ function buildChartOptions(forExport = false) {
                 grid: { color: '#f0f0f0' },
                 ticks: {
                     color: '#999',
-                    autoSkip: false,
-                    maxRotation: 45,
-                    minRotation: 35,
-                    font: { size: forExport ? 8 : 9 },
+                    autoSkip: forExport ? true : false,
+                    maxTicksLimit: forExport ? 30 : undefined,
+                    maxRotation: forExport ? 90 : 45,
+                    minRotation: forExport ? 90 : 35,
+                    font: { size: forExport ? 7 : 9 },
                 },
             },
         },
@@ -207,7 +208,7 @@ async function renderFullWidthChartImage(chartReadings, currentSV) {
 }
 
 // Format tanggal/jam mengikuti report Indah Mesin (zona Asia/Jakarta).
-// "Tanggal Jam" per baris: M/D/YYYY h:mm:ssAM/PM (mis. 1/15/2026 5:02:14PM)
+// Format: M/D/YYYY  h:mm:ssAM/PM — spasi ganda antara tanggal & jam
 function fmtTanggalJam(iso) {
     if (!iso) return '-';
     const d = new Date(iso);
@@ -217,7 +218,8 @@ function fmtTanggalJam(iso) {
         year: 'numeric', month: 'numeric', day: 'numeric',
         hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
     }).format(d);
-    return s.replace(', ', ' ').replace(' PM', 'PM').replace(' AM', 'AM');
+    // Ganti koma+spasi antara tanggal dan waktu dengan dua spasi agar lebih mudah dibaca
+    return s.replace(', ', '  ').replace(' PM', 'PM').replace(' AM', 'AM');
 }
 
 // Rentang judul: YYYY-MM-DD HH:mm:ss (24 jam)
@@ -243,6 +245,16 @@ function fmtNum(v) {
 export default function ProcessDetail({ session, onBack }) {
     const [exporting, setExporting] = useState(false);
     const [exportMode, setExportMode] = useState('both');
+    const [showScrollTop, setShowScrollTop] = useState(false);
+
+    // Deteksi scroll untuk tampilkan tombol ke atas
+    useEffect(() => {
+        const handleScroll = () => setShowScrollTop(window.scrollY > 300);
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
     if (!session) return null;
 
@@ -346,7 +358,7 @@ export default function ProcessDetail({ session, onBack }) {
                 ]);
             });
 
-            worksheet.getColumn(1).width = 22;
+            worksheet.getColumn(1).width = 26;
             worksheet.getColumn(2).width = 10;
             worksheet.getColumn(3).width = 10;
             worksheet.getColumn(4).width = 10;
@@ -384,6 +396,7 @@ export default function ProcessDetail({ session, onBack }) {
     };
 
     const content = (
+        <>
         <div className="space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -508,6 +521,18 @@ export default function ProcessDetail({ session, onBack }) {
                 </table>
             </div>
         </div>
+
+        {/* Tombol scroll ke atas — floating pojok kanan bawah */}
+        {showScrollTop && (
+            <button
+                onClick={scrollToTop}
+                className="fixed bottom-6 right-6 z-50 w-11 h-11 rounded-full bg-[#FFB800] text-white shadow-lg hover:bg-[#FFC933] hover:shadow-xl transition-all flex items-center justify-center animate-slideUp"
+                aria-label="Kembali ke atas"
+            >
+                <ArrowUp className="w-5 h-5" />
+            </button>
+        )}
+        </>
     );
 
     return content;

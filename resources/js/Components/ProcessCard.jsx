@@ -4,7 +4,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Clock, Thermometer, Activity, MoreVertical, Trash2 } from 'lucide-react';
+import { Clock, Thermometer, Activity, MoreVertical, Trash2, Download } from 'lucide-react';
+import { exportDataOnly } from '@/utils/exportExcel';
 
 const F0_TARGET = 6;
 
@@ -55,6 +56,7 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
     } = session;
 
     const [menuOpen, setMenuOpen] = useState(false);
+    const [downloading, setDownloading] = useState(false);
     const menuRef = useRef(null);
 
     // Tutup menu saat klik di luar
@@ -68,6 +70,24 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [menuOpen]);
+
+    const handleDownload = async (e) => {
+        e.stopPropagation();
+        setMenuOpen(false);
+        setDownloading(true);
+        try {
+            const response = await fetch(`/api/history/sessions/${session.id}`);
+            const result = await response.json();
+            if (result.success) {
+                const { session: sessionInfo, readings } = result.data;
+                await exportDataOnly(sessionInfo, readings);
+            }
+        } catch (err) {
+            console.error('Download gagal:', err);
+        } finally {
+            setDownloading(false);
+        }
+    };
 
     const isActive = status === 'active';
 
@@ -125,7 +145,16 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
                                 <MoreVertical className="w-4 h-4" />
                             </button>
                             {menuOpen && (
-                                <div className="absolute right-0 top-8 z-50 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+                                <div className="absolute right-0 top-8 z-50 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleDownload}
+                                        disabled={downloading}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition-colors rounded-md disabled:opacity-50"
+                                    >
+                                        <Download className="w-4 h-4 flex-shrink-0" />
+                                        {downloading ? 'Mengunduh...' : 'Download Excel'}
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={(e) => {
