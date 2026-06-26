@@ -62,23 +62,28 @@ simulasi akan menimpa data nyata dari controller.
 ## Sumber Data (Autonics TNL-P46RR-RS-035)
 
 Firmware memakai **raw Modbus RTU** (tanpa library) dengan timeout pendek
-(150 ms) agar tidak pernah mem-block siklus 1 detik. Dua transaksi terpisah:
+(150 ms) agar tidak pernah mem-block siklus 1 detik. **Satu transaksi**
+Read Input Registers (FC04) membaca blok kontigu `0x03E8`–`0x03EB`:
 
-| Fungsi | FC | Register | Isi |
-|--------|----|----------|-----|
-| PV + decimal point | **FC04** (Input) | `0x03E8` (+`0x03E9`) | Present Value (Actual) & skala |
-| SV | **FC03** (Holding) | `0x0000` | Set Value (Setting) |
+| Index | Register | Isi |
+|-------|----------|-----|
+| 0 | `0x03E8` | Present Value (PV / Actual) |
+| 1 | `0x03E9` | Decimal point (skala otomatis) |
+| 2 | `0x03EA` | Display unit |
+| 3 | `0x03EB` | **Set Value (SV / Setting) — LIVE dari controller** |
 
-Skala mengikuti decimal point yang dibaca dari controller (mis. `dp=1` → /10).
+PV dan SV memakai skala decimal point yang sama (mis. `dp=1` → /10).
+Keduanya **dinamis dibaca dari TNL**, bukan nilai statis.
+
+> SV **bukan** di holding register `0x0000` — itu adalah RUN-STOP. SV live
+> read-only ada di input register `0x03EB` (FC04), sumber: TN Series
+> Communications Manual.
 
 Komunikasi terpasang: `9600 8N1`, unit address `1` (terbukti terbaca).
 
 > **Parity default TNL sebenarnya 8N2** (8 data, no parity, 2 stop). 8N1 tetap
 > terbaca karena perangkat toleran terhadap stop bit. Jika suatu saat PV
 > timeout, ganti `MB_FORMAT` di `modbus_hw.ino` ke `SERIAL_8N2`.
->
-> Jika SV terbaca `0`, controller mungkin menaruh SV di input register
-> `0x03EB` (FC04) — ubah pembacaan SV di `modbus_hw.ino` sesuai manual unit.
 
 ---
 

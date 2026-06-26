@@ -1,8 +1,8 @@
 // ============================================================
 //  modbus_hw.ino  –  Autonics TNL-P46RR-RS-035 via RS485
 //  PV (Present Value) : Read Input Register (FC04) @ 0x03E8
-//  SV (Set Value)     : Read Holding Register (FC03) @ 0x0000
 //  Decimal point      : Read Input Register (FC04) @ 0x03E9
+//  SV (Set Value)     : Read Input Register (FC04) @ 0x03EB  (LIVE, dinamis)
 //  Skala otomatis mengikuti decimal point controller.
 //
 //  Raw Modbus RTU (tanpa lib) + timeout pendek 150ms agar tak pernah
@@ -15,9 +15,11 @@
 extern AppConfig   cfg;
 extern RetortState state;
 
-// Autonics TN/TNL register map
-#define TNL_REG_PV    0x03E8  // FC04: +0 PV, +1 decimal point
-#define TNL_REG_SV    0x0000  // FC03: Set Value (holding register)
+// Autonics TN/TNL register map — Read Input Registers (FC04), blok kontigu:
+//   0x03E8 PV | 0x03E9 decimal point | 0x03EA display unit | 0x03EB Set Value
+// (SV LIVE dari controller, bukan holding 0x0000 yang berisi RUN-STOP).
+#define TNL_REG_BLOCK 0x03E8  // mulai baca dari sini, 4 register sekaligus
+#define TNL_BLOCK_N   4
 #define TNL_SLAVE_ID  1       // Unit address default Autonics = 1
 #define MB_BAUD       9600
 #define MB_FORMAT     SERIAL_8N1   // terbukti terbaca (TNL default 8N2 juga OK)
@@ -144,28 +146,25 @@ void setupModbus() {
 // Satu kali poll PV + SV. Dipanggil dari loggerTask tiap 1 detik.
 // Tidak ada timing internal: kadensi diatur task (vTaskDelayUntil).
 void loopModbus() {
-  // --- 1) Baca PV + decimal point (FC04 @0x03E8, 2 register) ---
-  uint16_t pv[2];
-  if (mbRead(0x04, TNL_REG_PV, 2, pv)) {
-    int16_t  pvRaw = (int16_t)pv[0];
-    uint16_t dp    = pv[1];
+  // Baca blok FC04 0x03E8..0x03EB sekaligus: PV, decimal point, unit, SV.
+  // PV dan SV memakai skala decimal point yang sama.
+  uint16_t r[TNL_BLOCK_N];
+  if (mbRead(0x04, TNL_REG_BLOCK, TNL_BLOCK_N, r)) {
+    int16_t  pvRaw = (int16_t)r[0];
+    uint16_t dp    = r[1];
+    int16_t  svRaw = (int16_t)r[3];
     if (dp <= 3) lastDp = dp;  // sebagian unit tak punya reg ini → pakai terakhir
     float div = dpDivisor(lastDp);
+
     if (pvRaw == TNL_PV_OPEN || pvRaw == TNL_PV_HHHH || pvRaw == TNL_PV_LLLL) {
       Serial.printf("[MODBUS] PV sensor err: %d\n", pvRaw);
     } else {
       state.temperature = (float)pvRaw / div;
     }
+    state.setpoint = (float)svRaw / div;  // SV LIVE dari controller (dinamis)
   } else {
     // Gagal sekali: pertahankan nilai terakhir, jangan block.
-    Serial.println(F("[MODBUS] PV read miss (pakai nilai terakhir)"));
-  }
-
-  // --- 2) Baca SV (FC03 @0x0000, 1 register) ---
-  uint16_t sv[1];
-  if (mbRead(0x03, TNL_REG_SV, 1, sv)) {
-    int16_t svRaw = (int16_t)sv[0];
-    state.setpoint = (float)svRaw / dpDivisor(lastDp);
+    Serial.println(F("[MODBUS] read miss (pakai PV/SV terakhir)"));
   }
 
   updatePhaseFromData();
