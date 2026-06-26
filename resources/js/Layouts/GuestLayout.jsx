@@ -1,7 +1,9 @@
 import { Link } from '@inertiajs/react';
+import MobileBlock from '@/Components/MobileBlock';
 
 export default function GuestLayout({ children }) {
     return (
+        <MobileBlock>
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 via-gray-50 to-orange-50 px-4 py-12 sm:px-6 lg:px-8 relative overflow-hidden">
             {/* Background Pattern */}
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,_rgb(0_0_0/_3%)_1px,_transparent_0)] [background-size:24px_24px]"></div>
@@ -66,5 +68,6 @@ export default function GuestLayout({ children }) {
                 </div>
             </div>
         </div>
+        </MobileBlock>
     );
 }

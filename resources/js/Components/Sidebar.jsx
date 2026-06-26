@@ -1,28 +1,23 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
-    LayoutDashboard,
     Activity,
     History,
     Users,
     LogOut,
     ChevronRight,
+    BarChart3,
 } from 'lucide-react';
 
 export default function Sidebar({ open, setOpen }) {
     const { url, props } = usePage();
     const isAdmin = props.auth?.user?.role === 'admin';
 
-    const menuItems = isAdmin ? [
-        { name: 'Manajemen Pengguna', icon: Users, href: route('users'), active: url.startsWith('/users') }
+    const allMenuItems = isAdmin ? [
+        { name: 'Dashboard Admin', icon: BarChart3, href: route('admin.dashboard'), active: url.startsWith('/admin/dashboard') },
+        { name: 'Manajemen Pengguna', icon: Users, href: route('users'), active: url.startsWith('/users') },
     ] : [
-        { name: 'Dashboard', icon: LayoutDashboard, href: route('dashboard'), active: url.startsWith('/dashboard') },
         { name: 'Monitoring', icon: Activity, href: route('monitoring'), active: url.startsWith('/monitoring') },
         { name: 'Riwayat Data', icon: History, href: route('history'), active: url.startsWith('/history') },
-    ];
-
-    const allMenuItems = [
-        { name: 'Dashboard', icon: LayoutDashboard, href: route('dashboard'), active: url.startsWith('/dashboard') },
-        ...menuItems.filter(item => item.name !== 'Dashboard'),
     ];
 
     return (

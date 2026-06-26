@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import { Menu, LogOut, Maximize, Minimize } from 'lucide-react';
 import NavbarMenu from '@/Components/NavbarMenu';
+import MobileBlock from '@/Components/MobileBlock';
 
 export default function AuthenticatedLayout({ header, children }) {
     const user = usePage().props.auth.user;
@@ -47,13 +48,14 @@ export default function AuthenticatedLayout({ header, children }) {
     };
 
     return (
+        <MobileBlock>
         <div className="min-h-screen bg-[#f4f5fa] flex flex-col">
             {/* Top Header Bar */}
             <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-[#d9dee3]/50 shadow-sm">
                 <div className="max-w-[1440px] mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
                     {/* Left: Brand / Logo */}
                     <div className="flex items-center gap-3">
-                        <Link href={route('dashboard')} className="flex items-center gap-2">
+                        <Link href={route('monitoring')} className="flex items-center gap-2">
                             <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain drop-shadow-sm" />
                             <h1 className="text-xl font-extrabold tracking-widest uppercase hidden sm:block" style={{ fontFamily: "'Orbitron', sans-serif" }}>
                                 <span style={{ color: '#00BFFF' }}>INDAH</span>
@@ -138,7 +140,6 @@ export default function AuthenticatedLayout({ header, children }) {
                             </>
                         ) : (
                             <>
-                                <Link href={route('dashboard')} className="block px-3 py-2 rounded-md text-base font-medium text-[#666cff] bg-[#666cff]/10">Dashboard</Link>
                                 <Link href={route('monitoring')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Monitoring</Link>
                                 <Link href={route('history')} className="block px-3 py-2 rounded-md text-base font-medium text-[#566a7f] hover:bg-gray-50">Riwayat Data</Link>
                             </>
@@ -160,5 +161,6 @@ export default function AuthenticatedLayout({ header, children }) {
                 </div>
             </footer>
         </div>
+        </MobileBlock>
     );
 }
