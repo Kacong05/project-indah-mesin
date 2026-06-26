@@ -105,13 +105,19 @@ static float dpDivisor(uint16_t dp) {
 }
 
 // Auto-deteksi fase dari data logger (PV vs SV)
-#define PHASE_BAND_C   5.0f    // ±5°C dari SV dianggap HOLDING
+#define PHASE_BAND_C   5.0f    // toleransi ±5°C
 #define PHASE_TREND_C  0.2f    // perubahan min per siklus utk dianggap naik/turun
 #define PHASE_IDLE_C   40.0f   // di bawah ini & turun → IDLE
 static bool  havePrevPv = false;
 static float prevPv     = 0.0f;
 
-// Tentukan fase berdasar nilai aktual & tren suhu dari controller.
+// Tentukan fase berdasar SV (setpoint controller) + tren suhu.
+// Aturan (controller SV ramp menuju suhu sterilisasi, mis. 121°C):
+//   • SV BELUM mencapai 121 (ramp naik)        → HEATING
+//   • SV sudah mencapai/menyentuh 121           → HOLDING (sterilisasi)
+//   • Suhu menurun (proses selesai, mendingin)  → COOLING (lalu IDLE bila rendah)
+// Tren dipakai agar saat pendinginan (SV diturunkan kembali < 121) tidak
+// keliru dibaca sebagai HEATING.
 static void updatePhaseFromData() {
   float pv = state.temperature;
   float sv = state.setpoint;
@@ -121,14 +127,24 @@ static void updatePhaseFromData() {
   prevPv = pv;
   havePrevPv = true;
 
-  if (pv >= sv - PHASE_BAND_C) {
-    state.phase = PHASE_HOLDING;
-  } else if (trend > PHASE_TREND_C) {
-    state.phase = PHASE_HEATING;
-  } else if (trend < -PHASE_TREND_C) {
-    state.phase = (pv <= PHASE_IDLE_C) ? PHASE_IDLE : PHASE_COOLING;
+  float sterilTarget   = cfg.targetTemp;                       // suhu sterilisasi (mis. 121°C)
+  bool  svReachedSteril = (sv >= sterilTarget - PHASE_BAND_C); // SV sudah menyentuh ~121
+  bool  goingDown       = (trend < -PHASE_TREND_C);            // suhu sedang turun
+
+  if (svReachedSteril) {
+    // SV sudah di suhu sterilisasi. Tetap HOLDING sampai suhu jelas menurun
+    // dan sudah turun di bawah band target (mulai pendinginan).
+    if (goingDown && pv < sterilTarget - PHASE_BAND_C)
+      state.phase = (pv <= PHASE_IDLE_C) ? PHASE_IDLE : PHASE_COOLING;
+    else
+      state.phase = PHASE_HOLDING;
+  } else {
+    // SV masih di bawah target: naik = HEATING, turun = COOLING/IDLE.
+    if (goingDown)
+      state.phase = (pv <= PHASE_IDLE_C) ? PHASE_IDLE : PHASE_COOLING;
+    else
+      state.phase = PHASE_HEATING;
   }
-  // Selain itu (suhu stabil di luar band): pertahankan fase terakhir
 }
 
 void setupModbus() {

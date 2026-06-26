@@ -183,6 +183,40 @@ async function renderFullWidthChartImage(chartReadings, currentSV) {
     return { base64, width, height };
 }
 
+// Format tanggal/jam mengikuti report Indah Mesin (zona Asia/Jakarta).
+// "Tanggal Jam" per baris: M/D/YYYY h:mm:ssAM/PM (mis. 1/15/2026 5:02:14PM)
+function fmtTanggalJam(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    if (isNaN(d)) return '-';
+    const s = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+    }).format(d);
+    return s.replace(', ', ' ').replace(' PM', 'PM').replace(' AM', 'AM');
+}
+
+// Rentang judul: YYYY-MM-DD HH:mm:ss (24 jam)
+function fmtFull(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    if (isNaN(d)) return '-';
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).format(d).replace(', ', ' ');
+}
+
+// Angka 1 desimal, buang ".0" agar 97.0 → "97" (sesuai tampilan report)
+function fmtNum(v) {
+    if (v === null || v === undefined || v === '') return '-';
+    const n = Number(v);
+    if (isNaN(n)) return '-';
+    return Number(n.toFixed(1)).toString();
+}
+
 export default function ProcessDetail({ session, onBack }) {
     const [exporting, setExporting] = useState(false);
     const [exportMode, setExportMode] = useState('both');
@@ -216,60 +250,51 @@ export default function ProcessDetail({ session, onBack }) {
             }
 
             const workbook = new ExcelJS.Workbook();
-            const worksheet = workbook.addWorksheet('Data Sesi');
+            const worksheet = workbook.addWorksheet('Logger Data');
 
+            // Kop perusahaan (format report Indah Mesin)
             worksheet.mergeCells('A1:C1');
-            worksheet.getCell('A1').value = sessionInfo.name;
+            worksheet.getCell('A1').value = 'INDAHMESIN.COM';
             worksheet.getCell('A1').font = { bold: true, size: 16 };
 
             worksheet.mergeCells('A2:C2');
-            worksheet.getCell('A2').value = `Waktu: ${sessionInfo.time_range}`;
-            worksheet.getCell('A2').font = { size: 11, color: { argb: 'FF666666' } };
+            worksheet.getCell('A2').value = 'INDAH JAYA TEKNIK, CV';
+            worksheet.getCell('A2').font = { bold: true, size: 11 };
 
             worksheet.mergeCells('A3:C3');
-            worksheet.getCell('A3').value = `Durasi: ${sessionInfo.duration_minutes || '-'} menit | Total Data: ${stats?.total_readings || 0}`;
-            worksheet.getCell('A3').font = { size: 11, color: { argb: 'FF666666' } };
+            worksheet.getCell('A3').value = 'Jalan Raya Randugading No.137 RT 12 RW 03 Kel. Randugading Kec. Tajinan, Kabupaten Malang, Jawa Timur 65172';
+            worksheet.getCell('A3').font = { size: 9, color: { argb: 'FF666666' } };
+            worksheet.getCell('A3').alignment = { wrapText: true };
 
-            worksheet.addRow([]);
+            // Judul rentang waktu logger (MULAI .. SAMPAI ..) dari data sesi
+            const startIso = readings.length ? readings[0].recorded_at : sessionInfo.started_at;
+            const endIso = readings.length ? readings[readings.length - 1].recorded_at : sessionInfo.ended_at;
+            worksheet.mergeCells('A5:C5');
+            worksheet.getCell('A5').value =
+                `LOGGER DATA TEMPERATURE MULAI ${fmtFull(startIso)} SAMPAI ${fmtFull(endIso)}`;
+            worksheet.getCell('A5').font = { bold: true, size: 11 };
 
-            const headerRow = worksheet.addRow(['Waktu', 'SV (°C)', 'PV (°C)']);
+            worksheet.addRow([]); // baris 6 kosong
+
+            // Header tabel: Tanggal Jam | Actual | Setting (sama dgn CSV ESP)
+            const headerRow = worksheet.addRow(['Tanggal Jam', 'Actual', 'Setting']);
             headerRow.eachCell((cell) => {
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FFFFB800' }
-                };
-                cell.alignment = { horizontal: 'center' };
+                cell.font = { bold: true };
+                cell.border = { bottom: { style: 'thin' } };
+                cell.alignment = { horizontal: 'left' };
             });
 
             readings.forEach((reading) => {
-                const row = worksheet.addRow([
-                    reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8),
-                    reading.sv ? reading.sv.toFixed(1) : '-',
-                    reading.temperature.toFixed(1),
+                worksheet.addRow([
+                    fmtTanggalJam(reading.recorded_at),
+                    fmtNum(reading.temperature),
+                    fmtNum(reading.sv),
                 ]);
-
-                const pvCell = row.getCell(3);
-                if (reading.temperature >= 120) {
-                    pvCell.font = { color: { argb: 'FFEF4444' } };
-                } else if (reading.temperature >= 110) {
-                    pvCell.font = { color: { argb: 'FFF97316' } };
-                } else {
-                    pvCell.font = { color: { argb: 'FF666666' } };
-                }
-
-                const svCell = row.getCell(2);
-                if (reading.sv) {
-                    svCell.font = { color: { argb: 'FFFFB800' } };
-                }
-
-                row.alignment = { horizontal: 'center' };
             });
 
-            worksheet.getColumn(1).width = 15;
-            worksheet.getColumn(2).width = 12;
-            worksheet.getColumn(3).width = 12;
+            worksheet.getColumn(1).width = 22;
+            worksheet.getColumn(2).width = 10;
+            worksheet.getColumn(3).width = 10;
 
             if (chartBase64) {
                 const chartImage = workbook.addImage({

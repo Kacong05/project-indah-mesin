@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\ProcessSession;
-use App\Models\RetortMachine;
 use App\Models\SensorReading;
 use App\Models\ActivityLog;
 use App\Services\F0Calculator;
@@ -55,25 +54,26 @@ class HistoryController extends Controller
             ];
         });
 
-        // Ambil data readings (legacy table view)
-        $readingsQuery = SensorReading::with('machine')->where('machine_id', $machineId)->latest();
+        // Ambil data readings (legacy table view). Pakai recorded_at (waktu ukur
+        // perangkat) agar konsisten dgn sesi & benar saat data di-backfill.
+        $readingsQuery = SensorReading::with('machine')->where('machine_id', $machineId)->latest('recorded_at');
 
         // Filter by Date Range
         if ($request->filled('start_date') && $request->filled('end_date')) {
-            $readingsQuery->whereBetween('created_at', [
+            $readingsQuery->whereBetween('recorded_at', [
                 $request->start_date . ' 00:00:00',
                 $request->end_date . ' 23:59:59'
             ]);
         } elseif ($request->filled('start_date')) {
-            $readingsQuery->whereDate('created_at', '>=', $request->start_date);
+            $readingsQuery->whereDate('recorded_at', '>=', $request->start_date);
         } elseif ($request->filled('end_date')) {
-            $readingsQuery->whereDate('created_at', '<=', $request->end_date);
+            $readingsQuery->whereDate('recorded_at', '<=', $request->end_date);
         }
 
         $readings = $readingsQuery->paginate(15)->withQueryString()->through(function ($reading) {
             return [
                 'id' => $reading->id,
-                'timestamp' => $reading->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'),
+                'timestamp' => $reading->recorded_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'),
                 'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
                 'temperature' => $reading->temperature,
                 'pressure' => $reading->pressure,
@@ -94,10 +94,10 @@ class HistoryController extends Controller
     public function export(Request $request)
     {
         $machineId = $request->user()->machine_id;
-        $query = SensorReading::with('machine')->where('machine_id', $machineId)->latest();
+        $query = SensorReading::with('machine')->where('machine_id', $machineId)->latest('recorded_at');
 
         if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->whereBetween('created_at', [
+            $query->whereBetween('recorded_at', [
                 $request->start_date . ' 00:00:00',
                 $request->end_date . ' 23:59:59'
             ]);
@@ -111,7 +111,7 @@ class HistoryController extends Controller
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json($query->get()->map(function ($reading) {
                 return [
-                    'timestamp' => $reading->created_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'),
+                    'timestamp' => $reading->recorded_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'),
                     'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
                     'temperature' => $reading->temperature,
                     'status' => $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal'),
@@ -130,7 +130,7 @@ class HistoryController extends Controller
                 foreach ($readings as $reading) {
                     $status = $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal');
                     fputcsv($handle, [
-                        $reading->created_at->format('Y-m-d H:i:s'),
+                        $reading->recorded_at->format('Y-m-d H:i:s'),
                         $reading->machine ? $reading->machine->name : 'Unknown',
                         $reading->temperature,
                         $status,

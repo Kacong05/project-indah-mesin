@@ -17,7 +17,9 @@ import requests
 # ─── Konfigurasi ──────────────────────────────────────────────────────────────
 API_URL = "http://127.0.0.1:8000/api/sensor"
 MACHINE_CODE = "RT-001"
-SENSOR_API_TOKEN = "o5bCFkfwf4rQWOMlPnOkNkBNWZPXKObTaYIYfC1Mfy0="
+# Jangan hardcode token di sini (bocor ke Git). Diisi dari .env / env var
+# SENSOR_API_TOKEN saat runtime (lihat load_env() & blok __main__).
+SENSOR_API_TOKEN = ""
 SEND_INTERVAL_SEC = 1          # interval kirim data (detik) — sama seperti simulasi awal
 PROCESS_GAP_MINUTES = 3        # jeda antar proses (sesuai backend)
 HEATING_TARGET_C = 120.0       # heating selesai saat PV menyentuh 120°C
@@ -258,6 +260,10 @@ if __name__ == "__main__":
         API_URL = os.environ["API_URL"]
     if os.environ.get("SENSOR_API_TOKEN"):
         SENSOR_API_TOKEN = os.environ["SENSOR_API_TOKEN"]
+
+    if not SENSOR_API_TOKEN:
+        print("[ERROR] SENSOR_API_TOKEN belum diset. Isi di .env atau env var.")
+        sys.exit(1)
 
     args = parse_args()
 

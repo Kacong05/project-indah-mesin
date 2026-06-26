@@ -43,10 +43,10 @@ class ProcessSessionService
 
                 if ($diffInMinutes < $this->gapThresholdMinutes) {
                     // Update ended_at langsung dari recorded_at data terbaru
-                    // untuk akurasi timestamp perangkat ESP
-                    $lastSession->update([
-                        'ended_at' => $timestamp,
-                    ]);
+                    // untuk akurasi timestamp perangkat ESP. data_count di-increment
+                    // atomik agar jumlah data sesi akurat (sebelumnya tak pernah naik).
+                    $lastSession->update(['ended_at' => $timestamp]);
+                    $lastSession->increment('data_count');
 
                     return $lastSession;
                 }

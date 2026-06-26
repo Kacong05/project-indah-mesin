@@ -119,6 +119,55 @@ Telah ditambahkan modul firmware di folder [`/RetortLogger`](file:///d:/laragon/
 
 ---
 
+## 🧭 Rencana Lanjutan — Log Event Keandalan Koneksi (MQTT)
+
+> **Status: rencana / lanjutan project mendatang.** Bagian ini mendefinisikan
+> jenis-jenis *event* keandalan koneksi yang akan **disimpan ke database**
+> untuk melacak konektivitas ESP32 ↔ broker dan menjamin tidak ada data hilang
+> (pola *store-and-forward* / buffer lokal + backfill).
+
+### Jenis event
+
+| Event | Arti | Sumber |
+|-------|------|--------|
+| `connected` | Koneksi MQTT ke broker pertama kali terbentuk | ESP32 |
+| `connection_lost` | Koneksi ke broker terputus | ESP32 |
+| `reconnect_attempt` | ESP32 mencoba menyambung ulang ke broker | ESP32 |
+| `reconnected` | Berhasil tersambung kembali setelah terputus | ESP32 |
+| `publish_sent` | Payload data dikirim (publish) ke topik `retort/data` | ESP32 |
+| `puback_received` | Konfirmasi `PUBACK` (QoS 1) diterima — pesan sampai ke broker | ESP32 |
+| `buffered_local` | Data disimpan ke buffer lokal (SD/RAM) karena broker tak terjangkau | ESP32 |
+| `backfill_sent` | Data dari buffer lokal dikirim ulang setelah koneksi pulih | ESP32 |
+| `broker_received` | Broker/bridge mengonfirmasi pesan diterima & diteruskan ke API | Bridge/Server |
+
+### Skema tabel yang diusulkan
+
+```sql
+CREATE TABLE connection_events (
+    id           BIGSERIAL PRIMARY KEY,
+    machine_code VARCHAR(32) NOT NULL,            -- mis. RT-001
+    event_type   VARCHAR(32) NOT NULL,            -- salah satu nilai tabel di atas
+    detail       JSONB,                           -- konteks: reason, mqtt_state, buffer_count, dst.
+    occurred_at  TIMESTAMPTZ NOT NULL,            -- waktu kejadian di perangkat
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_conn_events_machine_time ON connection_events (machine_code, occurred_at DESC);
+CREATE INDEX idx_conn_events_type ON connection_events (event_type);
+```
+
+### Alur singkat (store-and-forward)
+
+```
+ESP32 online  → publish_sent → puback_received → broker_received (data masuk DB)
+ESP32 offline → connection_lost → buffered_local (data disimpan di SD)
+ESP32 pulih   → reconnect_attempt → reconnected → backfill_sent (kirim ulang buffer)
+```
+
+> Implementasi penyimpanan ke database (endpoint API + migrasi + emisi event di
+> firmware) akan dikerjakan pada tahap lanjutan project ini.
+
+---
+
 ## Catatan Perubahan (2026-06-20)
 
 *   **Pembaruan Dashboard & Integrasi Model 3D**:

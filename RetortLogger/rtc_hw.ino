@@ -32,7 +32,6 @@ void loopRTC() {}
 // Format: "M/D/YYYY h:mm:ssPM" sesuai output CSV
 void getTimestamp(char* buf, size_t len) {
   if (!rtcOk) {
-    unsigned long s = millis() / 1000;
     snprintf(buf, len, "0/0/0000 0:00:00AM");
     return;
   }

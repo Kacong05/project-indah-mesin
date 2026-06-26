@@ -74,12 +74,13 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 </div></div></div>
 <script>
 var cp='/retort',dp='';
+function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
 function tok(){return encodeURIComponent(sessionStorage.getItem('st')||'');}
 function fs(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';
 if(b<1073741824)return(b/1048576).toFixed(2)+' MB';return(b/1073741824).toFixed(2)+' GB';}
 function go(p){
 cp=p;
-fetch('/api/stor?path='+encodeURIComponent(p)).then(function(r){
+fetch('/api/stor?path='+encodeURIComponent(p),{headers:ah(),credentials:'same-origin'}).then(function(r){
 if(r.status==401){location='/login';return null}return r.json()
 }).then(function(d){if(!d)return;
 if(!d.sd){document.getElementById('w').style.display='block';
@@ -132,8 +133,8 @@ function cm(){document.getElementById('dm').className='modal';dp='';}
 document.getElementById('dc').addEventListener('click',function(){
 if(!dp)return;
 fetch('/api/stor/del',{method:'POST',
-headers:{'Content-Type':'application/x-www-form-urlencoded'},
-body:'path='+encodeURIComponent(dp)}).then(function(r){
+headers:Object.assign({'Content-Type':'application/x-www-form-urlencoded'},ah()),
+credentials:'same-origin',body:'path='+encodeURIComponent(dp)}).then(function(r){
 if(r.status==401){location='/login';return null}return r.json()
 }).then(function(){cm();go(cp);}).catch(function(){cm();});
 });

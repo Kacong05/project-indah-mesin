@@ -27,7 +27,7 @@ static const char DEFAULT_PASS_HASH[] =
 #define MQTT_BROKER     "82.153.226.85"   // IP publik VPS (broker Mosquitto). Web/API ada di :8080, MQTT tetap :1883
 #define MQTT_PORT       1883              // port broker MQTT (BUKAN 8080 — itu port web Laravel)
 #define MQTT_USER       "retort_esp"
-#define MQTT_PASS       "RetortEsp_1f1dafaf9d570f46"
+#define MQTT_PASS       "RetortEsp_e8cc4a9bd5e6702f"
 #define MQTT_PUB_TOPIC  "retort/data"
 #define MQTT_CMD_TOPIC  "retort/cmd"
 

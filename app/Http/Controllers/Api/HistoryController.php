@@ -66,7 +66,7 @@ class HistoryController extends Controller
         // Latest temperature (PV) and SV
         $latestReading = $session->sensorReadings->sortByDesc('recorded_at')->first();
         $latestTemperature = $latestReading ? (float) $latestReading->temperature : null;
-        $latestSv = $latestReading ? ($latestReading->sv ? (float) $latestReading->sv : null) : null;
+        $latestSv = $latestReading && $latestReading->sv !== null ? (float) $latestReading->sv : null;
 
         // Format data untuk frontend
         $readings = $session->sensorReadings->map(function ($reading) {
@@ -74,7 +74,7 @@ class HistoryController extends Controller
                 'id' => $reading->id,
                 'recorded_at' => $reading->recorded_at->toIso8601String(),
                 'time_formatted' => $reading->recorded_at->timezone('Asia/Jakarta')->format('H:i:s.v'),
-                'sv' => $reading->sv ? (float) $reading->sv : null,
+                'sv' => $reading->sv !== null ? (float) $reading->sv : null,
                 'temperature' => (float) $reading->temperature,
                 'process_status' => $reading->process_status,
             ];
@@ -149,7 +149,7 @@ class HistoryController extends Controller
             'gap_threshold' => 'nullable|integer|min:1|max:60',
         ]);
 
-        $gapThreshold = $validated['gap_threshold'] ?? 10;
+        $gapThreshold = $validated['gap_threshold'] ?? ProcessSessionService::GAP_THRESHOLD_MINUTES;
 
         $sessionsCreated = $this->processSessionService->reassignExistingData($gapThreshold);
 
@@ -168,14 +168,8 @@ class HistoryController extends Controller
      */
     public function exportSession(Request $request, int $id)
     {
+        // getSessionWithReadings() memakai findOrFail() → otomatis 404 bila tak ada.
         $session = $this->processSessionService->getSessionWithReadings($id);
-
-        if (!$session) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Sesi tidak ditemukan',
-            ], 404);
-        }
 
         // Generate filename
         $filename = "Laporan_Sesi_{$session->display_name}_{$session->started_at->format('Ymd_His')}.xlsx";
@@ -192,7 +186,7 @@ class HistoryController extends Controller
                 'readings' => $session->sensorReadings->map(function ($reading) {
                     return [
                         'waktu' => $reading->recorded_at->format('H:i:s'),
-                        'sv' => $reading->sv ? number_format($reading->sv, 1, '.', '') : '-',
+                        'sv' => $reading->sv !== null ? number_format($reading->sv, 1, '.', '') : '-',
                         'pv' => number_format($reading->temperature, 1, '.', ''),
                     ];
                 })->values()->toArray(),
