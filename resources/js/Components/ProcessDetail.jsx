@@ -3,7 +3,7 @@
  * Komponen untuk menampilkan detail satu sesi proses - Light Theme
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -16,7 +16,8 @@ import {
     Legend,
     Filler,
 } from 'chart.js';
-import { ChevronLeft, Download, TrendingUp, ArrowUp } from 'lucide-react';
+import zoomPlugin from 'chartjs-plugin-zoom';
+import { ChevronLeft, Download, TrendingUp, ArrowUp, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
@@ -28,24 +29,32 @@ ChartJS.register(
     Title,
     Tooltip,
     Legend,
-    Filler
+    Filler,
+    zoomPlugin,
 );
 
 const PIXELS_PER_POINT = 28;
 const EXPORT_CHART_HEIGHT = 400;
+const CHART_HEIGHT_CLASS = 'h-[32rem]';
 const TABLE_PAGE_SIZE = 50;
 const TABLE_PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 function formatChartTime(reading) {
-    return reading.time_formatted
-        || (reading.recorded_at
-            ? new Date(reading.recorded_at).toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-            })
-            : '');
+    if (reading.time_formatted) {
+        return reading.time_formatted.replace(/\.\d+$/, '');
+    }
+
+    if (!reading.recorded_at) {
+        return '';
+    }
+
+    return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Jakarta',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    }).format(new Date(reading.recorded_at));
 }
 
 // Warna mengikuti fase proses: heating → orange, sterilisasi → merah, cooling → biru
@@ -125,6 +134,30 @@ function buildChartOptions(forExport = false) {
                 padding: 12,
                 boxPadding: 6,
             },
+            ...(!forExport && {
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        mode: 'xy',
+                        modifierKey: 'shift',
+                    },
+                    zoom: {
+                        wheel: { enabled: true },
+                        pinch: { enabled: true },
+                        drag: {
+                            enabled: true,
+                            backgroundColor: 'rgba(255, 184, 0, 0.15)',
+                            borderColor: 'rgba(255, 184, 0, 0.6)',
+                            borderWidth: 1,
+                        },
+                        mode: 'xy',
+                    },
+                    limits: {
+                        x: { min: 'original', max: 'original' },
+                        y: { min: 'original', max: 'original' },
+                    },
+                },
+            }),
         },
         scales: {
             y: {
@@ -140,6 +173,11 @@ function buildChartOptions(forExport = false) {
                 grid: { color: '#f0f0f0' },
             },
             x: {
+                title: {
+                    display: true,
+                    text: 'Waktu (H:M:S)',
+                    color: '#666',
+                },
                 grid: { color: '#f0f0f0' },
                 ticks: {
                     color: '#999',
@@ -250,6 +288,15 @@ export default function ProcessDetail({ session, onBack }) {
     const [showScrollTop, setShowScrollTop] = useState(false);
     const [tablePage, setTablePage] = useState(1);
     const [tablePageSize, setTablePageSize] = useState(TABLE_PAGE_SIZE);
+    const chartRef = useRef(null);
+
+    const handleChartZoom = useCallback((factor) => {
+        chartRef.current?.zoom(factor);
+    }, []);
+
+    const handleChartResetZoom = useCallback(() => {
+        chartRef.current?.resetZoom();
+    }, []);
 
     // Deteksi scroll untuk tampilkan tombol ke atas
     useEffect(() => {
@@ -258,10 +305,11 @@ export default function ProcessDetail({ session, onBack }) {
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
-    // Reset halaman tabel saat sesi berubah
+    // Reset halaman tabel & zoom grafik saat sesi berubah
     useEffect(() => {
         setTablePage(1);
-    }, [session?.session?.id]);
+        handleChartResetZoom();
+    }, [session?.session?.id, handleChartResetZoom]);
 
     if (!session) return null;
 
@@ -491,13 +539,47 @@ export default function ProcessDetail({ session, onBack }) {
 
             {/* Chart */}
             <div className="card p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-[#FFB800]" />
-                    Grafik PV vs SV
-                </h3>
-                <div className="h-72 w-full overflow-x-auto">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5 text-[#FFB800]" />
+                        Grafik Suhu
+                    </h3>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => handleChartZoom(1.25)}
+                            className="btn btn-outline text-sm py-2 px-3"
+                            title="Zoom in"
+                            aria-label="Zoom in"
+                        >
+                            <ZoomIn className="w-4 h-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleChartZoom(0.8)}
+                            className="btn btn-outline text-sm py-2 px-3"
+                            title="Zoom out"
+                            aria-label="Zoom out"
+                        >
+                            <ZoomOut className="w-4 h-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleChartResetZoom}
+                            className="btn btn-outline text-sm py-2 px-3"
+                            title="Reset zoom"
+                            aria-label="Reset zoom"
+                        >
+                            <RotateCcw className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+                <p className="text-xs text-gray-500 mb-3">
+                    Scroll mouse untuk zoom • drag area untuk zoom kotak • Shift + drag untuk geser
+                </p>
+                <div className={`${CHART_HEIGHT_CLASS} w-full overflow-x-auto`}>
                     <div style={{ minWidth: chartMinWidth, height: '100%' }}>
-                        <Line data={chartData} options={chartOptions} />
+                        <Line ref={chartRef} data={chartData} options={chartOptions} />
                     </div>
                 </div>
             </div>
@@ -539,7 +621,7 @@ export default function ProcessDetail({ session, onBack }) {
                             paginatedReadings.map((reading) => (
                                 <tr key={reading.id}>
                                     <td className="font-medium text-gray-800 whitespace-nowrap text-base">
-                                        {reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8)}
+                                        {formatChartTime(reading)}
                                     </td>
                                     <td className="font-bold text-[#FFB800] whitespace-nowrap text-base">
                                         {reading.sv ? reading.sv.toFixed(1) : '-'}

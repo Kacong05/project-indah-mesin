@@ -81,7 +81,7 @@ class HistoryController extends Controller
             return [
                 'id' => $reading->id,
                 'recorded_at' => $reading->recorded_at->toIso8601String(),
-                'time_formatted' => $reading->recorded_at->timezone('Asia/Jakarta')->format('H:i:s.v'),
+                'time_formatted' => $reading->recorded_at->timezone('Asia/Jakarta')->format('H:i:s'),
                 'sv' => $reading->sv !== null ? (float) $reading->sv : null,
                 'temperature' => (float) $reading->temperature,
                 'process_status' => $reading->process_status,
