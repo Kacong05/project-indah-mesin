@@ -157,10 +157,12 @@ cat > /etc/mosquitto/acl << ACLCONF
 user ${MQTT_ESP_USER}
 topic write retort/data
 topic read retort/cmd
+topic read retort/ack
 
 # mqtt_bridge (server)
 user ${MQTT_BRIDGE_USER}
-topic read retort/#
+topic read retort/data
+topic write retort/ack
 
 # Laravel web dashboard (kirim START/STOP)
 user ${MQTT_WEB_USER}

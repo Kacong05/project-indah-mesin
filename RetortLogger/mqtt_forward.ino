@@ -1,7 +1,7 @@
 // ============================================================
 //  mqtt_forward.ino  –  Store-and-forward MQTT dari log SD
-//  Tujuan: data tidak hilang saat jaringan/MQTT putus.
-//  Aktif bila USE_STORE_FORWARD = true.
+//  Offset NVS hanya maju setelah ACK dari bridge (retort/ack).
+//  Tanpa ACK: data bisa hilang di web walau mqtt.publish() sukses.
 // ============================================================
 
 extern AppConfig   cfg;
@@ -22,14 +22,19 @@ extern float mvSimEffectivePercent();
 
 #define K_FWD_PATH "fwd_path"
 #define K_FWD_OFF  "fwd_off"
-#define FWD_BURST_LIVE    1     // live: 1 baris per tick (= 1 detik)
-#define FWD_BURST_CATCHUP 30    // catch-up: kirim berurutan, bridge 1 worker
-#define FWD_SAVE_EVERY    1     // simpan offset tiap baris sukses (anti replay duplikat)
+#define FWD_ACK_TIMEOUT_MS 4000   // ulang kirim bila tak ada ack dari bridge
 
 static char     gFwdPath[48] = {0};
-static uint32_t gFwdOffset   = 0;
+static uint32_t gFwdOffset   = 0;   // offset terkonfirmasi (NVS) = sudah di DB
 static uint16_t gFwdUnsaved  = 0;
 volatile bool   gFwdHasBacklog = false;
+
+// Satu baris menunggu konfirmasi bridge
+static bool          gFwdWaitingAck = false;
+static uint32_t      gFwdPendingOffset = 0;
+static char          gFwdPendingIso[28] = {0};
+static char          gFwdPendingPayload[320] = {0};
+static unsigned long gFwdPendingSince = 0;
 
 static void fwdSaveOffset() {
   prefs.begin(PREF_NS, false);
@@ -41,7 +46,7 @@ static void fwdSaveOffset() {
 
 static uint32_t fwdFileSize(const char* path) {
   if (!path || !path[0]) return 0;
-  if (!sdLock(800)) return 0;
+  if (!sdLock(1200)) return 0;
   File f = SD.open(path, FILE_READ);
   uint32_t sz = f ? f.size() : 0;
   if (f) f.close();
@@ -51,6 +56,7 @@ static uint32_t fwdFileSize(const char* path) {
 
 static bool fwdHasPending() {
   if (gFwdPath[0] == '\0') return false;
+  if (gFwdWaitingAck) return true;
   return gFwdOffset < fwdFileSize(gFwdPath);
 }
 
@@ -60,13 +66,30 @@ void forwardSetup() {
   gFwdOffset = prefs.getUInt(K_FWD_OFF, 0);
   prefs.end();
   p.toCharArray(gFwdPath, sizeof(gFwdPath));
+  gFwdWaitingAck = false;
   gFwdHasBacklog = fwdHasPending();
   Serial.printf("[FWD] resume path=%s offset=%u pending=%s\n",
                 gFwdPath[0] ? gFwdPath : "(none)", gFwdOffset,
                 gFwdHasBacklog ? "yes" : "no");
 }
 
+// Dipanggil dari mqtt_client saat bridge kirim retort/ack setelah simpan DB.
+bool forwardIsWaitingAck() { return gFwdWaitingAck; }
+
+void forwardOnAck(const char* iso) {
+  if (!gFwdWaitingAck || !iso || iso[0] == '\0') return;
+  if (strcmp(iso, gFwdPendingIso) != 0) return;
+
+  gFwdOffset = gFwdPendingOffset;
+  gFwdWaitingAck = false;
+  gFwdPendingIso[0] = '\0';
+  fwdSaveOffset();
+  gFwdHasBacklog = fwdHasPending();
+  Serial.printf("[FWD] ack OK %s → offset %u\n", iso, gFwdOffset);
+}
+
 static void fwdAdoptFile(const char* path) {
+  if (gFwdWaitingAck) return;  // selesaikan pending dulu
   strncpy(gFwdPath, path, sizeof(gFwdPath) - 1);
   gFwdPath[sizeof(gFwdPath) - 1] = '\0';
   gFwdOffset = 0;
@@ -74,7 +97,6 @@ static void fwdAdoptFile(const char* path) {
   Serial.printf("[FWD] file baru: %s\n", gFwdPath);
 }
 
-// Parse "M/D/YYYY h:mm:ssAM" → ISO +07:00 (baris CSV lama tanpa kolom ISO).
 static bool parseHumanTsToIso(const char* human, char* isoOut, size_t isoLen) {
   int mo = 0, d = 0, y = 0, h = 0, mi = 0, s = 0;
   char ampm[4] = {0};
@@ -86,8 +108,9 @@ static bool parseHumanTsToIso(const char* human, char* isoOut, size_t isoLen) {
   return true;
 }
 
-// Bangun payload JSON dari baris CSV (8 kolom penuh ATAU 3 kolom legacy).
-static bool fwdBuildPayload(const char* line, char* out, size_t outLen) {
+// Bangun payload; simpan iso ke isoOut untuk matching ack.
+static bool fwdBuildPayload(const char* line, char* out, size_t outLen,
+                            char* isoOut, size_t isoLen) {
   char buf[180];
   strncpy(buf, line, sizeof(buf) - 1);
   buf[sizeof(buf) - 1] = '\0';
@@ -122,8 +145,11 @@ static bool fwdBuildPayload(const char* line, char* out, size_t outLen) {
     phase = phaseName(state.phase);
     snprintf(mvStr, sizeof(mvStr), "%.1f", mvSimEffectivePercent());
     run = state.ctrlRun;
-    logging = true;  // baris legacy = sesi rekam aktif
+    logging = true;
   }
+
+  strncpy(isoOut, iso, isoLen - 1);
+  isoOut[isoLen - 1] = '\0';
 
   snprintf(out, outLen,
     "{\"id\":\"%s\",\"iso\":\"%s\",\"phase\":\"%s\","
@@ -136,16 +162,16 @@ static bool fwdBuildPayload(const char* line, char* out, size_t outLen) {
   return true;
 }
 
-static int fwdReadLine(char* out, size_t outLen, uint32_t* nextOffset) {
-  if (!sdLock(800)) return 0;
+static int fwdReadLine(char* out, size_t outLen, uint32_t fromOffset, uint32_t* nextOffset) {
+  if (!sdLock(1200)) return 0;
 
   File f = SD.open(gFwdPath, FILE_READ);
   if (!f) { sdUnlock(); return -1; }
 
   uint32_t size = f.size();
-  if (gFwdOffset >= size) { f.close(); sdUnlock(); return 0; }
+  if (fromOffset >= size) { f.close(); sdUnlock(); return 0; }
 
-  f.seek(gFwdOffset);
+  f.seek(fromOffset);
   size_t i = 0;
   bool gotNewline = false;
   while (f.available() && i < outLen - 1) {
@@ -161,6 +187,39 @@ static int fwdReadLine(char* out, size_t outLen, uint32_t* nextOffset) {
   return gotNewline ? 1 : 0;
 }
 
+static bool fwdSendOneLine() {
+  char line[180];
+  char payload[320];
+  char iso[28];
+  uint32_t nextOffset = gFwdOffset;
+
+  for (;;) {
+    int r = fwdReadLine(line, sizeof(line), gFwdOffset, &nextOffset);
+    if (r <= 0) return false;
+
+    if (strncmp(line, "Tanggal", 7) == 0) {
+      gFwdOffset = nextOffset;
+      fwdSaveOffset();
+      continue;
+    }
+
+    if (!fwdBuildPayload(line, payload, sizeof(payload), iso, sizeof(iso))) {
+      Serial.printf("[FWD] parse fail: %.40s\n", line);
+      return false;
+    }
+
+    if (!mqttPublishRaw(payload)) return false;
+
+    gFwdWaitingAck = true;
+    gFwdPendingOffset = nextOffset;
+    strncpy(gFwdPendingIso, iso, sizeof(gFwdPendingIso) - 1);
+    gFwdPendingIso[sizeof(gFwdPendingIso) - 1] = '\0';
+    strncpy(gFwdPendingPayload, payload, sizeof(gFwdPendingPayload) - 1);
+    gFwdPendingSince = millis();
+    return true;
+  }
+}
+
 void forwardTick() {
   if (!mqttIsConnected()) {
     gFwdHasBacklog = fwdHasPending();
@@ -169,56 +228,34 @@ void forwardTick() {
 
   const char* livePath = sdCurrentLogPath();
 
-  // Jangan buang file lama — selesaikan kirim backlog dulu baru adopsi file baru.
-  if (livePath && livePath[0] && gFwdPath[0] != '\0' &&
+  if (!gFwdWaitingAck && livePath && livePath[0] && gFwdPath[0] != '\0' &&
       strcmp(livePath, gFwdPath) != 0 && !fwdHasPending()) {
     fwdAdoptFile(livePath);
-  } else if (livePath && livePath[0] && gFwdPath[0] == '\0') {
+  } else if (!gFwdWaitingAck && livePath && livePath[0] && gFwdPath[0] == '\0') {
     fwdAdoptFile(livePath);
   }
 
   if (gFwdPath[0] == '\0') {
     gFwdHasBacklog = false;
-    mqttPublishState();
+    if (!gFwdWaitingAck) mqttPublishState();
+    return;
+  }
+
+  // Tunggu ack bridge; timeout → kirim ulang baris yang sama
+  if (gFwdWaitingAck) {
+    if (millis() - gFwdPendingSince < FWD_ACK_TIMEOUT_MS) return;
+    Serial.printf("[FWD] ack timeout %s — retry\n", gFwdPendingIso);
+    mqttPublishRaw(gFwdPendingPayload);
+    gFwdPendingSince = millis();
     return;
   }
 
   gFwdHasBacklog = fwdHasPending();
-  uint8_t burstMax = gFwdHasBacklog ? FWD_BURST_CATCHUP : FWD_BURST_LIVE;
 
-  char line[180];
-  char payload[320];
-  bool sentAny = false;
-
-  for (uint8_t burst = 0; burst < burstMax; burst++) {
-    uint32_t nextOffset = gFwdOffset;
-    int r = fwdReadLine(line, sizeof(line), &nextOffset);
-    if (r <= 0) break;
-
-    if (strncmp(line, "Tanggal", 7) == 0) {
-      gFwdOffset = nextOffset;
-      if (++gFwdUnsaved >= FWD_SAVE_EVERY) fwdSaveOffset();
-      continue;
-    }
-
-    if (!fwdBuildPayload(line, payload, sizeof(payload))) {
-      Serial.printf("[FWD] skip parse fail: %.40s...\n", line);
-      break;  // JANGAN maju offset — coba lagi tick berikutnya
-    }
-
-    if (!mqttPublishRaw(payload)) break;
-
-    sentAny = true;
-    gFwdOffset = nextOffset;
-    if (++gFwdUnsaved >= FWD_SAVE_EVERY) fwdSaveOffset();
-  }
+  if (fwdSendOneLine()) return;
 
   gFwdHasBacklog = fwdHasPending();
-
-  if (!sentAny) {
-    if (gFwdUnsaved > 0) fwdSaveOffset();
-    if (!state.logging && !gFwdHasBacklog) mqttPublishState();
-  }
+  if (!state.logging && !gFwdHasBacklog) mqttPublishState();
 }
 
 #else
@@ -226,6 +263,8 @@ void forwardTick() {
 volatile bool gFwdHasBacklog = false;
 
 void forwardSetup() {}
+void forwardOnAck(const char*) {}
+bool forwardIsWaitingAck() { return false; }
 void forwardTick() { mqttPublishState(); }
 
 #endif

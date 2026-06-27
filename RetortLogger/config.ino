@@ -30,6 +30,7 @@ static const char DEFAULT_PASS_HASH[] =
 #define MQTT_PASS       "RetortEsp_e8cc4a9bd5e6702f"
 #define MQTT_PUB_TOPIC  "retort/data"
 #define MQTT_CMD_TOPIC  "retort/cmd"
+#define MQTT_ACK_TOPIC  "retort/ack"   // bridge kirim ack setelah sukses simpan ke DB
 
 void loadConfig() {
   prefs.begin(PREF_NS, true);  // read-only

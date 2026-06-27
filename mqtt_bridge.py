@@ -22,12 +22,15 @@ import requests
 MQTT_HOST = os.getenv("MQTT_HOST", "127.0.0.1")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "retort/data")
+MQTT_ACK_TOPIC = os.getenv("MQTT_ACK_TOPIC", "retort/ack")
 MQTT_USER = os.getenv("MQTT_USER", "")
 MQTT_PASS = os.getenv("MQTT_PASS", "")
 
 _POST_QUEUE: queue.Queue = queue.Queue(maxsize=8000)
-# Default 1 worker: insert berurutan (recorded_at naik) → sesi & history akurat.
 _POST_WORKERS = int(os.getenv("MQTT_BRIDGE_WORKERS", "1"))
+_POST_RETRIES = 3
+_mqtt_client: mqtt.Client | None = None
+_mqtt_lock = threading.Lock()
 
 
 def _read_laravel_env() -> dict:
@@ -133,28 +136,65 @@ def _normalize_recorded_at(raw: dict) -> str | None:
     return None
 
 
+def _publish_ack(machine_code: str, recorded_at: str) -> None:
+    """Kabari ESP bahwa baris ini sudah aman di DB → offset SD boleh maju."""
+    global _mqtt_client
+    if not _mqtt_client or not recorded_at:
+        return
+    ack = json.dumps({"id": machine_code, "iso": recorded_at})
+    with _mqtt_lock:
+        _mqtt_client.publish(MQTT_ACK_TOPIC, ack, qos=1)
+
+
 def _post_worker(worker_id: int):
-    """Worker thread: POST ke Laravel tanpa mem-block loop MQTT."""
+    """Worker thread: POST ke Laravel + kirim MQTT ack."""
     while True:
         payload = _POST_QUEUE.get()
         try:
-            r = requests.post(API_URL, json=payload, headers=api_headers(), timeout=10)
-            if r.status_code == 200:
-                body = r.json() if r.content else {}
-                if body.get("recorded", True) and not body.get("duplicate"):
-                    sv = payload.get("sv")
-                    sv_txt = f" | SV {sv}°C" if sv is not None else ""
-                    ts = payload.get("recorded_at", "")
-                    ts_txt = f" @ {ts}" if ts else ""
-                    print(
-                        f"[OK] {payload['machine_code']} | "
-                        f"{payload['temperature']}°C{sv_txt} | "
-                        f"{payload['process_status']}{ts_txt}"
+            body = {}
+            ok = False
+            for attempt in range(1, _POST_RETRIES + 1):
+                try:
+                    r = requests.post(
+                        API_URL, json=payload, headers=api_headers(), timeout=10
                     )
-            else:
-                print(f"[GAGAL] HTTP {r.status_code}: {r.text[:120]}")
-        except requests.RequestException as e:
-            print(f"[ERROR] POST ke Laravel: {e}")
+                except requests.RequestException as e:
+                    print(f"[ERROR] POST ke Laravel (coba {attempt}): {e}")
+                    time.sleep(0.3 * attempt)
+                    continue
+
+                if r.status_code != 200:
+                    print(f"[GAGAL] HTTP {r.status_code}: {r.text[:120]}")
+                    time.sleep(0.3 * attempt)
+                    continue
+
+                body = r.json() if r.content else {}
+                ok = True
+                break
+
+            if not ok:
+                print(
+                    f"[DROP] {payload.get('machine_code')} @ "
+                    f"{payload.get('recorded_at')} — gagal setelah {_POST_RETRIES}x"
+                )
+                continue
+
+            recorded_at = payload.get("recorded_at", "")
+            machine_code = payload.get("machine_code", "")
+
+            # ACK ke ESP: sukses simpan ATAU duplikat (offset tetap harus maju)
+            if body.get("recorded") or body.get("duplicate"):
+                _publish_ack(machine_code, recorded_at)
+
+            if body.get("recorded") and not body.get("duplicate"):
+                sv = payload.get("sv")
+                sv_txt = f" | SV {sv}°C" if sv is not None else ""
+                ts_txt = f" @ {recorded_at}" if recorded_at else ""
+                print(
+                    f"[OK] {machine_code} | "
+                    f"{payload['temperature']}°C{sv_txt} | "
+                    f"{payload['process_status']}{ts_txt}"
+                )
         finally:
             _POST_QUEUE.task_done()
 
@@ -206,7 +246,7 @@ def main():
     print("=" * 50)
     print("  MQTT Bridge → Laravel → PostgreSQL")
     print("=" * 50)
-    print(f"  MQTT   : {MQTT_HOST}:{MQTT_PORT}  topic={MQTT_TOPIC}")
+    print(f"  MQTT   : {MQTT_HOST}:{MQTT_PORT}  topic={MQTT_TOPIC}  ack={MQTT_ACK_TOPIC}")
     print(f"  API    : {API_URL}")
     print(f"  Auth   : MQTT={'ya' if MQTT_USER else 'tidak'}, API token={'ya' if SENSOR_API_TOKEN else 'TIDAK'}")
     print(f"  Workers: {_POST_WORKERS} thread POST (1 = urutan recorded_at terjaga)")
@@ -224,15 +264,21 @@ def main():
     if MQTT_USER:
         client.username_pw_set(MQTT_USER, MQTT_PASS)
 
+    global _mqtt_client
+    _mqtt_client = client
+
     client.on_connect = on_connect
     client.on_message = on_message
 
+    client.loop_start()
     while True:
         try:
             client.connect(MQTT_HOST, MQTT_PORT, 60)
-            client.loop_forever()
+            while True:
+                time.sleep(1)
         except KeyboardInterrupt:
             print("\nBridge dihentikan.")
+            client.loop_stop()
             sys.exit(0)
         except Exception as e:
             print(f"[ERROR] {e} — retry 5 detik...")

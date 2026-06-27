@@ -226,6 +226,8 @@ bool mqttPublishRaw(const char* payload);
 const char* sdCurrentLogPath();
 void forwardSetup();
 void forwardTick();
+void forwardOnAck(const char* iso);
+bool forwardIsWaitingAck();
 
 // ============================================================
 //  Task logger: akuisisi Modbus + tulis SD, presisi 1 detik.

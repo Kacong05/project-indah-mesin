@@ -99,7 +99,7 @@ void sdLogEntry() {
 // menulis baris CSV, SEMUA di bawah kunci SD (aman terhadap akses web).
 void sdServiceLog() {
   if (!state.sdReady) return;
-  if (!sdLock(800)) return;  // bus dipakai web sebentar → coba siklus berikutnya
+  if (!sdLock(2000)) return;  // tunggu lebih lama — hindari loncat detik saat SD sibuk
 
   if (gLogStartReq) {
     gLogStartReq = false;

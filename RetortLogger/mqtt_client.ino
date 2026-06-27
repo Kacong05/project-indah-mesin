@@ -1,5 +1,5 @@
 // ============================================================
-//  mqtt_client.ino  –  MQTT publish + subscribe + commands
+//  mqtt_client.ino  –  MQTT publish + subscribe + commands + ack
 //  Library: PubSubClient
 // ============================================================
 
@@ -19,15 +19,33 @@ static PubSubClient mqtt(mqttWifi);
 static unsigned long lastRecon = 0;
 static unsigned long lastPub = 0;
 
-static void mqttCb(char* topic, byte* payload, unsigned int len) {
-  if (len == 0 || len > 64) return;
-  char cmd[65];
-  memcpy(cmd, payload, len);
-  cmd[len] = '\0';
-  Serial.printf("[MQTT] Cmd: %s\n", cmd);
+static void mqttHandleAck(const char* json) {
+  const char* p = strstr(json, "\"iso\":\"");
+  if (!p) return;
+  p += 7;
+  const char* end = strchr(p, '"');
+  if (!end || (size_t)(end - p) >= 28) return;
+  char iso[28] = {0};
+  memcpy(iso, p, end - p);
+  forwardOnAck(iso);
+}
 
-  // Format: START, STOP, STATUS atau START:RT-001 (hanya mesin yang cocok)
-  char* colon = strchr(cmd, ':');
+static void mqttCb(char* topic, byte* payload, unsigned int len) {
+  if (len == 0 || len > 320) return;
+  char buf[321];
+  memcpy(buf, payload, len);
+  buf[len] = '\0';
+
+  if (strcmp(topic, MQTT_ACK_TOPIC) == 0) {
+    mqttHandleAck(buf);
+    return;
+  }
+
+  if (strcmp(topic, cfg.mqttCmdTopic) != 0) return;
+
+  Serial.printf("[MQTT] Cmd: %s\n", buf);
+
+  char* colon = strchr(buf, ':');
   if (colon) {
     *colon = '\0';
     if (strcasecmp(colon + 1, cfg.machineId) != 0) {
@@ -36,9 +54,9 @@ static void mqttCb(char* topic, byte* payload, unsigned int len) {
     }
   }
 
-  if (strcmp(cmd, "START") == 0) startProcess();
-  else if (strcmp(cmd, "STOP") == 0) stopProcess();
-  else if (strcmp(cmd, "STATUS") == 0) mqttPublishState();
+  if (strcmp(buf, "START") == 0) startProcess();
+  else if (strcmp(buf, "STOP") == 0) stopProcess();
+  else if (strcmp(buf, "STATUS") == 0) mqttPublishState();
 }
 
 static bool mqttRecon() {
@@ -48,9 +66,10 @@ static bool mqttRecon() {
   else ok = mqtt.connect(cfg.machineId);
   if (ok) {
     mqtt.subscribe(cfg.mqttCmdTopic);
+    mqtt.subscribe(MQTT_ACK_TOPIC);
     state.mqttConnected = true;
     gLastMqttState = 0;
-    Serial.printf("[MQTT] Connected. Sub: %s\n", cfg.mqttCmdTopic);
+    Serial.printf("[MQTT] Connected. Sub: %s + %s\n", cfg.mqttCmdTopic, MQTT_ACK_TOPIC);
   } else {
     state.mqttConnected = false;
     gLastMqttState = mqtt.state();
@@ -69,9 +88,6 @@ void setupMQTT() {
   mqtt.setCallback(mqttCb);
   mqtt.setKeepAlive(30);
   mqtt.setBufferSize(768);
-  // Default PubSubClient = 15 dtk: bila broker tak terjangkau, mqtt.connect()
-  // bisa mem-block loop sampai 15 dtk. Pangkas ke 2 dtk. (Sampling data tetap
-  // aman karena ada di task terpisah, ini hanya merapikan responsivitas web.)
   mqtt.setSocketTimeout(2);
 }
 
@@ -85,24 +101,18 @@ void loopMQTT() {
   }
   mqtt.loop();
   unsigned long now = millis();
-  // Saat backlog: kirim secepat mungkin (tanpa throttle 1 dtk) agar mengejar live.
-  if (!gFwdHasBacklog && (now - lastPub < 1000)) return;
+  if (!gFwdHasBacklog && !forwardIsWaitingAck() && (now - lastPub < 1000)) return;
   lastPub = now;
 
 #if USE_STORE_FORWARD
-  // Forwarder yang menentukan apa yang dikirim: replay backlog SD bila ada,
-  // baris live bila sedang proses, atau heartbeat status bila idle.
   forwardTick();
 #else
-  // Mode lama: publish state live tiap 1 detik (tanpa anti-hilang saat putus).
   mqttPublishState();
 #endif
 }
 
-// Status koneksi untuk forwarder (mqtt object privat di file ini).
 bool mqttIsConnected() { return mqtt.connected(); }
 
-// Publish payload mentah ke topik data. Dipakai forwarder store-and-forward.
 bool mqttPublishRaw(const char* payload) {
   if (!mqtt.connected()) return false;
   return mqtt.publish(cfg.mqttPubTopic, payload, false);
@@ -110,8 +120,6 @@ bool mqttPublishRaw(const char* payload) {
 
 void mqttPublishState() {
   if (!mqtt.connected()) return;
-  // Pakai timestamp cache dari task logger (hindari baca RTC/I2C dari loop ini,
-  // supaya tak bentrok dengan task yang juga memakai I2C).
   char buf[300];
   snprintf(buf, sizeof(buf),
     "{\"id\":\"%s\",\"ts\":\"%s\",\"iso\":\"%s\",\"phase\":\"%s\","
