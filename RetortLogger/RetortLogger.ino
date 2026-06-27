@@ -223,6 +223,11 @@ const char* phaseName(RetortPhase p) {
   }
 }
 
+// Format P/S mirror TNL: "pattern-step" (contoh "2-01").
+void tnlFormatPs(char* out, size_t outLen) {
+  snprintf(out, outLen, "%u-%02u", (unsigned)state.pattern, (unsigned)state.step);
+}
+
 // --- Forward Declarations ---
 void loadConfig();
 void saveConfig();

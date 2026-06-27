@@ -43,60 +43,52 @@ trait ProvidesMachineData
         }
 
         $live = MonitoringLiveCache::get($machine->id);
-        $valveClosed = $displayMode === 'active' && $this->isValveClosedLive($live);
 
-        $currentProcessReadings = $this->getCurrentProcessReadings($machine);
-        $currentLatest = $currentProcessReadings->last() ?? $latestReading;
-
-        if (! $currentLatest) {
-            if ($displayMode === 'active' && is_array($live)) {
-                return $this->buildLiveMonitoringStats($machine, $live, $totalDataToday, $valveClosed, $isOnline);
-            }
-
+        if (! is_array($live)) {
             return $this->buildIdleMonitoringStats($machine, $latestReading, $totalDataToday);
         }
 
-        $timers = $this->calculateProcessTimers($currentProcessReadings);
-        $processPhase = $this->normalizePhase($currentLatest->process_status);
-        $isRunning = $processPhase !== 'idle';
+        return $this->buildStatsFromLiveCache($machine, $live, $displayMode, $totalDataToday, $isOnline);
+    }
 
-        $lastUpdate = $currentLatest->recorded_at
-            ->timezone('Asia/Jakarta')
-            ->format('d/m/Y H:i:s');
+    /**
+     * Stats monitoring hanya dari live cache (MQTT → SensorController → SSE).
+     * Database dipakai terpisah untuk history, bukan tampilan dashboard.
+     *
+     * @param  array<string, mixed>  $live
+     * @return array<string, mixed>
+     */
+    protected function buildStatsFromLiveCache($machine, array $live, string $displayMode, int $totalDataToday, bool $isOnline): array
+    {
+        $valveClosed = $this->isValveClosedLive($live);
+        $recording = (bool) ($live['recording'] ?? false);
+        $mv = (float) ($live['mv'] ?? 0);
+        $processPhase = $this->normalizePhase($live['process_status'] ?? 'idle');
 
-        $dataIntervalMs = $this->resolveDataIntervalMs($machine);
+        $lastUpdate = isset($live['recorded_at'])
+            ? Carbon::parse($live['recorded_at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
+            : 'N/A';
 
-        $pv = $isRunning ? (float) $currentLatest->temperature : 0;
-        $sv = $this->formatSvForDisplay($currentLatest, $isRunning);
-        $mv = 0.0;
-
-        if ($valveClosed && is_array($live)) {
-            $pv = (float) $live['temperature'];
-            $sv = round((float) ($live['sv'] ?? 121.1), 1);
-            $mv = (float) ($live['mv'] ?? 0);
-            $lastUpdate = isset($live['recorded_at'])
-                ? Carbon::parse($live['recorded_at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
-                : $lastUpdate;
-        }
+        $runState = ($mv > 0 || $recording || $processPhase !== 'idle') ? 'run' : 'stop';
 
         return $this->applyTnlMirror([
             'displayMode' => $displayMode,
             'valveClosed' => $valveClosed,
-            'currentTemperature' => $pv,
+            'currentTemperature' => (float) $live['temperature'],
             'machineStatus' => $machine->status,
             'isOnline' => $isOnline,
-            'isLogging' => $this->isLoggingStatus($currentLatest->process_status),
-            'runState' => $isRunning ? 'run' : 'stop',
+            'isLogging' => $recording,
+            'runState' => $runState,
             'totalDataToday' => $totalDataToday,
             'lastUpdate' => $lastUpdate,
-            'dataIntervalMs' => $dataIntervalMs,
-            'sv' => $sv,
+            'dataIntervalMs' => null,
+            'sv' => round((float) ($live['sv'] ?? 121.1), 1),
             'mv' => $mv,
-            'processStep' => $this->formatProcessStepLabel($currentLatest->process_status),
-            'processStepCode' => $this->formatProcessStepCode($currentLatest->process_status),
+            'processStep' => '-',
+            'processStepCode' => '00',
             'processPhase' => $processPhase,
-            'timerTot' => $timers['timerTot'],
-            'timerStp' => $timers['timerStp'],
+            'timerTot' => '00:00',
+            'timerStp' => '00:00',
         ], $live);
     }
 
@@ -111,39 +103,6 @@ trait ProvidesMachineData
         }
 
         return (float) ($live['mv'] ?? 0) <= 0;
-    }
-
-    /**
-     * Mesin online, belum ada reading DB — PV/SV/grafik dari cache live saja.
-     */
-    protected function buildLiveMonitoringStats($machine, array $live, int $totalDataToday, bool $valveClosed, bool $isOnline): array
-    {
-        $lastUpdate = isset($live['recorded_at'])
-            ? Carbon::parse($live['recorded_at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
-            : 'N/A';
-
-        $processPhase = $this->normalizePhase($live['process_status'] ?? 'idle');
-        $closed = $this->isValveClosedLive($live);
-
-        return $this->applyTnlMirror([
-            'displayMode' => 'active',
-            'valveClosed' => $closed,
-            'currentTemperature' => (float) $live['temperature'],
-            'machineStatus' => $machine->status,
-            'isOnline' => $isOnline,
-            'isLogging' => false,
-            'runState' => 'stop',
-            'totalDataToday' => $totalDataToday,
-            'lastUpdate' => $lastUpdate,
-            'dataIntervalMs' => null,
-            'sv' => round((float) ($live['sv'] ?? 121.1), 1),
-            'mv' => (float) ($live['mv'] ?? 0),
-            'processStep' => $this->formatProcessStepLabel($live['process_status'] ?? 'idle'),
-            'processStepCode' => $this->formatProcessStepCode($live['process_status'] ?? 'idle'),
-            'processPhase' => $processPhase,
-            'timerTot' => '00:00',
-            'timerStp' => '00:00',
-        ], $live);
     }
 
     /**
@@ -178,13 +137,11 @@ trait ProvidesMachineData
           ? $lastHeartbeat->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
           : 'N/A';
 
-        // Tampilkan data terakhir yang diterima, apapun statusnya
-        $lastTemp = $latestReading ? (float) $latestReading->temperature : 0;
-
+        // Tampilan idle — tidak ambil PV dari database.
         return [
             'displayMode' => 'idle',
             'valveClosed' => false,
-            'currentTemperature' => $lastTemp,
+            'currentTemperature' => 0,
             'machineStatus' => $machine ? $machine->status : 'Offline',
             'isOnline' => false,
             'isLogging' => false,
@@ -322,23 +279,20 @@ trait ProvidesMachineData
             return $stats;
         }
 
-        $pattern = array_key_exists('pattern', $live) ? (int) $live['pattern'] : null;
-        $step = array_key_exists('step', $live) ? (int) $live['step'] : null;
+        $ps = $live['ps'] ?? null;
 
-        if ($pattern !== null || $step !== null) {
-            $pat = max(0, $pattern ?? 0);
-            $stp = max(0, $step ?? 0);
-            if ($pat > 0 || $stp > 0) {
-                $stats['processStep'] = sprintf('%d-%02d', $pat, $stp);
-                $stats['processStepCode'] = sprintf('%02d', $stp);
+        if (is_string($ps) && $ps !== '' && $ps !== '0-00') {
+            $stats['processStep'] = $ps;
+            if (preg_match('/-(\d{1,2})$/', $ps, $m)) {
+                $stats['processStepCode'] = sprintf('%02d', (int) $m[1]);
             }
         }
 
-        if (! empty($live['timer_tot'])) {
+        if (array_key_exists('timer_tot', $live) && $live['timer_tot'] !== null && $live['timer_tot'] !== '') {
             $stats['timerTot'] = (string) $live['timer_tot'];
         }
 
-        if (! empty($live['timer_stp'])) {
+        if (array_key_exists('timer_stp', $live) && $live['timer_stp'] !== null && $live['timer_stp'] !== '') {
             $stats['timerStp'] = (string) $live['timer_stp'];
         }
 
@@ -429,9 +383,9 @@ trait ProvidesMachineData
             return $empty;
         }
 
-        $dbReadings = $this->getCurrentProcessReadings($machine);
+        // Grafik monitoring: buffer live saja (MQTT subscribe), bukan database.
         $buffer = MonitoringLiveCache::getChartBuffer($machine->id);
-        $merged = $this->mergeChartPoints($dbReadings, $buffer);
+        $merged = $this->mergeChartPoints(collect(), $buffer);
 
         if ($merged->isEmpty()) {
             return $empty;

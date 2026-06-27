@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ProvidesMachineData;
-use App\Models\SensorReading;
 use App\Services\MonitoringBroadcast;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -105,15 +104,8 @@ class MonitoringController extends Controller
     {
         $today = Carbon::today();
 
-        $latestReading = $machine
-            ? SensorReading::where('machine_id', $machine->id)
-                ->orderByDesc('recorded_at')
-                ->orderByDesc('id')
-                ->first()
-            : null;
-
         return [
-            'stats' => $this->getMachineStats($machine, $latestReading, $today),
+            'stats' => $this->getMachineStats($machine, null, $today),
             'chartData' => $this->getTemperatureChartData($machine),
         ];
     }

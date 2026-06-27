@@ -24,7 +24,7 @@ class MonitoringLiveCache
     }
 
     /**
-     * @param  array{temperature: float, sv: ?float, mv: float, pressure: float, process_status: string, recorded_at: string}  $data
+     * @param  array{temperature: float, sv: ?float, mv: float, pressure: float, process_status: string, recorded_at: string, ps: ?string, timer_tot: ?string, timer_stp: ?string}  $data
      */
     public static function put(int $machineId, array $data, bool $recording): void
     {

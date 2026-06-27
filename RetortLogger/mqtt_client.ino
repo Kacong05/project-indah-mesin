@@ -120,17 +120,17 @@ bool mqttPublishRaw(const char* payload) {
 
 void mqttPublishState() {
   if (!mqtt.connected()) return;
+  char ps[8];
+  tnlFormatPs(ps, sizeof(ps));
   char buf[420];
   snprintf(buf, sizeof(buf),
     "{\"id\":\"%s\",\"ts\":\"%s\",\"iso\":\"%s\",\"phase\":\"%s\","
     "\"actual\":%.1f,\"setting\":%.1f,\"mv\":%.1f,"
-    "\"pattern\":%u,\"step\":%u,"
-    "\"tot\":\"%s\",\"stp\":\"%s\","
+    "\"ps\":\"%s\",\"tot\":\"%s\",\"stp\":\"%s\","
     "\"run\":%s,\"logging\":%s}",
     cfg.machineId, gLastTs, gLastIso, phaseName(state.phase),
     state.temperature, state.setpoint, mvSimEffectivePercent(),
-    (unsigned)state.pattern, (unsigned)state.step,
-    state.totMs, state.stpMs,
+    ps, state.totMs, state.stpMs,
     state.ctrlRun ? "true" : "false",
     state.logging ? "true" : "false");
   mqtt.publish(cfg.mqttPubTopic, buf, false);

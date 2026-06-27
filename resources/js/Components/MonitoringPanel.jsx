@@ -137,7 +137,7 @@ export default function MonitoringPanel({
                             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-yellow-100">
                                 <Settings className="w-5 h-5 text-yellow-600" />
                             </div>
-                            <p className="text-[10px] font-semibold text-yellow-700 uppercase tracking-wide">Process Step</p>
+                            <p className="text-[10px] font-semibold text-yellow-700 uppercase tracking-wide">P/S</p>
                             <p className="text-sm font-bold text-yellow-800 truncate w-full">
                                 {processStep ?? '-'}
                             </p>

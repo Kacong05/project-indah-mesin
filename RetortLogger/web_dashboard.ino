@@ -94,7 +94,7 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <small class="hint" style="font-size:11px;color:#666">DI-1 ON (Modbus) = trigger seperti katup terbuka</small>
 </div>
 <div class="c"><small>SD Card</small><div class="v" id="sd">--</div></div>
-<div class="c"><small>P/S (TNL)</small><div class="v" id="ps">--</div></div>
+<div class="c"><small>P/S</small><div class="v" id="ps">--</div></div>
 <div class="c"><small>TOT M:S</small><div class="v" id="tot">--</div></div>
 <div class="c"><small>STP M:S</small><div class="v" id="stp">--</div></div>
 </div>
@@ -129,9 +129,7 @@ document.getElementById('tph').textContent=d.phase||'--';
 var rec=document.getElementById('trec');rec.textContent=d.log?'● REC':(d.run?'RUN':'idle');
 var mv=document.getElementById('mv');mv.textContent=d.mv!=null?Number(d.mv).toFixed(1)+'%':'--';mv.className='v '+(d.mv>0?'wr':'');
 var s=document.getElementById('sd');s.textContent=d.sd?'OK':'N/A';s.className='v '+(d.sd?'ok':'er');
-if(d.pattern!=null&&d.step!=null){
-document.getElementById('ps').textContent=d.pattern+'-'+String(d.step).padStart(2,'0');
-}else{document.getElementById('ps').textContent='--';}
+document.getElementById('ps').textContent=d.ps||'--';
 document.getElementById('tot').textContent=d.tot||'00:00';
 document.getElementById('stp').textContent=d.stp||'00:00';
 if(d.mvSimAvail){
@@ -227,8 +225,9 @@ void setupWebDashboard() {
     doc["run"]   = state.ctrlRun;
     doc["sd"]    = state.sdReady;
     doc["log"]   = state.logging;
-    doc["pattern"] = state.pattern;
-    doc["step"]    = state.step;
+    char psBuf[8];
+    tnlFormatPs(psBuf, sizeof(psBuf));
+    doc["ps"]    = psBuf;
     doc["tot"]     = state.totMs;
     doc["stp"]     = state.stpMs;
     doc["clock"] = gLastClock;

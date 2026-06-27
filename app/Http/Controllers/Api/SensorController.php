@@ -31,8 +31,7 @@ class SensorController extends Controller
             'process_status' => 'nullable|string',
             'recorded_at' => 'required|date',
             'logging' => 'nullable|boolean',
-            'pattern' => 'nullable|integer|min:0|max:99',
-            'step' => 'nullable|integer|min:0|max:99',
+            'ps' => 'nullable|string|max:16',
             'timer_tot' => 'nullable|string|max:16',
             'timer_stp' => 'nullable|string|max:16',
         ]);
@@ -43,9 +42,8 @@ class SensorController extends Controller
         $timestamp = Carbon::parse($validated['recorded_at'])->timezone('Asia/Jakarta');
 
         // ============================================
-        // GATE PEREKAMAN: hanya simpan ke database saat katup terbuka (MV > 0).
-        // MV <= 0 → data tetap masuk web (PV/SV live via cache), tidak dibuat sesi/reading.
-        // MV null → perilaku lama (tetap simpan) agar klien lama kompatibel.
+        // Alur: setiap paket MQTT → live cache + SSE (tampilan dashboard).
+        // Simpan ke database terpisah (history) bila katup terbuka / logging.
         // ============================================
         $mv = isset($validated['mv']) ? (float) $validated['mv'] : null;
         $logging = (bool) ($validated['logging'] ?? false);
@@ -57,8 +55,7 @@ class SensorController extends Controller
             'pressure' => (float) $validated['pressure'],
             'process_status' => $validated['process_status'] ?? 'idle',
             'recorded_at' => $timestamp->copy()->timezone('Asia/Jakarta')->toIso8601String(),
-            'pattern' => isset($validated['pattern']) ? (int) $validated['pattern'] : null,
-            'step' => isset($validated['step']) ? (int) $validated['step'] : null,
+            'ps' => $validated['ps'] ?? null,
             'timer_tot' => $validated['timer_tot'] ?? null,
             'timer_stp' => $validated['timer_stp'] ?? null,
         ];
