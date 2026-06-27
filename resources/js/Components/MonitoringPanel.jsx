@@ -7,7 +7,7 @@
     WifiOff,
 } from 'lucide-react';
 
-function InfoCard({ icon: Icon, label, value, unit, valueClass = 'text-gray-800', iconGradient = 'from-slate-400 to-slate-500', className = '' }) {
+function InfoCard({ icon: Icon, label, value, unit, valueClass = 'text-gray-800', iconGradient = 'from-slate-400 to-slate-500', valueSize = 'text-2xl', unitSize = 'text-sm', className = '' }) {
     return (
         <div className={`group relative overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all min-w-0 h-full p-3.5 ${className}`}>
             <div className="flex flex-col items-center text-center justify-center h-full gap-2">
@@ -15,10 +15,10 @@ function InfoCard({ icon: Icon, label, value, unit, valueClass = 'text-gray-800'
                     <Icon className="text-white w-6 h-6" strokeWidth={2.2} />
                 </div>
                 <p className="font-semibold text-gray-400 uppercase tracking-wider leading-tight text-[11px]">{label}</p>
-                <div className="flex items-center gap-1">
-                    <p className={`font-extrabold tabular-nums leading-none ${valueClass} text-2xl`}>{value ?? '-'}</p>
+                <div className="flex items-baseline gap-1">
+                    <p className={`font-extrabold tabular-nums leading-none ${valueClass} ${valueSize}`}>{value ?? '-'}</p>
                     {unit && value !== null && value !== undefined && (
-                        <span className="text-gray-400 leading-none text-sm">{unit}</span>
+                        <span className={`text-gray-400 leading-none ${unitSize}`}>{unit}</span>
                     )}
                 </div>
             </div>
@@ -92,6 +92,8 @@ export default function MonitoringPanel({
                             unit={svIsStop ? null : '\u00b0C'}
                             valueClass="text-indigo-600"
                             iconGradient="from-indigo-500 to-violet-500"
+                            valueSize="text-5xl"
+                            unitSize="text-xl"
                         />
                     </div>
                 </div>
