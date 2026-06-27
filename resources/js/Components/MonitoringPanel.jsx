@@ -7,33 +7,6 @@
     Zap,
 } from 'lucide-react';
 
-function StatusBadge({ status }) {
-    const config = {
-        running: { label: 'Running', bg: 'bg-green-100 text-green-700', icon: 'ÔùÅ' },
-        heating: { label: 'CUT', bg: 'bg-amber-100 text-amber-700', icon: 'Ôû▓' },
-        sterilizing: { label: 'Sterilization', bg: 'bg-red-100 text-red-700', icon: 'ÔùÅ' },
-        holding: { label: 'Sterilization', bg: 'bg-red-100 text-red-700', icon: 'ÔùÅ' },
-        cooling: { label: 'Cooling', bg: 'bg-blue-100 text-blue-700', icon: 'Ôû╝' },
-        stop: { label: 'Stop', bg: 'bg-red-100 text-red-700', icon: 'Ôûá' },
-        hold: { label: 'Hold', bg: 'bg-yellow-100 text-yellow-700', icon: 'ÔûîÔûî' },
-        alarm: { label: 'Alarm', bg: 'bg-red-100 text-red-700', icon: 'ÔÜá' },
-        standby: { label: 'Standby', bg: 'bg-amber-100 text-amber-700', icon: 'Ôùï' },
-    };
-
-    const current = config[status?.toLowerCase()] ?? {
-        label: status ?? 'Unknown',
-        bg: 'bg-gray-100 text-gray-600',
-        icon: '?',
-    };
-
-    return (
-        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold ${current.bg}`}>
-            <span>{current.icon}</span>
-            {current.label}
-        </span>
-    );
-}
-
 function InfoCard({ icon: Icon, label, value, unit, colorClass = 'text-gray-800', bgClass = 'bg-orange-50', large = false, className = '' }) {
     return (
         <div className={`rounded-xl bg-white border border-gray-200 hover:shadow-sm transition-shadow min-w-0 h-full ${large ? 'p-4' : 'p-3'} ${className}`}>
@@ -42,9 +15,11 @@ function InfoCard({ icon: Icon, label, value, unit, colorClass = 'text-gray-800'
                     <Icon className={`${colorClass} ${large ? 'w-8 h-8' : 'w-6 h-6'}`} />
                 </div>
                 <p className={`font-semibold text-gray-500 uppercase tracking-wide leading-tight ${large ? 'text-sm' : 'text-xs'}`}>{label}</p>
-                <div className="flex items-baseline gap-1">
-                    <p className={`font-bold tabular-nums ${colorClass} ${large ? 'text-4xl' : 'text-2xl'}`}>{value ?? 'ÔÇö'}</p>
-                    {unit && <span className={`text-gray-400 ${large ? 'text-base' : 'text-sm'}`}>{unit}</span>}
+                <div className="flex items-center gap-1">
+                    <p className={`font-bold tabular-nums leading-none ${colorClass} ${large ? 'text-4xl' : 'text-2xl'}`}>{value ?? '-'}</p>
+                    {unit && value !== null && value !== undefined && (
+                        <span className={`text-gray-400 leading-none ${large ? 'text-base' : 'text-sm'}`}>{unit}</span>
+                    )}
                 </div>
             </div>
         </div>
@@ -66,7 +41,7 @@ export default function MonitoringPanel({
     runState = 'stop',
 }) {
     const formatTemp = (temp) => {
-        if (temp === null || temp === undefined) return 'ÔÇö';
+        if (temp === null || temp === undefined) return '-';
         return typeof temp === 'number' ? temp.toFixed(1) : temp;
     };
 
@@ -84,18 +59,18 @@ export default function MonitoringPanel({
                     <span className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                     <h3 className="text-base font-semibold text-gray-700">Monitoring Panel</h3>
                     <span className="hidden sm:inline text-sm text-gray-400">
-                        ┬À UPDATE {lastUpdate}
+                        &middot; UPDATE {lastUpdate}
                     </span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                     {valveClosed && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-800">
-                            Katup tertutup ÔÇö PV/SV live
+                            Katup tertutup &mdash; PV/SV live
                         </span>
                     )}
                     {!valveClosed && displayMode === 'paused' && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-amber-100 text-amber-800">
-                            Menunggu dataÔÇª
+                            Menunggu data...
                         </span>
                     )}
                     {!valveClosed && displayMode === 'idle' && (
@@ -112,9 +87,8 @@ export default function MonitoringPanel({
             </div>
 
             <div className="p-4 space-y-3">
-                {/* PV besar + SV/MV ditumpuk di samping */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {/* Kotak PV besar */}
+                    {/* PV besar */}
                     <div className="rounded-xl bg-white border border-gray-200 hover:shadow-sm transition-shadow p-6 flex flex-col items-center justify-center text-center gap-4">
                         <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-yellow-50">
                             <Thermometer className="w-10 h-10 text-yellow-500" />
@@ -124,17 +98,17 @@ export default function MonitoringPanel({
                             <p className="text-6xl sm:text-7xl font-bold tabular-nums text-yellow-500 leading-none">
                                 {formatTemp(pv ?? 0)}
                             </p>
-                            <span className="text-2xl text-gray-400">┬░C</span>
+                            <span className="text-2xl text-gray-400">&deg;C</span>
                         </div>
                     </div>
 
-                    {/* SV + MV ditumpuk, total setara 1 kotak PV */}
+                    {/* SV + MV */}
                     <div className="grid grid-rows-2 gap-3">
                         <InfoCard
                             icon={Gauge}
                             label="Set Value (SV)"
                             value={svIsStop ? 'Stop' : formatTemp(sv ?? 121.1)}
-                            unit={svIsStop ? null : '┬░C'}
+                            unit={svIsStop ? null : '\u00b0C'}
                             colorClass="text-green-600"
                             bgClass="bg-green-50"
                             large
@@ -151,7 +125,7 @@ export default function MonitoringPanel({
                     </div>
                 </div>
 
-                {/* Baris bawah: Machine Status, Process Step, Timer */}
+                {/* Baris bawah */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="rounded-xl bg-white border border-gray-200 p-3 min-w-0">
                         <div className="flex flex-col items-center text-center gap-2 h-full justify-center">
@@ -174,7 +148,7 @@ export default function MonitoringPanel({
                             </div>
                             <p className="text-xs font-semibold text-yellow-700 uppercase tracking-wide">Process Step</p>
                             <p className="text-base font-bold text-yellow-800 truncate w-full">
-                                {processStep ?? 'ÔÇö'}
+                                {processStep ?? '-'}
                             </p>
                         </div>
                     </div>
