@@ -317,13 +317,14 @@ export default function ProcessDetail({ session, onBack }) {
 
     const latestData = readings && readings.length > 0 ? readings[readings.length - 1] : null;
     const currentSV = latestData?.sv || sessionInfo.latest_sv || 121.1;
-    const currentPV = latestData?.temperature ?? sessionInfo.latest_temperature;
     const chartReadings = readings || [];
     const chartMinWidth = Math.max(chartReadings.length * PIXELS_PER_POINT, 600);
     const chartData = buildChartData(chartReadings, currentSV);
     const chartOptions = buildChartOptions(false);
 
-    const tableReadings = [...chartReadings].reverse();
+    const tableReadings = [...chartReadings].sort(
+        (a, b) => new Date(a.recorded_at) - new Date(b.recorded_at),
+    );
     const totalTableRows = tableReadings.length;
     const totalTablePages = Math.max(1, Math.ceil(totalTableRows / tablePageSize));
     const safeTablePage = Math.min(tablePage, totalTablePages);
@@ -502,38 +503,11 @@ export default function ProcessDetail({ session, onBack }) {
 
             {/* Session Info */}
             <div className="card p-6">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-800">{sessionInfo.name}</h2>
-                        <p className="text-gray-500 mt-1">
-                            {sessionInfo.time_range} • {sessionInfo.duration_minutes || '-'} menit
-                        </p>
-                    </div>
-
-                    {/* SV & PV Display */}
-                    <div className="flex items-center gap-6 p-4 rounded-xl bg-yellow-50 border border-yellow-100">
-                        <div className="text-center">
-                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">SV</p>
-                            <p className="text-2xl font-bold text-[#FFB800]">
-                                {currentSV.toFixed(1)}°C
-                            </p>
-                        </div>
-                        <div className="w-px h-12 bg-yellow-200" />
-                        <div className="text-center">
-                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">PV</p>
-                            <p className={`text-2xl font-bold ${
-                                currentPV >= 119 && currentPV <= 123
-                                    ? 'text-green-600'
-                                    : currentPV >= 116 && currentPV <= 126
-                                        ? 'text-amber-600'
-                                        : 'text-red-600'
-                            }`}>
-                                {currentPV !== null && currentPV !== undefined
-                                    ? `${currentPV.toFixed(1)}°C`
-                                    : '-'}
-                            </p>
-                        </div>
-                    </div>
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800">{sessionInfo.name}</h2>
+                    <p className="text-gray-500 mt-1">
+                        {sessionInfo.time_range} • {sessionInfo.duration_minutes || '-'} menit
+                    </p>
                 </div>
             </div>
 
