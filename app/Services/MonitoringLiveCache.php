@@ -11,8 +11,6 @@ use Illuminate\Support\Facades\Cache;
  */
 class MonitoringLiveCache
 {
-    private const CHART_MAX_POINTS = 7200;
-
     public static function cacheKey(int $machineId): string
     {
         return "monitoring:live:{$machineId}";
@@ -110,8 +108,8 @@ class MonitoringLiveCache
             $buf[] = $point;
         }
 
-        if (count($buf) > self::CHART_MAX_POINTS) {
-            $buf = array_slice($buf, -self::CHART_MAX_POINTS);
+        if (count($buf) > MonitoringChartService::BUFFER_MAX_POINTS) {
+            $buf = array_slice($buf, -MonitoringChartService::BUFFER_MAX_POINTS);
         }
 
         Cache::put(self::chartKey($machineId), $buf, now()->addHours(3));

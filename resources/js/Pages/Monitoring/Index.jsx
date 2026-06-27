@@ -1,7 +1,7 @@
-﻿import { useEffect, useRef, useState, useCallback } from 'react';
+﻿import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
-import { TrendingUp, ChevronsRight } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -13,6 +13,7 @@ import {
     Tooltip,
     Legend,
     Filler,
+    Decimation,
 } from 'chart.js';
 import MonitoringPanel from '@/Components/MonitoringPanel';
 
@@ -24,8 +25,12 @@ ChartJS.register(
     Title,
     Tooltip,
     Legend,
-    Filler
+    Filler,
+    Decimation
 );
+
+/** Safety net di browser — server sudah decimate ke ~360 titik. */
+const CHART_DECIMATION_SAMPLES = 360;
 
 export default function MonitoringIndex({ stats: initialStats, chartData: initialChartData, machineName }) {
     const [stats, setStats] = useState(initialStats);
@@ -33,18 +38,9 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
     const lastSeqRef = useRef(0);
     const lastLiveAtRef = useRef('');
 
-    const chartScrollRef = useRef(null);
-    const lastProcessKeyRef = useRef(null);
-    const userScrollingRef = useRef(false);
-    const [showJumpBtn, setShowJumpBtn] = useState(false);
-
-    // Batas maksimal data point untuk mode katup tertutup (preview)
-    const PREVIEW_MAX_POINTS = 300;
-
     const applyPayload = useCallback((payload) => {
         if (!payload) return;
 
-        // Abaikan broadcast lama (seq mundur) — cegah blink ke data sebelumnya.
         if (payload.seq != null && payload.seq < lastSeqRef.current) {
             return;
         }
@@ -66,31 +62,10 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
         }
 
         if (payload.chartData) {
-            const isPreview = payload.stats?.displayMode === 'preview'
-                || payload.stats?.valveClosed === true;
-
-            setChartData(incoming => {
-                const next = payload.chartData;
-                if (!next) return incoming;
-
-                // Katup tertutup: batasi maksimal PREVIEW_MAX_POINTS, reset dari awal kalau penuh
-                if (isPreview && next.labels?.length > PREVIEW_MAX_POINTS) {
-                    return {
-                        ...next,
-                        labels:    next.labels.slice(-PREVIEW_MAX_POINTS),
-                        data:      next.data?.slice(-PREVIEW_MAX_POINTS),
-                        svData:    next.svData?.slice(-PREVIEW_MAX_POINTS),
-                        statuses:  next.statuses?.slice(-PREVIEW_MAX_POINTS),
-                        recordedAts: next.recordedAts?.slice(-PREVIEW_MAX_POINTS),
-                    };
-                }
-
-                return next;
-            });
+            setChartData(payload.chartData);
         }
     }, []);
 
-    // Push real-time via SSE ÔÇö data tampil segera setelah ESP mengirim ke server.
     useEffect(() => {
         let active = true;
         let es = null;
@@ -107,7 +82,7 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
                 const json = await res.json();
                 if (json.success) applyPayload(json.data);
             } catch {
-                // Abaikan ÔÇö akan reconnect SSE
+                // Abaikan — akan reconnect SSE
             }
         };
 
@@ -135,7 +110,6 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
 
         connect();
 
-        // Fallback polling — hanya jika SSE putus (interval lebih jarang, hindari race dengan SSE).
         const pollId = setInterval(() => {
             if (!es) fetchLive();
         }, 10000);
@@ -148,64 +122,33 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
         };
     }, [applyPayload]);
 
-    useEffect(() => {
-        const processKey = chartData.processStartedAt
-            ?? chartData.processSessionId
-            ?? chartData.labels?.[0]
-            ?? null;
+    const pointCount = chartData.labels?.length ?? 0;
+    const totalPoints = chartData.totalPoints ?? pointCount;
+    const hasChartData = pointCount > 0;
+    const showPoints = pointCount <= 80;
 
-        if (
-            lastProcessKeyRef.current !== null
-            && processKey !== null
-            && processKey !== lastProcessKeyRef.current
-        ) {
-            userScrollingRef.current = false;
-            chartScrollRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
-        }
-
-        lastProcessKeyRef.current = processKey;
-    }, [chartData.processStartedAt, chartData.processSessionId, chartData.labels]);
-
-    useEffect(() => {
-        const el = chartScrollRef.current;
-        if (!el || userScrollingRef.current) return;
-        el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' });
-    }, [chartData.labels?.length]);
-
-    useEffect(() => {
-        const el = chartScrollRef.current;
-        if (!el) return;
-
-        const handleScroll = () => {
-            const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 80;
-            userScrollingRef.current = !atEnd;
-            setShowJumpBtn(!atEnd);
-        };
-
-        el.addEventListener('scroll', handleScroll, { passive: true });
-        return () => el.removeEventListener('scroll', handleScroll);
+    const resolveColor = useCallback((index, statuses, { yellow, red, blue }) => {
+        if (!statuses || index === undefined || index === null) return yellow;
+        const status = (statuses[index] ?? '').toLowerCase();
+        if (status === 'cooling') return blue;
+        if (status === 'sterilizing' || status === 'holding') return red;
+        return yellow;
     }, []);
 
-    const scrollToLatest = () => {
-        const el = chartScrollRef.current;
-        if (!el) return;
-        userScrollingRef.current = false;
-        setShowJumpBtn(false);
-        el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' });
-    };
-
-    const pointCount = chartData.labels?.length ?? 0;
-    const chartMinWidth = Math.max(pointCount * 28, 600);
-    const hasChartData = pointCount > 0;
-
-    const lineChartOptions = {
+    const lineChartOptions = useMemo(() => ({
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         interaction: {
             mode: 'index',
             intersect: false,
         },
         plugins: {
+            decimation: {
+                enabled: pointCount > CHART_DECIMATION_SAMPLES,
+                algorithm: 'lttb',
+                samples: CHART_DECIMATION_SAMPLES,
+            },
             legend: {
                 display: true,
                 position: 'top',
@@ -227,7 +170,7 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
                 ticks: { color: '#999' },
                 title: {
                     display: true,
-                    text: 'Suhu (┬░C)',
+                    text: 'Suhu (°C)',
                     color: '#FFB800',
                 },
             },
@@ -235,25 +178,26 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
                 grid: { color: '#f0f0f0' },
                 ticks: {
                     color: '#999',
-                    autoSkip: false,
-                    maxRotation: 45,
-                    minRotation: 35,
-                    font: { size: 9 },
+                    autoSkip: true,
+                    maxTicksLimit: 12,
+                    maxRotation: 0,
+                    minRotation: 0,
+                    font: { size: 10 },
                 },
             },
         },
-    };
+        elements: {
+            point: {
+                radius: showPoints ? 2 : 0,
+                hoverRadius: 4,
+            },
+            line: {
+                borderWidth: 2,
+            },
+        },
+    }), [pointCount, showPoints]);
 
-    // Warna fase: CUT (heating) ÔåÆ kuning, Sterilization ÔåÆ merah, Cooling ÔåÆ biru
-    const resolveColor = (index, statuses, { yellow, red, blue }) => {
-        if (!statuses || index === undefined || index === null) return yellow;
-        const status = (statuses[index] ?? '').toLowerCase();
-        if (status === 'cooling') return blue;
-        if (status === 'sterilizing' || status === 'holding') return red;
-        return yellow;
-    };
-
-    const lineChartData = {
+    const lineChartData = useMemo(() => ({
         labels: chartData.labels,
         datasets: [
             {
@@ -277,8 +221,6 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
                     red: '#FF3B30',
                     blue: '#007BFF',
                 }),
-                pointRadius: 3,
-                borderWidth: 2,
                 tension: 0.3,
             },
             {
@@ -287,17 +229,15 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
                 data: chartData.svData || [],
                 borderColor: '#00BF40',
                 backgroundColor: 'transparent',
-                borderWidth: 2,
                 borderDash: [5, 5],
-                pointRadius: 2,
                 pointBackgroundColor: '#00BF40',
                 tension: 0,
             },
         ],
-    };
+    }), [chartData, resolveColor]);
 
     return (
-        <AuthenticatedLayout header={`Monitoring ÔÇö ${machineName}`}>
+        <AuthenticatedLayout header={`Monitoring — ${machineName}`}>
             <Head title="Monitoring" />
 
             <div className="space-y-6">
@@ -318,31 +258,27 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
                 />
 
                 <div className="card p-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                            <TrendingUp className="w-5 h-5 text-[#FFB800]" />
-                            Grafik Suhu
-                        </h3>
-                        {showJumpBtn && (
-                            <button
-                                onClick={scrollToLatest}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#FFB800] text-white hover:bg-[#FFC933] transition-colors shadow-sm animate-slideDown"
-                            >
-                                <ChevronsRight className="w-4 h-4" />
-                                Data Terbaru
-                            </button>
-                        )}
+                    <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                <TrendingUp className="w-5 h-5 text-[#FFB800]" />
+                                Grafik Suhu
+                            </h3>
+                            {hasChartData && totalPoints > pointCount && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Tampilan {pointCount} titik (decimated dari {totalPoints} sampel)
+                                </p>
+                            )}
+                        </div>
                     </div>
-                    <div className="h-[400px] w-full overflow-x-auto" ref={chartScrollRef}>
+                    <div className="h-[400px] w-full">
                         {hasChartData ? (
-                            <div style={{ minWidth: chartMinWidth, height: '100%' }}>
-                                <Line data={lineChartData} options={lineChartOptions} />
-                            </div>
+                            <Line data={lineChartData} options={lineChartOptions} />
                         ) : (
                             <div className="flex items-center justify-center h-full text-gray-400 text-sm">
                                 {stats.displayMode === 'idle'
                                     ? 'Siap proses berikutnya'
-                                    : 'Belum ada data grafik ÔÇö pastikan ESP terhubung MQTT'}
+                                    : 'Belum ada data grafik — pastikan ESP terhubung MQTT'}
                             </div>
                         )}
                     </div>

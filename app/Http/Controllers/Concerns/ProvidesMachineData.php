@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Models\ActivityLog;
 use App\Models\SensorReading;
+use App\Services\MonitoringChartService;
 use App\Services\MonitoringLiveCache;
 use App\Services\ProcessSessionService;
 use Carbon\Carbon;
@@ -413,11 +414,16 @@ trait ProvidesMachineData
             'recordedAts' => [],
             'processSessionId' => null,
             'processStartedAt' => null,
+            'totalPoints' => 0,
+            'displayPoints' => 0,
         ];
 
         if (! $machine || $this->resolveMonitoringDisplayMode($machine) === 'idle') {
             return $empty;
         }
+
+        $live = MonitoringLiveCache::get($machine->id);
+        $previewMode = MonitoringLiveCache::isPreview($live);
 
         // Grafik monitoring: buffer live saja (MQTT subscribe), bukan database.
         $buffer = MonitoringLiveCache::getChartBuffer($machine->id);
@@ -426,6 +432,10 @@ trait ProvidesMachineData
         if ($merged->isEmpty()) {
             return $empty;
         }
+
+        $totalPoints = $merged->count();
+        $displayLimit = MonitoringChartService::displayLimit($previewMode);
+        $merged = MonitoringChartService::downsample($merged, $displayLimit);
 
         $labels = [];
         $data = [];
@@ -441,9 +451,9 @@ trait ProvidesMachineData
 
         foreach ($merged as $point) {
             $at = Carbon::parse($point['recorded_at'])->timezone('Asia/Jakarta');
-            $labels[] = $at->format('H:i:s.v');
-            $data[] = (float) $point['temperature'];
-            $svData[] = (float) ($point['sv'] ?? 121.1);
+            $labels[] = $at->format('H:i:s');
+            $data[] = round((float) $point['temperature'], 1);
+            $svData[] = round((float) ($point['sv'] ?? 121.1), 1);
             $recordedAts[] = $at->toIso8601String();
             $statuses[] = $point['process_status'] ?? 'idle';
         }
@@ -456,6 +466,8 @@ trait ProvidesMachineData
             'recordedAts' => $recordedAts,
             'processSessionId' => $processSessionId,
             'processStartedAt' => $processStartedAt,
+            'totalPoints' => $totalPoints,
+            'displayPoints' => count($labels),
         ];
     }
 
