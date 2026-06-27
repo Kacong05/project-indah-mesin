@@ -55,6 +55,14 @@ class SensorController extends Controller
             'recorded_at' => $timestamp->copy()->timezone('Asia/Jakarta')->toIso8601String(),
         ];
 
+        $chartPoint = [
+            'temperature' => $liveData['temperature'],
+            'sv' => $liveData['sv'],
+            'process_status' => $liveData['process_status'],
+            'recorded_at' => $liveData['recorded_at'],
+        ];
+        MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
+
         // Simpan bila MV > 0 ATAU sesi rekam aktif (logging=true dari ESP/SD).
         // MV=0 sesaat di holding tidak boleh membuat detik hilang di history.
         $valveOpen = $mv === null || $mv > 0 || $logging;
@@ -104,6 +112,11 @@ class SensorController extends Controller
         // LOGIKA UTAMA: Dapatkan atau buat sesi proses (katup terbuka / logging)
         // ============================================
         $session = $this->processSessionService->getOrCreateSession($timestamp, $machine->id);
+
+        if ($session->wasRecentlyCreated) {
+            MonitoringLiveCache::clearChartBuffer($machine->id);
+            MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
+        }
 
         // Save reading dengan link ke sesi
         $reading = SensorReading::create([

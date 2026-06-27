@@ -182,8 +182,8 @@ def _post_worker(worker_id: int):
             recorded_at = payload.get("recorded_at", "")
             machine_code = payload.get("machine_code", "")
 
-            # ACK ke ESP: sukses simpan ATAU duplikat (offset tetap harus maju)
-            if body.get("recorded") or body.get("duplicate"):
+            # ACK ke ESP: sukses simpan, duplikat, atau live preview (MV=0 — offset tetap maju)
+            if body.get("recorded") or body.get("duplicate") or body.get("live"):
                 _publish_ack(machine_code, recorded_at)
 
             if body.get("recorded") and not body.get("duplicate"):

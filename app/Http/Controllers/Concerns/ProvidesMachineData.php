@@ -129,9 +129,9 @@ trait ProvidesMachineData
             'dataIntervalMs' => null,
             'sv' => round((float) ($live['sv'] ?? 121.1), 1),
             'mv' => (float) ($live['mv'] ?? 0),
-            'processStep' => 'Stop',
-            'processStepCode' => '00',
-            'processPhase' => 'idle',
+            'processStep' => $this->formatProcessStepLabel($live['process_status'] ?? 'idle'),
+            'processStepCode' => $this->formatProcessStepCode($live['process_status'] ?? 'idle'),
+            'processPhase' => $this->normalizePhase($live['process_status'] ?? 'idle'),
             'timerTot' => '00:00',
             'timerStp' => '00:00',
         ];
@@ -355,9 +355,11 @@ trait ProvidesMachineData
             return $empty;
         }
 
-        $readings = $this->getCurrentProcessReadings($machine);
+        $dbReadings = $this->getCurrentProcessReadings($machine);
+        $buffer = MonitoringLiveCache::getChartBuffer($machine->id);
+        $merged = $this->mergeChartPoints($dbReadings, $buffer);
 
-        if ($readings->isEmpty()) {
+        if ($merged->isEmpty()) {
             return $empty;
         }
 
@@ -367,18 +369,19 @@ trait ProvidesMachineData
         $recordedAts = [];
         $statuses = [];
 
-        $firstReading = $readings->first();
-        $processSessionId = $firstReading->process_session_id;
-        $processStartedAt = $firstReading->recorded_at
+        $first = $merged->first();
+        $processSessionId = $first['process_session_id'] ?? null;
+        $processStartedAt = Carbon::parse($first['recorded_at'])
             ->timezone('Asia/Jakarta')
             ->toIso8601String();
 
-        foreach ($readings as $reading) {
-            $labels[] = $reading->recorded_at->timezone('Asia/Jakarta')->format('H:i:s.v');
-            $data[] = $reading->temperature;
-            $svData[] = $reading->sv ?? 121.1;
-            $recordedAts[] = $reading->recorded_at->toIso8601String();
-            $statuses[] = $reading->process_status;
+        foreach ($merged as $point) {
+            $at = Carbon::parse($point['recorded_at'])->timezone('Asia/Jakarta');
+            $labels[] = $at->format('H:i:s.v');
+            $data[] = (float) $point['temperature'];
+            $svData[] = (float) ($point['sv'] ?? 121.1);
+            $recordedAts[] = $at->toIso8601String();
+            $statuses[] = $point['process_status'] ?? 'idle';
         }
 
         return [
@@ -390,6 +393,82 @@ trait ProvidesMachineData
             'processSessionId' => $processSessionId,
             'processStartedAt' => $processStartedAt,
         ];
+    }
+
+    /**
+     * Gabungkan titik DB + buffer live cache (dedup per detik).
+     * Grafik monitoring real-time tetap jalan walau MV=0 / data belum masuk DB.
+     */
+    protected function mergeChartPoints(Collection $dbReadings, array $buffer): Collection
+    {
+        $bySecond = [];
+
+        foreach ($dbReadings as $reading) {
+            $key = $reading->recorded_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s');
+            $bySecond[$key] = [
+                'recorded_at' => $reading->recorded_at->toIso8601String(),
+                'temperature' => (float) $reading->temperature,
+                'sv' => $reading->sv !== null ? (float) $reading->sv : null,
+                'process_status' => $reading->process_status,
+                'process_session_id' => $reading->process_session_id,
+            ];
+        }
+
+        $windowStart = null;
+        if ($dbReadings->isNotEmpty()) {
+            $windowStart = $dbReadings->first()->recorded_at->copy()->timezone('Asia/Jakarta');
+        } elseif ($buffer !== []) {
+            $windowStart = $this->resolveBufferWindowStart($buffer);
+        }
+
+        foreach ($buffer as $point) {
+            if (! isset($point['recorded_at'])) {
+                continue;
+            }
+            $at = Carbon::parse($point['recorded_at'])->timezone('Asia/Jakarta');
+            if ($windowStart && $at->lt($windowStart)) {
+                continue;
+            }
+            $key = $at->format('Y-m-d H:i:s');
+            if (! isset($bySecond[$key])) {
+                $bySecond[$key] = [
+                    'recorded_at' => $at->toIso8601String(),
+                    'temperature' => (float) ($point['temperature'] ?? 0),
+                    'sv' => isset($point['sv']) ? (float) $point['sv'] : null,
+                    'process_status' => $point['process_status'] ?? 'idle',
+                    'process_session_id' => null,
+                ];
+            }
+        }
+
+        ksort($bySecond);
+
+        return collect(array_values($bySecond));
+    }
+
+    /**
+     * Awal proses dari buffer: mundur dari titik terbaru sampai gap ≥ 3 menit.
+     */
+    protected function resolveBufferWindowStart(array $buffer): ?Carbon
+    {
+        if ($buffer === []) {
+            return null;
+        }
+
+        $gapSeconds = ProcessSessionService::GAP_THRESHOLD_MINUTES * 60;
+        usort($buffer, fn ($a, $b) => strcmp($a['recorded_at'] ?? '', $b['recorded_at'] ?? ''));
+        $newest = Carbon::parse($buffer[array_key_last($buffer)]['recorded_at'])->timezone('Asia/Jakarta');
+        $start = $newest->copy();
+
+        for ($i = count($buffer) - 2; $i >= 0; $i--) {
+            $at = Carbon::parse($buffer[$i]['recorded_at'])->timezone('Asia/Jakarta');
+            if (abs($start->diffInSeconds($at)) >= $gapSeconds) {
+                break;
+            }
+            $start = $at->copy();
+        }
+
+        return $start;
     }
 
     protected function isLoggingStatus(?string $processStatus): bool
