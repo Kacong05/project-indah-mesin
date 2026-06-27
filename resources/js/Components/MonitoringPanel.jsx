@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
     Thermometer,
     Gauge,
@@ -7,32 +8,7 @@ import {
     Zap,
 } from 'lucide-react';
 
-function StatusBadge({ status }) {
-    const config = {
-        running: { label: 'Running', bg: 'bg-green-100 text-green-700', icon: '●' },
-        heating: { label: 'CUT', bg: 'bg-amber-100 text-amber-700', icon: '▲' },
-        sterilizing: { label: 'Sterilization', bg: 'bg-red-100 text-red-700', icon: '●' },
-        holding: { label: 'Sterilization', bg: 'bg-red-100 text-red-700', icon: '●' },
-        cooling: { label: 'Cooling', bg: 'bg-blue-100 text-blue-700', icon: '▼' },
-        stop: { label: 'Stop', bg: 'bg-red-100 text-red-700', icon: '■' },
-        hold: { label: 'Hold', bg: 'bg-yellow-100 text-yellow-700', icon: '▌▌' },
-        alarm: { label: 'Alarm', bg: 'bg-red-100 text-red-700', icon: '⚠' },
-        standby: { label: 'Standby', bg: 'bg-amber-100 text-amber-700', icon: '○' },
-    };
-
-    const current = config[status?.toLowerCase()] ?? {
-        label: status ?? 'Unknown',
-        bg: 'bg-gray-100 text-gray-600',
-        icon: '?',
-    };
-
-    return (
-        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold ${current.bg}`}>
-            <span>{current.icon}</span>
-            {current.label}
-        </span>
-    );
-}
+const TEMP_STABLE_THRESHOLD = 0.15;
 
 function InfoCard({ icon: Icon, label, value, unit, colorClass = 'text-gray-800', bgClass = 'bg-orange-50', large = false, className = '' }) {
     return (
@@ -51,20 +27,53 @@ function InfoCard({ icon: Icon, label, value, unit, colorClass = 'text-gray-800'
     );
 }
 
+function useStableTemperature(incoming) {
+    const [display, setDisplay] = useState(incoming);
+
+    useEffect(() => {
+        if (incoming === null || incoming === undefined) return;
+
+        if (typeof incoming !== 'number') {
+            setDisplay(incoming);
+            return;
+        }
+
+        setDisplay((prev) => {
+            if (typeof prev !== 'number') return incoming;
+            if (Math.abs(incoming - prev) >= TEMP_STABLE_THRESHOLD) return incoming;
+            return prev;
+        });
+    }, [incoming]);
+
+    return display;
+}
+
 export default function MonitoringPanel({
     pv = null,
     sv = null,
     mv = null,
     processStep = null,
-    processPhase = 'idle',
     timerTot = '00:00',
     timerStp = '00:00',
     isOnline = false,
     displayMode = 'idle',
     valveClosed = false,
     lastUpdate = 'N/A',
-    runState = 'stop',
 }) {
+    const isValveClosed = valveClosed || (typeof mv === 'number' && mv <= 0);
+
+    const displayPv = useStableTemperature(pv);
+    const displaySv = useStableTemperature(sv);
+
+    const [showValveClosedBadge, setShowValveClosedBadge] = useState(isValveClosed);
+    useEffect(() => {
+        const id = setTimeout(() => setShowValveClosedBadge(isValveClosed), 300);
+        return () => clearTimeout(id);
+    }, [isValveClosed]);
+
+    const displayTimerTot = isValveClosed ? '00:00' : timerTot;
+    const displayTimerStp = isValveClosed ? '00:00' : timerStp;
+
     const formatTemp = (temp) => {
         if (temp === null || temp === undefined) return '—';
         return typeof temp === 'number' ? temp.toFixed(1) : temp;
@@ -75,7 +84,7 @@ export default function MonitoringPanel({
         return typeof val === 'number' ? val.toFixed(1) : val;
     };
 
-    const svIsStop = sv === 'Stop' || sv === 'stop';
+    const svIsStop = displaySv === 'Stop' || displaySv === 'stop';
 
     return (
         <div className="card overflow-hidden">
@@ -88,17 +97,17 @@ export default function MonitoringPanel({
                     </span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                    {valveClosed && (
+                    {showValveClosedBadge && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-800">
                             Katup tertutup — PV/SV live
                         </span>
                     )}
-                    {!valveClosed && displayMode === 'paused' && (
+                    {!showValveClosedBadge && displayMode === 'paused' && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-amber-100 text-amber-800">
                             Menunggu data…
                         </span>
                     )}
-                    {!valveClosed && displayMode === 'idle' && (
+                    {!showValveClosedBadge && displayMode === 'idle' && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-gray-100 text-gray-600">
                             Siap proses berikutnya
                         </span>
@@ -112,9 +121,7 @@ export default function MonitoringPanel({
             </div>
 
             <div className="p-4 space-y-3">
-                {/* PV besar + SV/MV ditumpuk di samping */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {/* Kotak PV besar */}
                     <div className="rounded-xl bg-white border border-gray-200 hover:shadow-sm transition-shadow p-6 flex flex-col items-center justify-center text-center gap-4">
                         <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-yellow-50">
                             <Thermometer className="w-10 h-10 text-yellow-500" />
@@ -122,18 +129,17 @@ export default function MonitoringPanel({
                         <p className="text-base font-semibold text-gray-500 uppercase tracking-wide">Process Value (PV)</p>
                         <div className="flex items-baseline gap-2">
                             <p className="text-6xl sm:text-7xl font-bold tabular-nums text-yellow-500 leading-none">
-                                {formatTemp(pv ?? 0)}
+                                {formatTemp(displayPv ?? 0)}
                             </p>
                             <span className="text-2xl text-gray-400">°C</span>
                         </div>
                     </div>
 
-                    {/* SV + MV ditumpuk, total setara 1 kotak PV */}
                     <div className="grid grid-rows-2 gap-3">
                         <InfoCard
                             icon={Gauge}
                             label="Set Value (SV)"
-                            value={svIsStop ? 'Stop' : formatTemp(sv ?? 121.1)}
+                            value={svIsStop ? 'Stop' : formatTemp(displaySv ?? 121.1)}
                             unit={svIsStop ? null : '°C'}
                             colorClass="text-green-600"
                             bgClass="bg-green-50"
@@ -151,7 +157,6 @@ export default function MonitoringPanel({
                     </div>
                 </div>
 
-                {/* Baris bawah: Machine Status, Process Step, Timer */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="rounded-xl bg-white border border-gray-200 p-3 min-w-0">
                         <div className="flex flex-col items-center text-center gap-2 h-full justify-center">
@@ -189,11 +194,11 @@ export default function MonitoringPanel({
                         <div className="grid grid-cols-2 gap-2">
                             <div className="text-center p-2 rounded-lg bg-white border border-gray-200">
                                 <p className="text-xs font-semibold text-gray-500 uppercase mb-1">TOT M:S</p>
-                                <p className="text-2xl font-bold font-mono text-teal-600 tabular-nums">{timerTot}</p>
+                                <p className="text-2xl font-bold font-mono text-teal-600 tabular-nums">{displayTimerTot}</p>
                             </div>
                             <div className="text-center p-2 rounded-lg bg-white border border-gray-200">
                                 <p className="text-xs font-semibold text-gray-500 uppercase mb-1">STP M:S</p>
-                                <p className="text-2xl font-bold font-mono text-teal-600 tabular-nums">{timerStp}</p>
+                                <p className="text-2xl font-bold font-mono text-teal-600 tabular-nums">{displayTimerStp}</p>
                             </div>
                         </div>
                     </div>

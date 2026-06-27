@@ -42,7 +42,38 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
         if (payload.seq) lastSeqRef.current = payload.seq;
 
         if (payload.stats) {
-            setStats(payload.stats);
+            setStats((prev) => {
+                const next = payload.stats;
+                const nextClosed = next.valveClosed === true
+                    || (typeof next.mv === 'number' && next.mv <= 0);
+                const prevClosed = prev?.valveClosed === true
+                    || (typeof prev?.mv === 'number' && prev.mv <= 0);
+
+                if (nextClosed) {
+                    return {
+                        ...next,
+                        valveClosed: true,
+                        timerTot: '00:00',
+                        timerStp: '00:00',
+                    };
+                }
+
+                // Cegah PV/SV kedip ke 0 saat flag katup bolak-balik.
+                if (prevClosed && !nextClosed) {
+                    const prevPv = prev.currentTemperature;
+                    const nextPv = next.currentTemperature;
+                    if (
+                        typeof prevPv === 'number'
+                        && typeof nextPv === 'number'
+                        && nextPv === 0
+                        && prevPv > 0
+                    ) {
+                        return { ...next, currentTemperature: prevPv, sv: prev.sv };
+                    }
+                }
+
+                return next;
+            });
         }
 
         if (payload.chartData) setChartData(payload.chartData);

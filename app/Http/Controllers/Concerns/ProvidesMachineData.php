@@ -43,7 +43,7 @@ trait ProvidesMachineData
         }
 
         $live = MonitoringLiveCache::get($machine->id);
-        $valveClosed = $displayMode === 'active' && MonitoringLiveCache::isPreview($live);
+        $valveClosed = $displayMode === 'active' && $this->isValveClosedLive($live);
 
         $currentProcessReadings = $this->getCurrentProcessReadings($machine);
         $currentLatest = $currentProcessReadings->last() ?? $latestReading;
@@ -70,7 +70,6 @@ trait ProvidesMachineData
         $sv = $this->formatSvForDisplay($currentLatest, $isRunning);
         $mv = 0.0;
 
-        // Katup tertutup: PV/SV/MV live dari cache ESP, timer & step tetap dari DB terakhir.
         if ($valveClosed && is_array($live)) {
             $pv = (float) $live['temperature'];
             $sv = round((float) ($live['sv'] ?? 121.1), 1);
@@ -78,6 +77,7 @@ trait ProvidesMachineData
             $lastUpdate = isset($live['recorded_at'])
                 ? Carbon::parse($live['recorded_at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
                 : $lastUpdate;
+            $timers = ['timerTot' => '00:00', 'timerStp' => '00:00'];
         }
 
         return [
@@ -101,6 +101,12 @@ trait ProvidesMachineData
         ];
     }
 
+    /** Katup tertutup = MV dari ESP ≤ 0 (independen dari flag recording). */
+    protected function isValveClosedLive(?array $live): bool
+    {
+        return is_array($live) && (float) ($live['mv'] ?? 0) <= 0;
+    }
+
     /**
      * Mesin online, belum ada reading DB — PV/SV/grafik dari cache live saja.
      */
@@ -111,10 +117,11 @@ trait ProvidesMachineData
             : 'N/A';
 
         $processPhase = $this->normalizePhase($live['process_status'] ?? 'idle');
+        $closed = $this->isValveClosedLive($live);
 
         return [
             'displayMode' => 'active',
-            'valveClosed' => $valveClosed,
+            'valveClosed' => $closed,
             'currentTemperature' => (float) $live['temperature'],
             'machineStatus' => $machine->status,
             'isOnline' => $isOnline,
