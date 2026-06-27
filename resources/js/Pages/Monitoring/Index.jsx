@@ -31,6 +31,7 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
     const [stats, setStats] = useState(initialStats);
     const [chartData, setChartData] = useState(initialChartData);
     const lastSeqRef = useRef(0);
+    const lastLiveAtRef = useRef('');
 
     const chartScrollRef = useRef(null);
     const lastProcessKeyRef = useRef(null);
@@ -42,7 +43,23 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
 
     const applyPayload = useCallback((payload) => {
         if (!payload) return;
-        if (payload.seq) lastSeqRef.current = payload.seq;
+
+        // Abaikan broadcast lama (seq mundur) — cegah blink ke data sebelumnya.
+        if (payload.seq != null && payload.seq < lastSeqRef.current) {
+            return;
+        }
+
+        if (payload.stats?.liveRecordedAt && lastSeqRef.current > 0) {
+            const prevAt = lastLiveAtRef.current;
+            if (prevAt && payload.stats.liveRecordedAt < prevAt) {
+                return;
+            }
+            lastLiveAtRef.current = payload.stats.liveRecordedAt;
+        }
+
+        if (payload.seq != null) {
+            lastSeqRef.current = payload.seq;
+        }
 
         if (payload.stats) {
             setStats(payload.stats);
@@ -118,8 +135,10 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
 
         connect();
 
-        // Fallback polling ÔÇö jika SSE/nginx macet, UI tetap update tiap 2 dtk.
-        const pollId = setInterval(fetchLive, 2000);
+        // Fallback polling — hanya jika SSE putus (interval lebih jarang, hindari race dengan SSE).
+        const pollId = setInterval(() => {
+            if (!es) fetchLive();
+        }, 10000);
 
         return () => {
             active = false;

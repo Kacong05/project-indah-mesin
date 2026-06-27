@@ -66,19 +66,29 @@ class SensorController extends Controller
             'process_status' => $liveData['process_status'],
             'recorded_at' => $liveData['recorded_at'],
         ];
-        MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
+
+        // Tolak paket MQTT stale (replay/out-of-order) — jangan timpa tampilan live.
+        if (! MonitoringLiveCache::shouldAccept($machine->id, $liveData['recorded_at'])) {
+            return response()->json([
+                'success' => true,
+                'recorded' => false,
+                'ignored' => true,
+                'message' => 'Paket stale — recorded_at lebih lama dari snapshot live, dilewati.',
+            ]);
+        }
 
         // Simpan bila MV > 0 ATAU sesi rekam aktif (logging=true dari ESP/SD).
-        // MV=0 sesaat di holding tidak boleh membuat detik hilang di history.
         $valveOpen = $mv === null || $mv > 0 || $logging;
 
         if (! $valveOpen) {
+            MonitoringLiveCache::put($machine->id, $liveData, recording: false);
+            MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
+
             $machine->update([
                 'last_heartbeat_at' => now(),
                 'status' => RetortMachine::STATUS_STANDBY,
             ]);
 
-            MonitoringLiveCache::put($machine->id, $liveData, recording: false);
             MonitoringBroadcast::tick($machine->id);
 
             return response()->json([
@@ -90,6 +100,7 @@ class SensorController extends Controller
         }
 
         MonitoringLiveCache::put($machine->id, $liveData, recording: true);
+        MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
 
         // Cegah duplikat: 1 mesin = 1 reading per detik (recorded_at dari ESP).
         $tsStart = $timestamp->copy()->timezone('Asia/Jakarta')->startOfSecond();

@@ -63,6 +63,11 @@ trait ProvidesMachineData
         $valveClosed = $this->isValveClosedLive($live);
         $recording = (bool) ($live['recording'] ?? false);
         $mv = (float) ($live['mv'] ?? 0);
+
+        if ($valveClosed) {
+            $mv = 0.0;
+        }
+
         $processPhase = $this->normalizePhase($live['process_status'] ?? 'idle');
 
         $lastUpdate = isset($live['recorded_at'])
@@ -89,6 +94,7 @@ trait ProvidesMachineData
             'processPhase' => $processPhase,
             'timerTot' => '00:00',
             'timerStp' => '00:00',
+            'liveRecordedAt' => $live['recorded_at'] ?? null,
         ], $live);
     }
 

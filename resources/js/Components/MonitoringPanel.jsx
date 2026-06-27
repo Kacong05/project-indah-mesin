@@ -44,6 +44,7 @@ export default function MonitoringPanel({
     };
 
     const svIsStop = sv === 'Stop' || sv === 'stop';
+    const valveOpen = !valveClosed && (mv ?? 0) > 0;
 
     return (
         <div className="card overflow-hidden">
@@ -108,10 +109,10 @@ export default function MonitoringPanel({
                         <InfoCard
                             icon={Zap}
                             label="Katup (MV)"
-                            value={mv > 0 ? 'Terbuka' : 'Tertutup'}
+                            value={valveOpen ? 'Terbuka' : 'Tertutup'}
                             unit={null}
-                            colorClass={mv > 0 ? 'text-green-600' : 'text-red-500'}
-                            bgClass={mv > 0 ? 'bg-green-50' : 'bg-red-50'}
+                            colorClass={valveOpen ? 'text-green-600' : 'text-red-500'}
+                            bgClass={valveOpen ? 'bg-green-50' : 'bg-red-50'}
                         />
                     </div>
                 </div>
