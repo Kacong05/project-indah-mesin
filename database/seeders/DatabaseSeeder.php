@@ -51,5 +51,8 @@ class DatabaseSeeder extends Seeder
                 'created_at' => $now->copy()->subHours($i),
             ]);
         }
+
+        // Sesi proses lengkap (CUT → holding → cooling) dengan F₀.
+        $this->call(RetortProcessSeeder::class);
     }
 }
