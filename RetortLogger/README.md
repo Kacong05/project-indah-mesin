@@ -79,7 +79,16 @@ Read Input Registers (FC04) membaca blok kontigu `0x03E8`–`0x03ED`:
 PV dan SV memakai skala decimal point yang sama (mis. `dp=1` → /10).
 MV memakai skala tetap (`raw / 10 = %`). `state.mv` = MV terbesar (heating/cooling).
 
-Transaksi ketiga: **status RUN/STOP** FC03 holding `0x0000` (`0=RUN`, `1=STOP`).
+Transaksi program (mirror **P/S, TOT, STP**) — FC04 + FC03:
+
+| PDU | Isi |
+|-----|-----|
+| `0x03FB` | Pattern aktif |
+| `0x03FC` | Step aktif |
+| `0x03FD` | Total waktu proses pattern → **TOT M:S** |
+| `0x03FF` | Sisa waktu step; **STP M:S** = `STEP_TIM` − rest (`FC03 0x00CD` + 2×(step−1)) |
+
+Transaksi lain: **status RUN/STOP** FC03 holding `0x0000` (`0=RUN`, `1=STOP`).
 
 > SV live read-only ada di input register `0x03EB` (FC04), bukan di `0x0000`.
 
@@ -222,15 +231,14 @@ Alur (lihat diagram *trigger logic flow*):
 
 1. **Monitor** — PV, SV, MV, status RUN/STOP terus dibaca tiap 1 detik. Data
    pra-proses (suhu ambient, status STOP) **tidak** direkam ke sesi.
-2. **Trigger aktif** — saat **katup terbuka** (`status RUN` **atau** `MV > 0`),
-   firmware membuka sesi CSV baru (timestamp mulai = nama file) dan mulai rekam.
-3. **Loop rekam** — PV/SV/MV ditulis ke SD tiap 1 detik selama proses jalan.
-4. **Proses selesai** — saat `status STOP` **dan** `MV = 0` (di-*debounce*
-   `STOP_DEBOUNCE_N` detik agar output PID sesaat 0 saat holding tidak
-   menghentikan rekaman), sesi di-*flush* dan file ditutup. Siap proses berikut.
+2. **Trigger aktif** — saat **DI-1 ON** (jumper/selenoid 18–21) **atau** **MV > 0**,
+   firmware membuka sesi CSV baru dan mulai rekam.
+3. **Loop rekam** — PV/SV/MV ditulis ke SD tiap 1 detik selama sesi jalan.
+4. **Proses selesai** — saat **DI-1 OFF dan MV = 0** (debounce 5 detik), sesi
+   di-*flush* dan file ditutup.
 
-Logika OR (`RUN || MV>0`) memastikan rekaman tetap jalan selama status RUN walau
-MV PID sesaat 0; berhenti hanya bila benar-benar STOP + MV 0.
+**Jumper 18–21 = selenoid retort** — ESP baca DI-1 langsung (FC02 @ 0x0023).
+MV > 0 tetap dipakai saat heating aktif di produksi.
 
 Konstanta di `modbus_hw.ino`:
 
@@ -303,21 +311,24 @@ PostgreSQL  (tabel sensor_readings)
 
 | Sumber | Register Modbus | Dipakai untuk |
 |--------|-----------------|---------------|
-| **MV** | FC04 `0x03EC` / `0x03ED` | Laporan MQTT/API + gate simpan database (MV > 0) |
-| **RUN** | FC03 `0x0000` | Rekam SD tetap jalan walau MV sesaat 0 saat holding |
+| **DI-1** (18–21) | FC02 `0x0023` | **Mulai rekam** saat kontak tertutup (jumper/selenoid) |
+| **MV** | FC04 `0x03EC` / `0x03ED` | **Mulai rekam** saat MV > 0 + laporan MQTT |
+| **RUN/STOP** | FC03 `0x0000` | Status laporan (bukan gate rekam utama) |
 
 Tidak ada “trigger palsu” di ESP. **Yang dibaca dan dilaporkan selalu MV asli dari TNL.**
 
 #### Uji dengan saklar di TNL (tanpa reflash ESP)
 
-Agar uji **mirip retort masuk**, saklar/proses harus membuat **register MV TNL naik** — sama seperti saat katup uap retort sungguhan terbuka:
+Agar uji **mirip retort masuk**, jumper/selenoid harus membuat **MV TNL naik** — atur
+**Digital Input Func** DI-1 di panel TNL sekali (interlock output):
 
-1. TNL mode **RUN** (bukan STOP di layar).
-2. Saat uji: mode **Manual (MAN)** → set **Heating MV** > 0 (mis. 50,0%) saat saklar ditutup / proses dimulai.  
-   Saat produksi: biarkan **PID Auto** — MV naik sendiri saat heating.
-3. ESP otomatis deteksi MV > 0 → rekam SD + kirim web. **Tidak perlu ubah firmware** saat pindah ke retort live.
+1. **Idle:** TNL **STOP**, jumper/selenoid **terbuka** → MV=0 → tidak rekam.
+2. **Proses:** TNL **RUN**, kontak **tertutup** → MV > 0 (Manual set MV saat uji, atau
+   PID Auto saat produksi) → rekam otomatis.
+3. **Selesai:** kontak **terbuka**, TNL **STOP**, MV=0 → rekam berhenti (~5 dtk).
 
-Saklar di terminal TNL (DI-1, interlock retort, dll.) hanya perlu **mengaktifkan proses/MV di controller** — bukan input terpisah ke ESP.
+Saat pindah ke retort live: cabut jumper, pasang selenoid ke **terminal yang sama** —
+**tanpa reflash ESP**.
 
 Spesifikasi kontak DI (manual TCD210227AH): ON ≤ 2 kΩ, OFF ≥ 90 kΩ.  
 Setting **Digital Input Func = OFF** jika DI hanya interlock mekanik; jika DI dipakai start RUN, sesuaikan parameter TNL sekali di panel (bukan di ESP).

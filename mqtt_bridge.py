@@ -98,6 +98,15 @@ def _to_bool(value) -> bool:
     return bool(value)
 
 
+def _to_int_or_none(value):
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _normalize_recorded_at(raw: dict) -> str | None:
     """
     Normalisasi timestamp ESP → ISO-8601 +07:00.
@@ -230,6 +239,10 @@ def on_message(client, userdata, msg):
         "process_status": process_status,
         "logging": logging,
         "recorded_at": recorded_at,
+        "pattern": _to_int_or_none(raw.get("pattern")),
+        "step": _to_int_or_none(raw.get("step")),
+        "timer_tot": raw.get("tot"),
+        "timer_stp": raw.get("stp"),
     }
 
     if not SENSOR_API_TOKEN:

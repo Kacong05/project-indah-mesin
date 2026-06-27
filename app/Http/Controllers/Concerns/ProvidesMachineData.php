@@ -77,10 +77,9 @@ trait ProvidesMachineData
             $lastUpdate = isset($live['recorded_at'])
                 ? Carbon::parse($live['recorded_at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
                 : $lastUpdate;
-            $timers = ['timerTot' => '00:00', 'timerStp' => '00:00'];
         }
 
-        return [
+        return $this->applyTnlMirror([
             'displayMode' => $displayMode,
             'valveClosed' => $valveClosed,
             'currentTemperature' => $pv,
@@ -98,13 +97,20 @@ trait ProvidesMachineData
             'processPhase' => $processPhase,
             'timerTot' => $timers['timerTot'],
             'timerStp' => $timers['timerStp'],
-        ];
+        ], $live);
     }
 
-    /** Katup tertutup = MV dari ESP ≤ 0 (independen dari flag recording). */
+    /** Katup tertutup = MV ≤ 0 dan tidak sedang rekam (DI/selenoid via logging). */
     protected function isValveClosedLive(?array $live): bool
     {
-        return is_array($live) && (float) ($live['mv'] ?? 0) <= 0;
+        if (! is_array($live)) {
+            return false;
+        }
+        if ($live['recording'] ?? false) {
+            return false;
+        }
+
+        return (float) ($live['mv'] ?? 0) <= 0;
     }
 
     /**
@@ -119,7 +125,7 @@ trait ProvidesMachineData
         $processPhase = $this->normalizePhase($live['process_status'] ?? 'idle');
         $closed = $this->isValveClosedLive($live);
 
-        return [
+        return $this->applyTnlMirror([
             'displayMode' => 'active',
             'valveClosed' => $closed,
             'currentTemperature' => (float) $live['temperature'],
@@ -137,7 +143,7 @@ trait ProvidesMachineData
             'processPhase' => $processPhase,
             'timerTot' => '00:00',
             'timerStp' => '00:00',
-        ];
+        ], $live);
     }
 
     /**
@@ -301,6 +307,42 @@ trait ProvidesMachineData
             'idle' => '00',
             default => '01',
         };
+    }
+
+    /**
+     * Overlay P/S, TOT, STP dari mirror TNL (live cache MQTT) bila tersedia.
+     *
+     * @param  array<string, mixed>  $stats
+     * @param  array<string, mixed>|null  $live
+     * @return array<string, mixed>
+     */
+    protected function applyTnlMirror(array $stats, ?array $live): array
+    {
+        if (! is_array($live)) {
+            return $stats;
+        }
+
+        $pattern = array_key_exists('pattern', $live) ? (int) $live['pattern'] : null;
+        $step = array_key_exists('step', $live) ? (int) $live['step'] : null;
+
+        if ($pattern !== null || $step !== null) {
+            $pat = max(0, $pattern ?? 0);
+            $stp = max(0, $step ?? 0);
+            if ($pat > 0 || $stp > 0) {
+                $stats['processStep'] = sprintf('%d-%02d', $pat, $stp);
+                $stats['processStepCode'] = sprintf('%02d', $stp);
+            }
+        }
+
+        if (! empty($live['timer_tot'])) {
+            $stats['timerTot'] = (string) $live['timer_tot'];
+        }
+
+        if (! empty($live['timer_stp'])) {
+            $stats['timerStp'] = (string) $live['timer_stp'];
+        }
+
+        return $stats;
     }
 
     /** Format menit:detik (TOT M:S / STP M:S) seperti software existing. */

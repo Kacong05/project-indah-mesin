@@ -8,6 +8,8 @@ extern AsyncWebServer server;
 extern char           sessionToken[65];
 extern unsigned long  sessionStart;
 
+void clearWebSession();
+
 static const char LOGIN_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -65,16 +67,16 @@ void setupWebAuth() {
 
   // Captive portal endpoints
   server.on("/generate_204", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->redirect("http://192.168.4.1/login");
+    req->redirect(String("http://") + req->host() + "/login");
   });
   server.on("/fwlink", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->redirect("http://192.168.4.1/login");
+    req->redirect(String("http://") + req->host() + "/login");
   });
   server.on("/hotspot-detect.html", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->redirect("http://192.168.4.1/login");
+    req->redirect(String("http://") + req->host() + "/login");
   });
   server.on("/connecttest.txt", HTTP_GET, [](AsyncWebServerRequest* req) {
-    req->redirect("http://192.168.4.1/login");
+    req->redirect(String("http://") + req->host() + "/login");
   });
 
   // Login API — uses multipart/form-data (no JSON body parsing needed)
@@ -100,7 +102,7 @@ void setupWebAuth() {
     generateSession();
     char cookie[128];
     snprintf(cookie, sizeof(cookie),
-      "session=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=600", sessionToken);
+      "session=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800", sessionToken);
     char body[160];
     snprintf(body, sizeof(body), "{\"ok\":true,\"token\":\"%s\"}", sessionToken);
     AsyncWebServerResponse* resp = req->beginResponse(200,
@@ -111,7 +113,7 @@ void setupWebAuth() {
 
   // Logout
   server.on("/logout", HTTP_GET, [](AsyncWebServerRequest* req) {
-    sessionToken[0] = '\0';
+    clearWebSession();
     AsyncWebServerResponse* resp = req->beginResponse(302);
     resp->addHeader("Location", "/login");
     resp->addHeader("Set-Cookie", "session=; Path=/; Max-Age=0");
@@ -119,7 +121,7 @@ void setupWebAuth() {
   });
 
   server.on("/api/logout", HTTP_POST, [](AsyncWebServerRequest* req) {
-    sessionToken[0] = '\0';
+    clearWebSession();
     AsyncWebServerResponse* resp = req->beginResponse(200,
       "application/json", "{\"ok\":true}");
     resp->addHeader("Set-Cookie", "session=; Path=/; Max-Age=0");
@@ -128,6 +130,6 @@ void setupWebAuth() {
 
   // Catch-all
   server.onNotFound([](AsyncWebServerRequest* req) {
-    req->redirect("http://192.168.4.1/login");
+    req->redirect("/login");
   });
 }

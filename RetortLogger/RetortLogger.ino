@@ -21,8 +21,8 @@
 #define USE_RTC         true   // DS3231M RTC
 #define USE_SD          true   // MicroSD logging
 #define USE_OTA         false  // OTA update
-// --- Trigger & MV: default PRODUKSI (sama uji & retort sungguhan) ---
-// Hanya MV + RUN asli dari Modbus TNL. Tidak perlu reflash saat pindah ke retort live.
+// --- Trigger & MV: default PRODUKSI (sama uji jumper & retort sungguhan) ---
+// Mulai rekam: MV>0 (DI-1/selenoid → TNL). Stop: STOP+MV0. Tanpa reflash ke retort.
 #define USE_MV_SIMULATION false  // true = tombol dashboard paksa MV 50% (dev only)
 #define USE_TNL_DI_TRIGGER false // true = fake MV dari DI (dev only — jangan dipakai produksi)
 #if USE_TNL_DI_TRIGGER
@@ -46,8 +46,9 @@
 #define PIN_RS485_DE    -1   // board auto-direction (tak ada pin DE)
 
 // --- Constants ---
-#define SESSION_TIMEOUT_MS   600000UL  // 10 menit
+#define SESSION_TIMEOUT_MS   28800000UL  // 8 jam (dashboard industri)
 #define DASHBOARD_POLL_MS    2000
+#define K_WEB_SESS           "web_sess"
 
 // --- Data Structures ---
 struct AppConfig {
@@ -81,6 +82,10 @@ struct RetortState {
   float pressure;
   float mv;           // MV output kontrol (%) — Heating/Cooling MV terbesar
   bool ctrlRun;       // status RUN/STOP controller (true = RUN)
+  uint8_t pattern;    // TNL Program_PATN_CURR (FC04 0x03FB)
+  uint8_t step;       // TNL Program_Step_CURR (FC04 0x03FC)
+  char totMs[8];      // TNL Program_Process_Time — mirror TOT M:S
+  char stpMs[8];      // waktu step berjalan — mirror STP M:S
   unsigned long phaseStartMs;
   bool wifiConnected;
   bool mqttConnected;
@@ -135,13 +140,40 @@ void sha256Hex(const char* input, char* output) {
   output[64] = '\0';
 }
 
-// --- Session ---
+// --- Session (NVS: tetap valid setelah reboot ESP / colok Modbus) ---
+void saveWebSession() {
+  if (sessionToken[0] == '\0') return;
+  prefs.begin("retort", false);
+  prefs.putString(K_WEB_SESS, sessionToken);
+  prefs.end();
+}
+
+void loadWebSession() {
+  prefs.begin("retort", true);
+  String t = prefs.getString(K_WEB_SESS, "");
+  prefs.end();
+  if (t.length() == 64) {
+    t.toCharArray(sessionToken, sizeof(sessionToken));
+    sessionStart = millis();
+    Serial.println(F("[AUTH] Session dipulihkan (NVS)"));
+  }
+}
+
+void clearWebSession() {
+  sessionToken[0] = '\0';
+  sessionStart = 0;
+  prefs.begin("retort", false);
+  prefs.remove(K_WEB_SESS);
+  prefs.end();
+}
+
 void generateSession() {
   char raw[64];
   snprintf(raw, sizeof(raw), "%08lx%08lx%lu",
            (unsigned long)esp_random(), (unsigned long)esp_random(), millis());
   sha256Hex(raw, sessionToken);
   sessionStart = millis();
+  saveWebSession();
 }
 
 static bool tokenMatchesSession(const String& v) {
@@ -154,27 +186,28 @@ static bool tokenMatchesSession(const String& v) {
 bool isSessionValid(AsyncWebServerRequest* req) {
   if (sessionToken[0] == '\0') return false;
   if (millis() - sessionStart > SESSION_TIMEOUT_MS) {
-    sessionToken[0] = '\0';
+    clearWebSession();
     return false;
   }
-  // Header X-Session — lebih andal di browser HP / captive portal
+  // Cookie dulu — andal bila sessionStorage HP stale/kosong
+  if (req->hasHeader("Cookie")) {
+    String c = req->header("Cookie");
+    int i = c.indexOf("session=");
+    if (i >= 0) {
+      String v = c.substring(i + 8);
+      int s = v.indexOf(';');
+      if (s > 0) v = v.substring(0, s);
+      v.trim();
+      if (tokenMatchesSession(v)) return true;
+    }
+  }
   if (req->hasHeader("X-Session")) {
     if (tokenMatchesSession(req->header("X-Session"))) return true;
   }
-  // Token via query (?t=) untuk link download (navigasi `location=` tak bisa
-  // mengirim header X-Session, dan cookie sering tak tersimpan di webview HP).
   if (req->hasParam("t")) {
     if (tokenMatchesSession(req->getParam("t")->value())) return true;
   }
-  if (!req->hasHeader("Cookie")) return false;
-  String c = req->header("Cookie");
-  int i = c.indexOf("session=");
-  if (i < 0) return false;
-  String v = c.substring(i + 8);
-  int s = v.indexOf(';');
-  if (s > 0) v = v.substring(0, s);
-  v.trim();
-  return tokenMatchesSession(v);
+  return false;
 }
 
 void redirectToLogin(AsyncWebServerRequest* req) {
@@ -233,7 +266,8 @@ bool mvSimIsActive();
 bool tnlDiIsActive();
 float mvSimEffectivePercent();
 uint16_t mvSimEffectiveRaw(uint16_t hardwareRaw);
-bool mvSimProcessRunning(bool ctrlRun, uint16_t hardwareMvRaw);
+bool mvSimTriggerStart(uint16_t hardwareMvRaw, uint16_t mvOnRaw);
+bool mvSimTriggerEnd(bool ctrlRun, uint16_t hardwareMvRaw, uint16_t mvOnRaw);
 bool mqttIsConnected();
 bool mqttPublishRaw(const char* payload);
 const char* sdCurrentLogPath();
@@ -283,6 +317,10 @@ void setup() {
   state.pressure     = 1.013f;
   state.mv           = 0.0f;
   state.ctrlRun      = false;
+  state.pattern      = 0;
+  state.step         = 0;
+  strncpy(state.totMs, "00:00", sizeof(state.totMs));
+  strncpy(state.stpMs, "00:00", sizeof(state.stpMs));
   state.phaseStartMs = 0;
   state.wifiConnected = false;
   state.mqttConnected = false;
@@ -290,6 +328,7 @@ void setup() {
   state.logging       = false;
 
   loadConfig();
+  loadWebSession();
   mvSimLoad();
   forwardSetup();
   state.setpoint = cfg.targetTemp;

@@ -1,10 +1,10 @@
 // ============================================================
 //  mv_sim.ino  –  MV & trigger perekaman
 //
-//  PRODUKSI (default): MV & trigger 100% dari Modbus TNL
-//    • mv laporan = Heating/Cooling MV (0x03EC/0x03ED)
-//    • rekam aktif saat RUN atau MV > 0
-//    • Uji lab & retort sungguhan pakai jalur yang sama — tanpa reflash ESP
+//  PRODUKSI (default): MV & trigger dari Modbus TNL
+//    • mulai rekam: DI-1 ON (18-21) ATAU MV > 0
+//    • berhenti: DI-1 OFF dan MV = 0 (debounce 5 dtk)
+//    • jumper uji = selenoid retort — tanpa reflash ESP
 //
 //  DEV ONLY: USE_MV_SIMULATION true → dashboard bisa paksa MV 50%
 // ============================================================
@@ -48,15 +48,20 @@ uint16_t mvSimEffectiveRaw(uint16_t hardwareRaw) {
   return hardwareRaw;
 }
 
-bool mvSimProcessRunning(bool ctrlRun, uint16_t hardwareMvRaw) {
+bool mvSimTriggerStart(uint16_t hardwareMvRaw, uint16_t mvOnRaw) {
   if (gMvSimActive) return true;
-  return ctrlRun || (hardwareMvRaw > 0);
+  return hardwareMvRaw > mvOnRaw;
+}
+
+bool mvSimTriggerEnd(bool ctrlRun, uint16_t hardwareMvRaw, uint16_t mvOnRaw) {
+  if (gMvSimActive) return false;
+  return !ctrlRun && hardwareMvRaw <= mvOnRaw;
 }
 
 #else
 
 void mvSimLoad() {
-  Serial.println(F("[MV] mode=PRODUKSI — trigger dari MV/RUN Modbus TNL"));
+  Serial.println(F("[MV] mode=PRODUKSI — trigger DI-1 atau MV>0"));
 }
 
 void mvSimSetActive(bool) {}
@@ -71,8 +76,12 @@ uint16_t mvSimEffectiveRaw(uint16_t hardwareRaw) {
   return hardwareRaw;
 }
 
-bool mvSimProcessRunning(bool ctrlRun, uint16_t hardwareMvRaw) {
-  return ctrlRun || (hardwareMvRaw > 0);
+bool mvSimTriggerStart(uint16_t hardwareMvRaw, uint16_t mvOnRaw) {
+  return hardwareMvRaw > mvOnRaw;
+}
+
+bool mvSimTriggerEnd(bool ctrlRun, uint16_t hardwareMvRaw, uint16_t mvOnRaw) {
+  return !ctrlRun && hardwareMvRaw <= mvOnRaw;
 }
 
 #endif

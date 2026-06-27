@@ -22,28 +22,25 @@ extern RetortState state;
 #define TNL_REG_BLOCK   0x03E8  // mulai baca dari sini
 #define TNL_BLOCK_N     6       // PV, dp, unit, SV, Heating_MV, Cooling_MV
 #define TNL_REG_RUNSTOP 0x0000  // FC03 holding: 0=RUN, 1=STOP
+#define TNL_REG_TIME_UNIT 0x00C8 // FC03 pattern: 0=MM.SS, 1=HH.MM
+#define TNL_REG_STEP_TIM1 0x00CD // FC03 STEP_TIM_1; step N @ +2*(N-1)
+#define TNL_REG_PROG_BLOCK 0x03FB // FC04: pattern, step, tot, wait, rest
+#define TNL_PROG_N         5
+#define TNL_DI_FC02_ADDR 0x0023  // DI-1 (terminal 18-21) FC02 discrete input
 #define TNL_SLAVE_ID    1       // Unit address default Autonics = 1
 #define MB_BAUD         9600
 #define MB_FORMAT       SERIAL_8N1   // terbukti terbaca (TNL default 8N2 juga OK)
 #define MB_TIMEOUT_MS   150          // batas tunggu jawaban (cukup utk 9600bps)
 
-// --- Auto-trigger perekaman (sesuai flow logger) ---
-// Rekam otomatis saat controller aktif (katup terbuka): status RUN ATAU MV>0.
-// Berhenti & tutup sesi saat controller STOP DAN MV=0 (di-debounce agar tak
-// terhenti karena output PID sesaat 0 saat holding — status RUN menahannya).
+// --- Auto-trigger: DI-1 (selenoid 18-21) ATAU MV > 0 ---
+// Mulai rekam saat kontak DI-1 tertutup (jumper/selenoid) ATAU MV > 0.
+// Berhenti saat keduanya off (DI lepas DAN MV=0), debounce 5 detik.
 #define USE_AUTO_TRIGGER true
-#define MV_ON_RAW        0    // MV raw > nilai ini → output kontrol aktif
-#define STOP_DEBOUNCE_N  5    // siklus (detik) berturut non-aktif sebelum stop
+#define MV_ON_RAW        0
+#define STOP_DEBOUNCE_N  5
 
-#if USE_TNL_DI_TRIGGER
-#ifndef TNL_DI_BIT
-#define TNL_DI_BIT 0
-#endif
-static bool gTnlDiOn = false;
-bool tnlDiIsActive() { return gTnlDiOn; }
-#else
-bool tnlDiIsActive() { return false; }
-#endif
+static bool gDi1On = false;
+bool tnlDiIsActive() { return gDi1On; }
 
 // Kode khusus PV controller (sensor error)
 #define TNL_PV_OPEN   31000  // sensor terbuka / putus
@@ -51,6 +48,53 @@ bool tnlDiIsActive() { return false; }
 #define TNL_PV_LLLL  -30000  // under range
 
 static uint16_t lastDp = 1;  // decimal point terakhir (default 0.0)
+static uint8_t  gTimeUnit = 0;  // 0=MM.SS (menit:detik), 1=HH.MM (jam:menit)
+
+// Decode register waktu TNL (MM.SS atau HH.MM) → detik.
+static int tnlRawToSeconds(uint16_t raw, uint8_t timeUnit) {
+  uint16_t hi = raw / 100;
+  uint16_t lo = raw % 100;
+  if (timeUnit == 1) return (int)hi * 3600 + (int)lo * 60;
+  if (lo > 59) lo = 59;
+  return (int)hi * 60 + (int)lo;
+}
+
+static void tnlSecondsToMsStr(int sec, char* out, size_t outLen) {
+  if (sec < 0) sec = 0;
+  int m = sec / 60;
+  int s = sec % 60;
+  snprintf(out, outLen, "%02d:%02d", m, s);
+}
+
+// Mirror P/S, TOT, STP dari register program TNL (FC04 0x03FB..0x03FF).
+static void tnlUpdateProgramMirror() {
+  uint16_t prog[TNL_PROG_N];
+  if (!mbRead(0x04, TNL_REG_PROG_BLOCK, TNL_PROG_N, prog)) return;
+
+  state.pattern = (uint8_t)prog[0];
+  state.step    = (uint8_t)prog[1];
+
+  uint16_t tu = gTimeUnit;
+  uint16_t tuRaw = 0;
+  if (mbRead(0x03, TNL_REG_TIME_UNIT, 1, &tuRaw)) {
+    gTimeUnit = (uint8_t)(tuRaw & 1);
+    tu = gTimeUnit;
+  }
+
+  tnlSecondsToMsStr(tnlRawToSeconds(prog[2], tu), state.totMs, sizeof(state.totMs));
+
+  // STP = waktu step berjalan ≈ STEP_TIM − sisa step (Program_Rest_Time).
+  int stpSec = 0;
+  if (state.step >= 1 && state.step <= 20) {
+    uint16_t stepTimRaw = 0;
+    uint16_t addr = (uint16_t)(TNL_REG_STEP_TIM1 + (uint16_t)(state.step - 1) * 2);
+    if (mbRead(0x03, addr, 1, &stepTimRaw)) {
+      stpSec = tnlRawToSeconds(stepTimRaw, tu) - tnlRawToSeconds(prog[4], tu);
+      if (stpSec < 0) stpSec = 0;
+    }
+  }
+  tnlSecondsToMsStr(stpSec, state.stpMs, sizeof(state.stpMs));
+}
 
 // --- Kontrol arah MAX485 (DE+RE). Board ini auto-direction (DE=-1). ---
 static inline void mbTx() {
@@ -118,6 +162,47 @@ static bool mbRead(uint8_t fc, uint16_t addr, uint8_t count, uint16_t* out) {
   return true;
 }
 
+// FC01/FC02 — baca discrete input (bit). qty = jumlah bit.
+static bool mbReadDiscrete(uint16_t addr, uint8_t qty, uint8_t* bitsOut) {
+  uint8_t req[8];
+  req[0] = TNL_SLAVE_ID;
+  req[1] = 0x02;
+  req[2] = (addr >> 8) & 0xFF;
+  req[3] = addr & 0xFF;
+  req[4] = 0x00;
+  req[5] = qty;
+  uint16_t c = mbCrc(req, 6);
+  req[6] = c & 0xFF;
+  req[7] = (c >> 8) & 0xFF;
+
+  while (Serial1.available()) Serial1.read();
+  mbTx();
+  Serial1.write(req, 8);
+  Serial1.flush();
+  mbRx();
+
+  uint8_t resp[16];
+  uint8_t got = 0;
+  uint32_t start = millis();
+  while (millis() - start < MB_TIMEOUT_MS) {
+    while (Serial1.available() && got < sizeof(resp)) resp[got++] = Serial1.read();
+    if (got >= 5) break;
+  }
+  if (got < 5 || resp[0] != TNL_SLAVE_ID) return false;
+  if (resp[1] & 0x80 || resp[1] != 0x02) return false;
+  uint8_t bc = resp[2];
+  if (got < (uint8_t)(3 + bc + 2)) return false;
+  uint16_t calc = mbCrc(resp, 3 + bc);
+  uint16_t rxcrc = resp[3 + bc] | (resp[4 + bc] << 8);
+  if (calc != rxcrc) return false;
+  for (uint8_t i = 0; i < qty && i < 8; i++) {
+    uint8_t byteIdx = i / 8;
+    uint8_t bitIdx  = i % 8;
+    bitsOut[i] = (resp[3 + byteIdx] >> bitIdx) & 1;
+  }
+  return true;
+}
+
 static float dpDivisor(uint16_t dp) {
   float div = 1.0f;
   for (uint16_t i = 0; i < dp && i < 3; i++) div *= 10.0f;
@@ -175,25 +260,20 @@ static void updatePhaseFromData() {
 // MV raw terakhir (0..1000) untuk evaluasi trigger.
 static uint16_t gMvRaw = 0;
 
-// Auto-trigger perekaman mengikuti flow logger:
-//   running = (status RUN) ATAU (MV > 0)  → katup terbuka / proses jalan
-//   • running & belum rekam   → mulai sesi (buka file CSV, simpan ts mulai)
-//   • !running (di-debounce) & sedang rekam → tutup sesi (flush + close file)
-// Karena pakai OR, selama status RUN perekaman tetap jalan walau MV PID
-// sesaat 0 saat holding; berhenti hanya bila STOP sekaligus MV=0.
+// Auto-trigger: DI-1 (18-21) ATAU MV>0 → rekam; keduanya off → stop.
 static void updateAutoTrigger() {
   if (!USE_AUTO_TRIGGER) return;
 
   static uint8_t stopCnt = 0;
-  bool running = mvSimProcessRunning(state.ctrlRun, gMvRaw);
+  bool active = gDi1On || mvSimTriggerStart(gMvRaw, MV_ON_RAW);
 
-  if (running) {
+  if (active) {
     stopCnt = 0;
-    if (!state.logging) startProcess();   // buka sesi/rekam baru
+    if (!state.logging) startProcess();
   } else if (state.logging) {
-    if (++stopCnt >= STOP_DEBOUNCE_N) {    // tahan glitch sebelum benar-benar stop
+    if (++stopCnt >= STOP_DEBOUNCE_N) {
       stopCnt = 0;
-      stopProcess();                       // flush buffer + tutup sesi
+      stopProcess();
     }
   }
 }
@@ -246,15 +326,14 @@ void loopModbus() {
   }
   // Bila gagal baca: pertahankan status terakhir (hindari stop palsu).
 
-#if USE_TNL_DI_TRIGGER
-  // 3) Status saklar Digital IN (FC04 0x03F1). Bit0=DI-1 … bit5=DI-6.
-  uint16_t diStat;
-  if (mbRead(0x04, TNL_REG_DI_STATUS, 1, &diStat)) {
-    gTnlDiOn = ((diStat >> TNL_DI_BIT) & 1) != 0;
+  // 3) DI-1 selenoid/jumper (FC02 @ 0x0023). 1=tertutup, 0=terbuka.
+  uint8_t diBit = 0;
+  if (mbReadDiscrete(TNL_DI_FC02_ADDR, 1, &diBit)) {
+    gDi1On = (diBit != 0);
   }
-#endif
 
   updatePhaseFromData();
+  tnlUpdateProgramMirror();
   updateAutoTrigger();   // auto mulai/stop perekaman sesuai katup/MV/RUN
 }
 

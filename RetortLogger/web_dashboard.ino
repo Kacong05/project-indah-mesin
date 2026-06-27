@@ -11,6 +11,7 @@ extern int gLastMqttState;
 extern char gLastTs[32];
 extern char gLastClock[32];
 extern char gLastIso[26];
+extern char sessionToken[65];
 
 static const char DASH_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -93,17 +94,15 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <small class="hint" style="font-size:11px;color:#666">DI-1 ON (Modbus) = trigger seperti katup terbuka</small>
 </div>
 <div class="c"><small>SD Card</small><div class="v" id="sd">--</div></div>
+<div class="c"><small>P/S (TNL)</small><div class="v" id="ps">--</div></div>
+<div class="c"><small>TOT M:S</small><div class="v" id="tot">--</div></div>
+<div class="c"><small>STP M:S</small><div class="v" id="stp">--</div></div>
 </div>
 <p id="hint" style="font-size:12px;color:#555;line-height:1.5;margin:0 0 14px"></p>
 </div>
 <script>
 function ah(){var t=sessionStorage.getItem('st');return t?{'X-Session':t}:{};}
-function u(){
-fetch('/api/status',{headers:ah(),credentials:'same-origin'}).then(function(r){
-if(r.status===401){sessionStorage.removeItem('st');location='/login';return null}
-if(!r.ok)throw new Error('http');
-return r.json();
-}).then(function(d){if(!d)return;
+function applyStatus(d){
 if(d.clock){
 var p=d.clock.split(' ');
 if(p.length>=2){
@@ -130,6 +129,11 @@ document.getElementById('tph').textContent=d.phase||'--';
 var rec=document.getElementById('trec');rec.textContent=d.log?'● REC':(d.run?'RUN':'idle');
 var mv=document.getElementById('mv');mv.textContent=d.mv!=null?Number(d.mv).toFixed(1)+'%':'--';mv.className='v '+(d.mv>0?'wr':'');
 var s=document.getElementById('sd');s.textContent=d.sd?'OK':'N/A';s.className='v '+(d.sd?'ok':'er');
+if(d.pattern!=null&&d.step!=null){
+document.getElementById('ps').textContent=d.pattern+'-'+String(d.step).padStart(2,'0');
+}else{document.getElementById('ps').textContent='--';}
+document.getElementById('tot').textContent=d.tot||'00:00';
+document.getElementById('stp').textContent=d.stp||'00:00';
 if(d.mvSimAvail){
 var card=document.getElementById('mvSimCard');card.style.display='';
 var ms=document.getElementById('mvSim');
@@ -170,10 +174,28 @@ var me={ '-2':'Broker tidak terjangkau','4':'User MQTT salah','5':'MQTT tidak di
 var mk=d.mfail!=null?String(d.mfail):'0';
 h.textContent='MQTT '+(d.broker||'?')+':'+(d.mport||1883)+' - '+(me[mk]||'gagal (kode '+mk+')')+'. Cek broker & password di config.ino.';
 }
+}
+function u(retry){
+var hdrs=retry?{}:ah();
+fetch('/api/status',{headers:hdrs,credentials:'same-origin',cache:'no-store'}).then(function(r){
+if(r.status===401){
+if(!retry&&sessionStorage.getItem('st')){
+sessionStorage.removeItem('st');
+return u(true);
+}
+location='/login';
+return null;
+}
+if(!r.ok)throw new Error('http');
+return r.json();
+}).then(function(d){if(!d)return;
+if(d.token){sessionStorage.setItem('st',d.token);}
+applyStatus(d);
 }).catch(function(){
-document.getElementById('hint').textContent='API tidak merespons. Logout lalu login ulang.';
+var h=document.getElementById('hint');
+if(!h.textContent){h.textContent='Menunggu ESP (Modbus/WiFi sibuk)...';}
 });}
-u();setInterval(u,1000);
+u();setInterval(u,2000);
 </script>
 </body></html>
 )rawliteral";
@@ -191,7 +213,7 @@ void setupWebDashboard() {
     }
     // Fase nyata (heating/holding/cooling) — di mode Modbus dihitung dari PV/SV.
     const char* st = phaseName(state.phase);
-    StaticJsonDocument<768> doc;
+    StaticJsonDocument<896> doc;
     doc["wifi"]  = state.wifiConnected;
     doc["mqtt"]  = state.mqttConnected;
     doc["phase"] = st;
@@ -201,12 +223,14 @@ void setupWebDashboard() {
     doc["mvReal"]= state.mv;
     doc["mvSim"] = mvSimIsActive();
     doc["mvSimAvail"] = mvSimIsAvailable();
-#if USE_TNL_DI_TRIGGER
     doc["tnlDi"] = tnlDiIsActive();
-#endif
     doc["run"]   = state.ctrlRun;
     doc["sd"]    = state.sdReady;
     doc["log"]   = state.logging;
+    doc["pattern"] = state.pattern;
+    doc["step"]    = state.step;
+    doc["tot"]     = state.totMs;
+    doc["stp"]     = state.stpMs;
     doc["clock"] = gLastClock;
     doc["ts"]    = gLastTs;
     doc["iso"]   = gLastIso;
@@ -217,9 +241,14 @@ void setupWebDashboard() {
     doc["mport"] = cfg.mqttPort;
     doc["wfail"] = gLastStaDiscReason;
     doc["mfail"] = gLastMqttState;
-    String out;
-    serializeJson(doc, out);
-    req->send(200, "application/json", out);
+    doc["token"] = sessionToken;
+    char buf[720];
+    size_t n = serializeJson(doc, buf, sizeof(buf));
+    if (n >= sizeof(buf)) {
+      req->send(500, "application/json", "{\"ok\":false}");
+      return;
+    }
+    req->send(200, "application/json", buf);
   });
 
 #if USE_MV_SIMULATION
