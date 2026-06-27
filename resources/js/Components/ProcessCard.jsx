@@ -11,10 +11,10 @@ const F0_TARGET = 6;
 
 const PROCESS_STATUS_LABELS = {
     idle: 'Idle',
-    heating: 'Pemanasan',
-    sterilizing: 'Sterilisasi',
-    holding: 'Holding',
-    cooling: 'Pendinginan',
+    heating: 'CUT',
+    sterilizing: 'Sterilization',
+    holding: 'Sterilization',
+    cooling: 'Cooling',
     completed: 'Selesai',
     running: 'Berjalan',
     logging: 'Logging',
@@ -121,16 +121,16 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
         >
             <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-gray-800">{name}</h3>
+                    <h3 className="text-xl font-bold text-gray-800">{name}</h3>
                     {isActive && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-sm font-semibold">
+                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                             Aktif
                         </span>
                     )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-sm font-semibold text-gray-500">{dateStr}</span>
+                    <span className="text-base font-semibold text-gray-500">{dateStr}</span>
                     {onDelete && (
                         <div className="relative" ref={menuRef}>
                             <button
@@ -174,39 +174,39 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
                 </div>
             </div>
 
-            <div className={`flex items-center gap-4 mb-4 p-3 rounded-lg border ${getCardBgColor(f0)}`}>
+            <div className={`flex items-center gap-4 mb-4 p-4 rounded-lg border ${getCardBgColor(f0)}`}>
                 <div className="text-center flex-1 min-w-0">
-                    <p className="text-[10px] font-medium text-gray-500 leading-tight mb-1">
-                        Prosesnya sampai dimana
+                    <p className="text-xs font-medium text-gray-500 leading-tight mb-1.5">
+                        Proses Terakhir
                     </p>
-                    <p className="text-sm font-bold text-[#FFB800] truncate">
+                    <p className="text-lg font-bold text-[#FFB800] truncate">
                         {formatProcessStatus(process_status)}
                     </p>
                 </div>
-                <div className="w-px h-10 bg-gray-200 shrink-0" />
+                <div className="w-px h-12 bg-gray-200 shrink-0" />
                 <div className="text-center flex-1">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">F₀</p>
-                    <p className={`text-xl font-bold tabular-nums ${getF0Color(f0)}`}>
+                    <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">F₀</p>
+                    <p className={`text-3xl font-bold tabular-nums ${getF0Color(f0)}`}>
                         {f0 !== null && f0 !== undefined ? f0.toFixed(2) : '—'}
                     </p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-100">
-                <div className="flex items-center gap-1.5 text-sm">
-                    <Clock className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-600 font-semibold">{time_range}</span>
+            <div className="grid grid-cols-3 gap-3 pt-4 border-t border-gray-100">
+                <div className="flex items-center gap-2 text-base">
+                    <Clock className="w-5 h-5 text-gray-400 shrink-0" />
+                    <span className="text-gray-600 font-semibold truncate">{time_range}</span>
                 </div>
 
-                <div className="flex items-center gap-1.5 text-xs">
-                    <Activity className="w-3.5 h-3.5 text-gray-400" />
+                <div className="flex items-center gap-2 text-base">
+                    <Activity className="w-5 h-5 text-gray-400 shrink-0" />
                     <span className="text-gray-500 font-medium">
                         {duration_minutes ? `${duration_minutes}m` : '-'}
                     </span>
                 </div>
 
-                <div className="flex items-center gap-1.5 text-xs">
-                    <Thermometer className="w-3.5 h-3.5 text-gray-400" />
+                <div className="flex items-center gap-2 text-base">
+                    <Thermometer className="w-5 h-5 text-gray-400 shrink-0" />
                     <span className="text-gray-500 font-medium">{data_count} data</span>
                 </div>
             </div>

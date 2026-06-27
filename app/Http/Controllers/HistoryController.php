@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\ProcessSession;
 use App\Models\SensorReading;
-use App\Models\ActivityLog;
 use App\Services\F0Calculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +41,18 @@ class HistoryController extends Controller
             $readings = $session->sensorReadings;
             $latestReading = $readings->last();
 
+            // "Proses Terakhir" = fase retort nyata terakhir (heating/holding/
+            // sterilizing/cooling). Status seperti 'idle'/'running' bukan fase
+            // proses, jadi dilewati agar kartu menampilkan tahap yang bermakna.
+            $lastPhase = $readings
+                ->filter(fn ($r) => in_array(
+                    strtolower($r->process_status ?? ''),
+                    ['heating', 'holding', 'sterilizing', 'cooling'],
+                    true
+                ))
+                ->last()?->process_status
+                ?? $latestReading?->process_status;
+
             return [
                 'id' => $session->id,
                 'name' => $session->display_name,
@@ -51,7 +63,7 @@ class HistoryController extends Controller
                 'data_count' => $session->sensor_readings_count,
                 'status' => $session->status,
                 'f0' => F0Calculator::fromReadings($readings),
-                'process_status' => $latestReading?->process_status,
+                'process_status' => $lastPhase,
             ];
         });
 
@@ -62,8 +74,8 @@ class HistoryController extends Controller
         // Filter by Date Range
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $readingsQuery->whereBetween('recorded_at', [
-                $request->start_date . ' 00:00:00',
-                $request->end_date . ' 23:59:59'
+                $request->start_date.' 00:00:00',
+                $request->end_date.' 23:59:59',
             ]);
         } elseif ($request->filled('start_date')) {
             $readingsQuery->whereDate('recorded_at', '>=', $request->start_date);
@@ -78,7 +90,7 @@ class HistoryController extends Controller
                 'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
                 'temperature' => $reading->temperature,
                 'pressure' => $reading->pressure,
-                'sync_status' => 'Synced'
+                'sync_status' => 'Synced',
             ];
         });
 
@@ -88,7 +100,7 @@ class HistoryController extends Controller
             'sessions' => $sessions,
             'readings' => $readings,
             'machines' => $machines,
-            'filters' => $request->only(['machine_id', 'start_date', 'end_date'])
+            'filters' => $request->only(['machine_id', 'start_date', 'end_date']),
         ]);
     }
 
@@ -125,8 +137,8 @@ class HistoryController extends Controller
 
         if ($request->filled('start_date') && $request->filled('end_date')) {
             $query->whereBetween('recorded_at', [
-                $request->start_date . ' 00:00:00',
-                $request->end_date . ' 23:59:59'
+                $request->start_date.' 00:00:00',
+                $request->end_date.' 23:59:59',
             ]);
         }
 
@@ -142,7 +154,7 @@ class HistoryController extends Controller
                     'machine_name' => $reading->machine ? $reading->machine->name : 'Unknown',
                     'temperature' => $reading->temperature,
                     'status' => $reading->temperature > 120 ? 'Critical' : ($reading->temperature > 110 ? 'Warning' : 'Normal'),
-                    'sync_status' => 'Synced'
+                    'sync_status' => 'Synced',
                 ];
             }));
         }
@@ -161,7 +173,7 @@ class HistoryController extends Controller
                         $reading->machine ? $reading->machine->name : 'Unknown',
                         $reading->temperature,
                         $status,
-                        'Synced'
+                        'Synced',
                     ]);
                 }
             });
@@ -169,12 +181,13 @@ class HistoryController extends Controller
             fclose($handle);
         });
 
-        $filename = 'riwayat_suhu_' . date('Ymd_His') . '.csv';
+        $filename = 'riwayat_suhu_'.date('Ymd_His').'.csv';
         $response->headers->set('Content-Type', 'text/csv');
-        $response->headers->set('Content-Disposition', 'attachment; filename="' . $filename . '"');
+        $response->headers->set('Content-Disposition', 'attachment; filename="'.$filename.'"');
 
         return $response;
     }
+
     public function logExport(Request $request)
     {
         ActivityLog::create([
