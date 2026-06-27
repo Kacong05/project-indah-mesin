@@ -33,7 +33,15 @@ class HistoryController extends Controller
             ->get()
             ->map(function ($session) {
                 $readings = $session->sensorReadings;
-                $latestReading = $readings->last();
+
+                // Fase nyata terakhir (3 fase saja): heating/holding/cooling.
+                $lastPhase = $readings
+                    ->filter(fn ($r) => in_array(
+                        strtolower($r->process_status ?? ''),
+                        ['heating', 'holding', 'sterilizing', 'cooling'],
+                        true
+                    ))
+                    ->last()?->process_status;
 
                 return [
                     'id' => $session->id,
@@ -45,7 +53,7 @@ class HistoryController extends Controller
                     'data_count' => $session->sensor_readings_count,
                     'status' => $session->status,
                     'f0' => F0Calculator::fromReadings($readings),
-                    'process_status' => $latestReading?->process_status,
+                    'process_status' => $lastPhase,
                 ];
             });
 
@@ -118,7 +126,7 @@ class HistoryController extends Controller
             ->orderBy('started_at', 'desc')
             ->first();
 
-        if (!$session) {
+        if (! $session) {
             return response()->json([
                 'success' => true,
                 'data' => null,

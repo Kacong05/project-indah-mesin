@@ -41,17 +41,17 @@ class HistoryController extends Controller
             $readings = $session->sensorReadings;
             $latestReading = $readings->last();
 
-            // "Proses Terakhir" = fase retort nyata terakhir (heating/holding/
-            // sterilizing/cooling). Status seperti 'idle'/'running' bukan fase
-            // proses, jadi dilewati agar kartu menampilkan tahap yang bermakna.
+            // "Proses Terakhir" = fase retort nyata terakhir.
+            // Hanya 3 fase: heating(CUT) / holding(sterilization) / cooling.
+            // Status non-fase ('idle','running','logging','stop') diabaikan;
+            // jika sesi tak punya fase sama sekali → null (kartu tampil '—').
             $lastPhase = $readings
                 ->filter(fn ($r) => in_array(
                     strtolower($r->process_status ?? ''),
                     ['heating', 'holding', 'sterilizing', 'cooling'],
                     true
                 ))
-                ->last()?->process_status
-                ?? $latestReading?->process_status;
+                ->last()?->process_status;
 
             return [
                 'id' => $session->id,
