@@ -10,6 +10,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Operator Routes
     Route::middleware([\App\Http\Middleware\EnsureIsOperator::class])->group(function () {
         Route::get('/monitoring', [\App\Http\Controllers\MonitoringController::class, 'index'])->name('monitoring');
+        Route::get('/monitoring/live', [\App\Http\Controllers\MonitoringController::class, 'live'])->name('monitoring.live');
+        Route::get('/monitoring/stream', [\App\Http\Controllers\MonitoringController::class, 'stream'])->name('monitoring.stream');
         Route::get('/history', [\App\Http\Controllers\HistoryController::class, 'index'])->name('history');
         Route::delete('/history/sessions/{session}', [\App\Http\Controllers\HistoryController::class, 'destroySession'])->name('history.sessions.destroy');
         Route::get('/history/export', [\App\Http\Controllers\HistoryController::class, 'export'])->name('history.export');

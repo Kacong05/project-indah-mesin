@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router } from '@inertiajs/react';
+import { Head } from '@inertiajs/react';
 import { TrendingUp, ChevronsRight } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
@@ -27,22 +27,74 @@ ChartJS.register(
     Filler
 );
 
-export default function MonitoringIndex({ stats, chartData, machineName }) {
+export default function MonitoringIndex({ stats: initialStats, chartData: initialChartData, machineName }) {
+    const [stats, setStats] = useState(initialStats);
+    const [chartData, setChartData] = useState(initialChartData);
+    const lastSeqRef = useRef(0);
+
     const chartScrollRef = useRef(null);
     const lastProcessKeyRef = useRef(null);
     const userScrollingRef = useRef(false);
     const [showJumpBtn, setShowJumpBtn] = useState(false);
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            router.reload({
-                only: ['stats', 'chartData'],
-                preserveState: true,
-                preserveScroll: true,
-            });
-        }, 2000);
-        return () => clearInterval(interval);
+    const applyPayload = useCallback((payload) => {
+        if (!payload) return;
+        if (payload.seq) lastSeqRef.current = payload.seq;
+        if (payload.stats) setStats(payload.stats);
+        if (payload.chartData) setChartData(payload.chartData);
     }, []);
+
+    // Push real-time via SSE — data tampil segera setelah ESP mengirim ke server.
+    useEffect(() => {
+        let active = true;
+        let es = null;
+        let reconnectTimer = null;
+
+        const fetchLive = async () => {
+            try {
+                const res = await fetch('/monitoring/live', {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    cache: 'no-store',
+                    credentials: 'same-origin',
+                });
+                if (!res.ok || !active) return;
+                const json = await res.json();
+                if (json.success) applyPayload(json.data);
+            } catch {
+                // Abaikan — akan reconnect SSE
+            }
+        };
+
+        const connect = () => {
+            if (!active) return;
+
+            es = new EventSource(`/monitoring/stream?since=${lastSeqRef.current}`);
+
+            es.onmessage = (event) => {
+                try {
+                    applyPayload(JSON.parse(event.data));
+                } catch {
+                    // Abaikan payload tidak valid
+                }
+            };
+
+            es.onerror = () => {
+                es?.close();
+                es = null;
+                if (!active) return;
+                fetchLive();
+                reconnectTimer = setTimeout(connect, 200);
+            };
+        };
+
+        connect();
+
+        return () => {
+            active = false;
+            es?.close();
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+        };
+    }, [applyPayload]);
 
     useEffect(() => {
         const processKey = chartData.processStartedAt

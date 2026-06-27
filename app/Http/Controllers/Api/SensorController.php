@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\RetortMachine;
 use App\Models\SensorReading;
+use App\Services\MonitoringBroadcast;
 use App\Services\ProcessSessionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -58,6 +59,8 @@ class SensorController extends Controller
                 'status' => RetortMachine::STATUS_STANDBY,
             ]);
 
+            MonitoringBroadcast::tick($machine->id);
+
             return response()->json([
                 'success' => true,
                 'recorded' => false,
@@ -86,6 +89,8 @@ class SensorController extends Controller
             'last_heartbeat_at' => now(),
             'status' => 'running',
         ]);
+
+        MonitoringBroadcast::tick($machine->id);
 
         return response()->json([
             'success' => true,
