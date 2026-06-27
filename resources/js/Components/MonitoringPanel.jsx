@@ -51,30 +51,30 @@ export default function MonitoringPanel({
             <div className="p-4 space-y-3">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {/* PV — kotak besar */}
-                    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50 to-white border border-amber-100 shadow-sm hover:shadow-md transition-all p-8 flex flex-col items-center justify-center text-center gap-4 min-h-[20rem]">
-                        <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-amber-200/30 blur-2xl" />
-                        <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-md">
+                    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50/40 to-white border border-amber-100/60 shadow-sm hover:shadow-md transition-all p-8 flex flex-col items-center justify-center text-center gap-4 min-h-[20rem]">
+                        <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-amber-200/15 blur-2xl" />
+                        <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-300/80 to-orange-400/80 shadow-sm">
                             <Thermometer className="w-10 h-10 text-white" strokeWidth={2.2} />
                         </div>
                         <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Process Value (PV)</p>
                         <div className="flex items-baseline gap-2">
-                            <p className="text-7xl font-extrabold tabular-nums bg-gradient-to-br from-amber-500 to-orange-600 bg-clip-text text-transparent leading-none">
+                            <p className="text-7xl font-extrabold tabular-nums text-amber-500/90 leading-none">
                                 {formatTemp(pv ?? 0)}
                             </p>
-                            <span className="text-2xl text-amber-400">&deg;C</span>
+                            <span className="text-2xl text-amber-300">&deg;C</span>
                         </div>
                     </div>
 
-                    {/* Kanan: 2 kartu atas (SV, MV) + 1 kartu bawah (Machine Status) */}
+                    {/* Kanan: 2 kartu atas (Machine Status, MV) + 1 kartu bawah (SV) */}
                     <div className="grid grid-rows-2 gap-3">
                         <div className="grid grid-cols-2 gap-3">
                             <InfoCard
-                                icon={Gauge}
-                                label="Set Value (SV)"
-                                value={svIsStop ? 'Stop' : formatTemp(sv ?? 121.1)}
-                                unit={svIsStop ? null : '\u00b0C'}
-                                valueClass="text-indigo-600"
-                                iconGradient="from-indigo-500 to-violet-500"
+                                icon={isOnline ? Wifi : WifiOff}
+                                label="Machine Status"
+                                value={isOnline ? 'Online' : 'Offline'}
+                                unit={null}
+                                valueClass={isOnline ? 'text-sky-600' : 'text-rose-500'}
+                                iconGradient={isOnline ? 'from-sky-500 to-cyan-500' : 'from-rose-500 to-red-500'}
                             />
                             <InfoCard
                                 icon={valveOpen ? Zap : ZapOff}
@@ -86,12 +86,12 @@ export default function MonitoringPanel({
                             />
                         </div>
                         <InfoCard
-                            icon={isOnline ? Wifi : WifiOff}
-                            label="Machine Status"
-                            value={isOnline ? 'Online' : 'Offline'}
-                            unit={null}
-                            valueClass={isOnline ? 'text-sky-600' : 'text-rose-500'}
-                            iconGradient={isOnline ? 'from-sky-500 to-cyan-500' : 'from-rose-500 to-red-500'}
+                            icon={Gauge}
+                            label="Set Value (SV)"
+                            value={svIsStop ? 'Stop' : formatTemp(sv ?? 121.1)}
+                            unit={svIsStop ? null : '\u00b0C'}
+                            valueClass="text-indigo-600"
+                            iconGradient="from-indigo-500 to-violet-500"
                         />
                     </div>
                 </div>
