@@ -37,6 +37,9 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
     const userScrollingRef = useRef(false);
     const [showJumpBtn, setShowJumpBtn] = useState(false);
 
+    // Batas maksimal data point untuk mode katup tertutup (preview)
+    const PREVIEW_MAX_POINTS = 300;
+
     const applyPayload = useCallback((payload) => {
         if (!payload) return;
         if (payload.seq) lastSeqRef.current = payload.seq;
@@ -45,7 +48,29 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
             setStats(payload.stats);
         }
 
-        if (payload.chartData) setChartData(payload.chartData);
+        if (payload.chartData) {
+            const isPreview = payload.stats?.displayMode === 'preview'
+                || payload.stats?.valveClosed === true;
+
+            setChartData(incoming => {
+                const next = payload.chartData;
+                if (!next) return incoming;
+
+                // Katup tertutup: batasi maksimal PREVIEW_MAX_POINTS, reset dari awal kalau penuh
+                if (isPreview && next.labels?.length > PREVIEW_MAX_POINTS) {
+                    return {
+                        ...next,
+                        labels:    next.labels.slice(-PREVIEW_MAX_POINTS),
+                        data:      next.data?.slice(-PREVIEW_MAX_POINTS),
+                        svData:    next.svData?.slice(-PREVIEW_MAX_POINTS),
+                        statuses:  next.statuses?.slice(-PREVIEW_MAX_POINTS),
+                        recordedAts: next.recordedAts?.slice(-PREVIEW_MAX_POINTS),
+                    };
+                }
+
+                return next;
+            });
+        }
     }, []);
 
     // Push real-time via SSE ÔÇö data tampil segera setelah ESP mengirim ke server.
