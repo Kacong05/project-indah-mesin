@@ -44,20 +44,8 @@ trait ProvidesMachineData
 
         $live = MonitoringLiveCache::get($machine->id);
 
-        // Katup tertutup (preview): ambil suhu dari sesi proses terakhir, bukan live cache
-        // agar tidak menampilkan suhu saat katup tertutup (idle/CUT).
+        // Katup tertutup: tampilkan PV/SV live dari cache, tanpa perekaman proses.
         if ($displayMode === 'active' && MonitoringLiveCache::isPreview($live)) {
-            $lastProcessReading = SensorReading::where('machine_id', $machine->id)
-                ->whereNotIn('process_status', ['idle', 'cut', 'stop', ''])
-                ->orderByDesc('recorded_at')
-                ->orderByDesc('id')
-                ->first();
-
-            if ($lastProcessReading) {
-                $live['temperature'] = $lastProcessReading->temperature;
-                $live['sv'] = $lastProcessReading->sv;
-            }
-
             return $this->buildPreviewMonitoringStats($machine, $live, $totalDataToday);
         }
 
@@ -65,7 +53,7 @@ trait ProvidesMachineData
         $currentLatest = $currentProcessReadings->last() ?? $latestReading;
 
         if (! $currentLatest) {
-            return $this->buildIdleMonitoringStats($machine, $totalDataToday);
+            return $this->buildIdleMonitoringStats($machine, $latestReading, $totalDataToday);
         }
 
         $timers = $this->calculateProcessTimers($currentProcessReadings);
@@ -156,18 +144,8 @@ trait ProvidesMachineData
           ? $lastHeartbeat->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
           : 'N/A';
 
-        // Ambil suhu terakhir saat proses aktif (bukan saat idle/cut)
-        $lastActiveReading = $machine
-            ? SensorReading::where('machine_id', $machine->id)
-                ->whereNotIn('process_status', ['idle', 'cut', 'stop', ''])
-                ->orderByDesc('recorded_at')
-                ->orderByDesc('id')
-                ->first()
-            : null;
-
-        $lastTemp = $lastActiveReading
-            ? (float) $lastActiveReading->temperature
-            : ($latestReading ? (float) $latestReading->temperature : 0);
+        // Tampilkan data terakhir yang diterima, apapun statusnya
+        $lastTemp = $latestReading ? (float) $latestReading->temperature : 0;
 
         return [
             'displayMode' => 'idle',
