@@ -281,6 +281,7 @@ void forwardSetup();
 void forwardTick();
 void forwardOnAck(const char* iso);
 bool forwardIsWaitingAck();
+void forwardOnMqttLost();
 
 // ============================================================
 //  Task logger: akuisisi Modbus + tulis SD, presisi 1 detik.

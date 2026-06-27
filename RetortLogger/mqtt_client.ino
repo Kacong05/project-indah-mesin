@@ -39,6 +39,12 @@ static void mqttHandleAck(const char* json) {
   char iso[28] = {0};
   memcpy(iso, p, end - p);
   forwardOnAck(iso);
+#if USE_STORE_FORWARD
+  // Langsung pump batch post-ack (10 baris) tanpa nunggu loop berikutnya.
+  for (uint8_t i = 0; i < 3 && gFwdHasBacklog && !forwardIsWaitingAck(); i++) {
+    forwardTick();
+  }
+#endif
 }
 
 static void mqttCb(char* topic, byte* payload, unsigned int len) {
@@ -111,6 +117,9 @@ void loopMQTT() {
   if (cfg.mqttBroker[0] == '\0') return;
   if (!mqtt.connected()) {
     state.mqttConnected = false;
+#if USE_STORE_FORWARD
+    forwardOnMqttLost();
+#endif
     unsigned long now = millis();
     if (now - lastRecon >= mqttReconIntervalMs()) { lastRecon = now; mqttRecon(); }
     return;

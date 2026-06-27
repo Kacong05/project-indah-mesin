@@ -22,9 +22,9 @@ extern float mvSimEffectivePercent();
 
 #define K_FWD_PATH "fwd_path"
 #define K_FWD_OFF  "fwd_off"
-#define FWD_ACK_TIMEOUT_MS 7000   // tunggu bridge+Laravel (2,5s sering terlalu pendek)
+#define FWD_ACK_TIMEOUT_MS 7000
 #define FWD_ACK_MAX_RETRIES 2
-#define FWD_BURST_MIN_MS    200     // max ~5 baris/detik saat backlog + ACK OK
+#define FWD_POST_ACK_BURST  10      // setelah ack ISO cocok → kirim N baris tanpa tunggu
 #define FWD_SAVE_EVERY      1
 
 static char     gFwdPath[48] = {0};
@@ -38,7 +38,7 @@ static char          gFwdPendingIso[28] = {0};
 static char          gFwdPendingPayload[340] = {0};
 static unsigned long gFwdPendingSince = 0;
 static uint8_t       gFwdAckRetries = 0;
-static unsigned long gFwdLastSend = 0;
+static uint8_t       gFwdPostAckBurst = 0;  // sisa quota kirim tanpa tunggu setelah ack ISO
 
 static void fwdSaveOffset() {
   prefs.begin(PREF_NS, false);
@@ -64,6 +64,10 @@ static bool fwdHasPending() {
   return gFwdOffset < fwdFileSize(gFwdPath);
 }
 
+static void fwdSchedulePostAckBurst() {
+  gFwdPostAckBurst = FWD_POST_ACK_BURST;
+}
+
 void forwardSetup() {
   prefs.begin(PREF_NS, true);
   String p = prefs.getString(K_FWD_PATH, "");
@@ -79,6 +83,17 @@ void forwardSetup() {
 
 // Dipanggil dari mqtt_client saat bridge kirim retort/ack setelah simpan DB.
 bool forwardIsWaitingAck() { return gFwdWaitingAck; }
+
+// MQTT putus saat tunggu ACK → jangan macet 7–14s; ulang dari offset NVS (burst catch-up).
+void forwardOnMqttLost() {
+  if (!gFwdWaitingAck) return;
+  Serial.println(F("[FWD] mqtt lost — batalkan tunggu ACK, lanjut burst"));
+  gFwdWaitingAck = false;
+  gFwdAckRetries = 0;
+  gFwdPendingIso[0] = '\0';
+  gFwdPostAckBurst = 0;
+  gFwdHasBacklog = fwdHasPending();
+}
 
 static bool fwdIsoSameSecond(const char* a, const char* b) {
   if (!a || !b || !a[0] || !b[0]) return false;
@@ -101,7 +116,9 @@ void forwardOnAck(const char* iso) {
   gFwdPendingIso[0] = '\0';
   fwdSaveOffset();
   gFwdHasBacklog = fwdHasPending();
-  Serial.printf("[FWD] ack OK %s → offset %u\n", iso, gFwdOffset);
+  fwdSchedulePostAckBurst();
+  Serial.printf("[FWD] ack OK %s → offset %u, burst %u\n",
+                iso, gFwdOffset, (unsigned)FWD_POST_ACK_BURST);
 }
 
 #if USE_MQTT_ACK
@@ -114,6 +131,7 @@ static void fwdAdvanceWithoutAck() {
   gFwdPendingIso[0] = '\0';
   fwdSaveOffset();
   gFwdHasBacklog = fwdHasPending();
+  fwdSchedulePostAckBurst();
 }
 
 #endif
@@ -233,7 +251,7 @@ static int fwdReadLine(char* out, size_t outLen, uint32_t fromOffset, uint32_t* 
   return gotNewline ? 1 : 0;
 }
 
-static bool fwdSendOneLine() {
+static bool fwdSendOneLine(bool waitAck) {
   char line[180];
   char payload[340];
   char iso[28];
@@ -257,13 +275,18 @@ static bool fwdSendOneLine() {
     if (!mqttPublishRaw(payload)) return false;
 
 #if USE_MQTT_ACK
-    gFwdWaitingAck = true;
-    gFwdPendingOffset = nextOffset;
-    gFwdAckRetries = 0;
-    strncpy(gFwdPendingIso, iso, sizeof(gFwdPendingIso) - 1);
-    gFwdPendingIso[sizeof(gFwdPendingIso) - 1] = '\0';
-    strncpy(gFwdPendingPayload, payload, sizeof(gFwdPendingPayload) - 1);
-    gFwdPendingSince = millis();
+    if (waitAck) {
+      gFwdWaitingAck = true;
+      gFwdPendingOffset = nextOffset;
+      gFwdAckRetries = 0;
+      strncpy(gFwdPendingIso, iso, sizeof(gFwdPendingIso) - 1);
+      gFwdPendingIso[sizeof(gFwdPendingIso) - 1] = '\0';
+      strncpy(gFwdPendingPayload, payload, sizeof(gFwdPendingPayload) - 1);
+      gFwdPendingSince = millis();
+    } else {
+      gFwdOffset = nextOffset;
+      fwdSaveOffset();
+    }
 #else
     gFwdOffset = nextOffset;
     if (++gFwdUnsaved >= FWD_SAVE_EVERY) fwdSaveOffset();
@@ -314,18 +337,35 @@ void forwardTick() {
 
   gFwdHasBacklog = fwdHasPending();
 
-  if (gFwdHasBacklog) {
-    unsigned long now = millis();
-    if (gFwdLastSend != 0 && (now - gFwdLastSend) < FWD_BURST_MIN_MS) return;
-  }
-
-  if (fwdSendOneLine()) {
-    gFwdLastSend = millis();
+  // Setelah ack ISO (atau timeout): kirim quota baris tanpa tunggu, lalu jangkar berikutnya.
+  if (gFwdPostAckBurst > 0 && gFwdHasBacklog) {
+    uint8_t sent = 0;
+    while (gFwdPostAckBurst > 0) {
+      if (!fwdSendOneLine(false)) break;
+      gFwdPostAckBurst--;
+      sent++;
+      gFwdHasBacklog = fwdHasPending();
+      if (!gFwdHasBacklog) break;
+    }
+    if (sent >= 1) {
+      Serial.printf("[FWD] post-ack %u baris (sisa quota %u)\n", sent, gFwdPostAckBurst);
+    }
+    if (gFwdHasBacklog && gFwdPostAckBurst == 0) {
+      if (fwdSendOneLine(true)) {
+        Serial.println(F("[FWD] anchor → tunggu ack ISO"));
+      }
+    }
     return;
   }
 
-  gFwdHasBacklog = fwdHasPending();
-  gFwdLastSend = 0;
+  if (gFwdHasBacklog) {
+    if (fwdSendOneLine(true)) {
+      Serial.println(F("[FWD] anchor → tunggu ack ISO"));
+    }
+    return;
+  }
+
+  gFwdPostAckBurst = 0;
   if (!state.logging && !gFwdHasBacklog) mqttPublishState();
 }
 
@@ -336,6 +376,7 @@ volatile bool gFwdHasBacklog = false;
 void forwardSetup() {}
 void forwardOnAck(const char*) {}
 bool forwardIsWaitingAck() { return false; }
+void forwardOnMqttLost() {}
 void forwardTick() { mqttPublishState(); }
 
 #endif
