@@ -22,9 +22,10 @@ extern float mvSimEffectivePercent();
 
 #define K_FWD_PATH "fwd_path"
 #define K_FWD_OFF  "fwd_off"
-#define FWD_ACK_TIMEOUT_MS 4000
-#define FWD_ACK_MAX_RETRIES 3
-#define FWD_SAVE_EVERY    1
+#define FWD_ACK_TIMEOUT_MS 7000   // tunggu bridge+Laravel (2,5s sering terlalu pendek)
+#define FWD_ACK_MAX_RETRIES 2
+#define FWD_BURST_MIN_MS    200     // max ~5 baris/detik saat backlog + ACK OK
+#define FWD_SAVE_EVERY      1
 
 static char     gFwdPath[48] = {0};
 static uint32_t gFwdOffset   = 0;
@@ -34,10 +35,10 @@ volatile bool   gFwdHasBacklog = false;
 static bool          gFwdWaitingAck = false;
 static uint32_t      gFwdPendingOffset = 0;
 static char          gFwdPendingIso[28] = {0};
-static char          gFwdPendingPayload[320] = {0};
+static char          gFwdPendingPayload[340] = {0};
 static unsigned long gFwdPendingSince = 0;
 static uint8_t       gFwdAckRetries = 0;
-static unsigned long gFwdLastHeartbeat = 0;
+static unsigned long gFwdLastSend = 0;
 
 static void fwdSaveOffset() {
   prefs.begin(PREF_NS, false);
@@ -79,9 +80,20 @@ void forwardSetup() {
 // Dipanggil dari mqtt_client saat bridge kirim retort/ack setelah simpan DB.
 bool forwardIsWaitingAck() { return gFwdWaitingAck; }
 
+static bool fwdIsoSameSecond(const char* a, const char* b) {
+  if (!a || !b || !a[0] || !b[0]) return false;
+  if (strcmp(a, b) == 0) return true;
+  // Cocokkan per detik (abaikan microsecond / variasi timezone suffix).
+  if (strlen(a) >= 19 && strlen(b) >= 19 && strncmp(a, b, 19) == 0) return true;
+  return false;
+}
+
 void forwardOnAck(const char* iso) {
   if (!gFwdWaitingAck || !iso || iso[0] == '\0') return;
-  if (strcmp(iso, gFwdPendingIso) != 0) return;
+  if (!fwdIsoSameSecond(iso, gFwdPendingIso)) {
+    Serial.printf("[FWD] ack mismatch got=%s pending=%s\n", iso, gFwdPendingIso);
+    return;
+  }
 
   gFwdOffset = gFwdPendingOffset;
   gFwdWaitingAck = false;
@@ -102,14 +114,6 @@ static void fwdAdvanceWithoutAck() {
   gFwdPendingIso[0] = '\0';
   fwdSaveOffset();
   gFwdHasBacklog = fwdHasPending();
-}
-
-// Heartbeat live tiap 1 dtk agar dashboard web tetap update walau menunggu ack SD.
-static void fwdMaybeHeartbeat() {
-  unsigned long now = millis();
-  if (now - gFwdLastHeartbeat < 1000) return;
-  gFwdLastHeartbeat = now;
-  mqttPublishState();
 }
 
 #endif
@@ -194,7 +198,7 @@ static bool fwdBuildPayload(const char* line, char* out, size_t outLen,
     "\"actual\":%s,\"setting\":%s,\"mv\":%s,"
     "\"ps\":\"%s\",\"tot\":\"%s\",\"stp\":\"%s\","
     "\"pattern\":%u,\"step\":%u,"
-    "\"run\":%s,\"logging\":%s}",
+    "\"run\":%s,\"logging\":%s,\"backfill\":true}",
     cfg.machineId, iso, phase,
     actual, setting, mvStr,
     ps, state.totMs, state.stpMs,
@@ -231,7 +235,7 @@ static int fwdReadLine(char* out, size_t outLen, uint32_t fromOffset, uint32_t* 
 
 static bool fwdSendOneLine() {
   char line[180];
-  char payload[320];
+  char payload[340];
   char iso[28];
   uint32_t nextOffset = gFwdOffset;
 
@@ -292,7 +296,6 @@ void forwardTick() {
   // Tunggu ack bridge; timeout → retry, lalu maju offset (anti macet selamanya)
   if (gFwdWaitingAck) {
 #if USE_MQTT_ACK
-    fwdMaybeHeartbeat();
     if (millis() - gFwdPendingSince < FWD_ACK_TIMEOUT_MS) return;
     gFwdAckRetries++;
     if (gFwdAckRetries >= FWD_ACK_MAX_RETRIES) {
@@ -311,9 +314,18 @@ void forwardTick() {
 
   gFwdHasBacklog = fwdHasPending();
 
-  if (fwdSendOneLine()) return;
+  if (gFwdHasBacklog) {
+    unsigned long now = millis();
+    if (gFwdLastSend != 0 && (now - gFwdLastSend) < FWD_BURST_MIN_MS) return;
+  }
+
+  if (fwdSendOneLine()) {
+    gFwdLastSend = millis();
+    return;
+  }
 
   gFwdHasBacklog = fwdHasPending();
+  gFwdLastSend = 0;
   if (!state.logging && !gFwdHasBacklog) mqttPublishState();
 }
 

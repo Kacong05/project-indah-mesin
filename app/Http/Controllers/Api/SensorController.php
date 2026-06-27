@@ -10,6 +10,7 @@ use App\Services\MonitoringLiveCache;
 use App\Services\ProcessSessionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class SensorController extends Controller
 {
@@ -20,7 +21,7 @@ class SensorController extends Controller
         $this->processSessionService = $processSessionService;
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'machine_code' => 'required|string|exists:retort_machines,machine_code',
@@ -31,6 +32,7 @@ class SensorController extends Controller
             'process_status' => 'nullable|string',
             'recorded_at' => 'required|date',
             'logging' => 'nullable|boolean',
+            'backfill' => 'nullable|boolean',
             'ps' => 'nullable|string|max:16',
             'pattern' => 'nullable|integer|min:0|max:99',
             'step' => 'nullable|integer|min:0|max:99',
@@ -40,15 +42,10 @@ class SensorController extends Controller
 
         $machine = RetortMachine::where('machine_code', $validated['machine_code'])->first();
 
-        // Parse timestamp dari ESP — wajib untuk akurasi history (bukan now() server).
         $timestamp = Carbon::parse($validated['recorded_at'])->timezone('Asia/Jakarta');
-
-        // ============================================
-        // Alur: setiap paket MQTT → live cache + SSE (tampilan dashboard).
-        // Simpan ke database terpisah (history) bila katup terbuka / logging.
-        // ============================================
         $mv = isset($validated['mv']) ? (float) $validated['mv'] : null;
         $logging = (bool) ($validated['logging'] ?? false);
+        $backfill = (bool) ($validated['backfill'] ?? false);
 
         $liveData = [
             'temperature' => (float) $validated['temperature'],
@@ -75,8 +72,7 @@ class SensorController extends Controller
             'recorded_at' => $liveData['recorded_at'],
         ];
 
-        // Tolak paket MQTT stale (replay/out-of-order) — jangan timpa tampilan live.
-        if (! MonitoringLiveCache::shouldAccept($machine->id, $liveData['recorded_at'])) {
+        if (! $backfill && ! MonitoringLiveCache::shouldAccept($machine->id, $liveData['recorded_at'])) {
             return response()->json([
                 'success' => true,
                 'recorded' => false,
@@ -85,8 +81,11 @@ class SensorController extends Controller
             ]);
         }
 
-        // Simpan bila MV > 0 ATAU sesi rekam aktif (logging=true dari ESP/SD).
         $valveOpen = $mv === null || $mv > 0 || $logging;
+
+        if ($backfill) {
+            return $this->handleBackfill($machine, $validated, $timestamp, $liveData, $chartPoint, $valveOpen);
+        }
 
         if (! $valveOpen) {
             MonitoringLiveCache::put($machine->id, $liveData, recording: false);
@@ -110,7 +109,107 @@ class SensorController extends Controller
         MonitoringLiveCache::put($machine->id, $liveData, recording: true);
         MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
 
-        // Cegah duplikat: 1 mesin = 1 reading per detik (recorded_at dari ESP).
+        return $this->persistReading($machine, $validated, $timestamp, $chartPoint);
+    }
+
+    /**
+     * Replay SD dari ESP — DB + grafik merge; live snapshot hanya jika recorded_at terbaru.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, mixed>  $liveData
+     * @param  array<string, mixed>  $chartPoint
+     */
+    private function handleBackfill(
+        RetortMachine $machine,
+        array $validated,
+        Carbon $timestamp,
+        array $liveData,
+        array $chartPoint,
+        bool $valveOpen
+    ): JsonResponse {
+        if (! $valveOpen) {
+            $machine->update([
+                'last_heartbeat_at' => now(),
+                'status' => RetortMachine::STATUS_STANDBY,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'recorded' => false,
+                'backfill_ack' => true,
+                'message' => 'Backfill MV=0 — offset SD boleh maju, tidak disimpan ke database.',
+            ]);
+        }
+
+        MonitoringLiveCache::mergeBackfillChartPoint($machine->id, $chartPoint);
+
+        if (MonitoringLiveCache::shouldAccept($machine->id, $liveData['recorded_at'])) {
+            MonitoringLiveCache::put($machine->id, $liveData, recording: true);
+        }
+
+        $tsStart = $timestamp->copy()->timezone('Asia/Jakarta')->startOfSecond();
+        $duplicate = SensorReading::where('machine_id', $machine->id)
+            ->where('recorded_at', '>=', $tsStart)
+            ->where('recorded_at', '<', $tsStart->copy()->addSecond())
+            ->exists();
+
+        if ($duplicate) {
+            $machine->update([
+                'last_heartbeat_at' => now(),
+                'status' => 'running',
+            ]);
+            MonitoringBroadcast::tick($machine->id);
+
+            return response()->json([
+                'success' => true,
+                'recorded' => false,
+                'duplicate' => true,
+                'backfill_ack' => true,
+                'message' => 'Backfill duplikat — reading sudah ada, offset SD boleh maju.',
+            ]);
+        }
+
+        $session = $this->processSessionService->getOrCreateSession($timestamp, $machine->id);
+
+        if ($session->wasRecentlyCreated) {
+            MonitoringLiveCache::mergeBackfillChartPoint($machine->id, $chartPoint);
+        }
+
+        SensorReading::create([
+            'machine_id' => $machine->id,
+            'temperature' => $validated['temperature'],
+            'sv' => $validated['sv'] ?? null,
+            'pressure' => $validated['pressure'],
+            'process_status' => $validated['process_status'] ?? 'running',
+            'recorded_at' => $timestamp,
+            'process_session_id' => $session->id,
+        ]);
+
+        $machine->update([
+            'last_heartbeat_at' => now(),
+            'status' => 'running',
+        ]);
+
+        MonitoringBroadcast::tick($machine->id);
+
+        return response()->json([
+            'success' => true,
+            'recorded' => true,
+            'backfill_ack' => true,
+            'message' => 'Backfill reading recorded successfully.',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, mixed>  $chartPoint
+     */
+    private function persistReading(
+        RetortMachine $machine,
+        array $validated,
+        Carbon $timestamp,
+        array $chartPoint
+    ): JsonResponse {
         $tsStart = $timestamp->copy()->timezone('Asia/Jakarta')->startOfSecond();
         $duplicate = SensorReading::where('machine_id', $machine->id)
             ->where('recorded_at', '>=', $tsStart)
@@ -132,9 +231,6 @@ class SensorController extends Controller
             ]);
         }
 
-        // ============================================
-        // LOGIKA UTAMA: Dapatkan atau buat sesi proses (katup terbuka / logging)
-        // ============================================
         $session = $this->processSessionService->getOrCreateSession($timestamp, $machine->id);
 
         if ($session->wasRecentlyCreated) {
@@ -142,7 +238,6 @@ class SensorController extends Controller
             MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
         }
 
-        // Save reading dengan link ke sesi
         $reading = SensorReading::create([
             'machine_id' => $machine->id,
             'temperature' => $validated['temperature'],
@@ -153,7 +248,6 @@ class SensorController extends Controller
             'process_session_id' => $session->id,
         ]);
 
-        // Update machine heartbeat & status
         $machine->update([
             'last_heartbeat_at' => now(),
             'status' => 'running',

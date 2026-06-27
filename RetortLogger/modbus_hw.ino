@@ -31,6 +31,7 @@ extern RetortState state;
 #define MB_BAUD         9600
 #define MB_FORMAT       SERIAL_8N1   // terbukti terbaca (TNL default 8N2 juga OK)
 #define MB_TIMEOUT_MS   150          // batas tunggu jawaban (cukup utk 9600bps)
+#define TNL_MIRROR_INTERVAL_S 3      // P/S/TOT/STP — cukup tiap 3 detik (PV/SV/MV tetap 1 Hz)
 
 // --- Auto-trigger: DI-1 (selenoid 18-21) ATAU MV > 0 ---
 // Mulai rekam saat kontak DI-1 tertutup (jumper/selenoid) ATAU MV > 0.
@@ -49,6 +50,8 @@ bool tnlDiIsActive() { return gDi1On; }
 
 static uint16_t lastDp = 1;  // decimal point terakhir (default 0.0)
 static uint8_t  gTimeUnit = 0;  // 0=MM.SS (menit:detik), 1=HH.MM (jam:menit)
+static bool     gTimeUnitCached = false;
+static uint8_t  gMirrorSec = TNL_MIRROR_INTERVAL_S;  // mirror segera saat boot
 
 // Decode register waktu TNL (MM.SS atau HH.MM) → detik.
 static int tnlRawToSeconds(uint16_t raw, uint8_t timeUnit) {
@@ -66,6 +69,8 @@ static void tnlSecondsToMsStr(int sec, char* out, size_t outLen) {
   snprintf(out, outLen, "%02d:%02d", m, s);
 }
 
+static void tnlLoadTimeUnitIfNeeded();
+
 // Mirror P/S, TOT, STP dari register program TNL (FC04 0x03FB..0x03FF).
 static void tnlUpdateProgramMirror() {
   uint16_t prog[TNL_PROG_N];
@@ -82,12 +87,8 @@ static void tnlUpdateProgramMirror() {
   state.pattern = (uint8_t)prog[0];
   state.step    = (uint8_t)prog[1];
 
-  uint16_t tu = gTimeUnit;
-  uint16_t tuRaw = 0;
-  if (mbRead(0x03, TNL_REG_TIME_UNIT, 1, &tuRaw)) {
-    gTimeUnit = (uint8_t)(tuRaw & 1);
-    tu = gTimeUnit;
-  }
+  tnlLoadTimeUnitIfNeeded();
+  uint8_t tu = gTimeUnit;
 
   tnlSecondsToMsStr(tnlRawToSeconds(prog[2], tu), state.totMs, sizeof(state.totMs));
 
@@ -168,6 +169,15 @@ static bool mbRead(uint8_t fc, uint16_t addr, uint8_t count, uint16_t* out) {
   for (uint8_t i = 0; i < count; i++)
     out[i] = (resp[3 + i * 2] << 8) | resp[4 + i * 2];
   return true;
+}
+
+static void tnlLoadTimeUnitIfNeeded() {
+  if (gTimeUnitCached) return;
+  uint16_t tuRaw = 0;
+  if (mbRead(0x03, TNL_REG_TIME_UNIT, 1, &tuRaw)) {
+    gTimeUnit = (uint8_t)(tuRaw & 1);
+    gTimeUnitCached = true;
+  }
 }
 
 // FC01/FC02 — baca discrete input (bit). qty = jumlah bit.
@@ -340,8 +350,15 @@ void loopModbus() {
     gDi1On = (diBit != 0);
   }
 
+  // Fase PV/SV — logika lama, tetap 1 Hz (CPU ringan, trend per detik).
   updatePhaseFromData();
-  tnlUpdateProgramMirror();
+
+  // P/S/TOT/STP — mirror TNL tiap 3 detik (hemat 2–3 transaksi Modbus/detik).
+  if (++gMirrorSec >= TNL_MIRROR_INTERVAL_S) {
+    gMirrorSec = 0;
+    tnlUpdateProgramMirror();
+  }
+
   updateAutoTrigger();   // auto mulai/stop perekaman sesuai katup/MV/RUN
 }
 

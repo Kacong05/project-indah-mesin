@@ -117,6 +117,49 @@ class MonitoringLiveCache
         return true;
     }
 
+    /**
+     * Backfill grafik — merge by detik, boleh isi celah (tidak monotonic-only).
+     *
+     * @param  array{temperature: float, sv: ?float, process_status: string, recorded_at: string}  $point
+     */
+    public static function mergeBackfillChartPoint(int $machineId, array $point): bool
+    {
+        if (! isset($point['recorded_at'])) {
+            return false;
+        }
+
+        $at = Carbon::parse($point['recorded_at'])->timezone('Asia/Jakarta');
+        $secondKey = $at->format('Y-m-d H:i:s');
+
+        $buf = self::getChartBuffer($machineId);
+        $updated = false;
+
+        foreach ($buf as $i => $existing) {
+            $existingKey = Carbon::parse($existing['recorded_at'])
+                ->timezone('Asia/Jakarta')
+                ->format('Y-m-d H:i:s');
+            if ($existingKey === $secondKey) {
+                $buf[$i] = $point;
+                $updated = true;
+                break;
+            }
+        }
+
+        if (! $updated) {
+            $buf[] = $point;
+        }
+
+        usort($buf, fn (array $a, array $b): int => strcmp($a['recorded_at'], $b['recorded_at']));
+
+        if (count($buf) > MonitoringChartService::BUFFER_MAX_POINTS) {
+            $buf = array_slice($buf, -MonitoringChartService::BUFFER_MAX_POINTS);
+        }
+
+        Cache::put(self::chartKey($machineId), $buf, now()->addHours(3));
+
+        return true;
+    }
+
     /** Titik grafik tidak boleh mundur ke recorded_at lebih lama dari titik terakhir buffer. */
     public static function shouldAcceptChartPoint(int $machineId, string $recordedAt): bool
     {

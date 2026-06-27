@@ -164,14 +164,23 @@ def _normalize_recorded_at(raw: dict) -> str | None:
     return None
 
 
+def _normalize_ack_iso(recorded_at: str) -> str:
+    """ISO detik-presisi untuk ESP (tanpa microsecond)."""
+    s = str(recorded_at).strip()
+    s = re.sub(r"(\d{2}:\d{2}:\d{2})\.\d+", r"\1", s)
+    return s
+
+
 def _publish_ack(machine_code: str, recorded_at: str) -> None:
     """Kabari ESP bahwa baris ini sudah aman di DB → offset SD boleh maju."""
     global _mqtt_client
     if not _mqtt_client or not recorded_at:
         return
-    ack = json.dumps({"id": machine_code, "iso": recorded_at})
+    iso = _normalize_ack_iso(recorded_at)
+    ack = json.dumps({"id": machine_code, "iso": iso})
     with _mqtt_lock:
         _mqtt_client.publish(MQTT_ACK_TOPIC, ack, qos=1)
+    print(f"[ACK] {machine_code} @ {iso}")
 
 
 def _post_worker(worker_id: int):
@@ -210,9 +219,24 @@ def _post_worker(worker_id: int):
             recorded_at = payload.get("recorded_at", "")
             machine_code = payload.get("machine_code", "")
 
-            # ACK ke ESP: sukses simpan, duplikat, atau live preview (MV=0 — offset tetap maju)
-            if body.get("recorded") or body.get("duplicate") or body.get("live"):
+            # ACK ke ESP: sukses simpan, duplikat, live preview, atau backfill tersimpan
+            if (
+                body.get("recorded")
+                or body.get("duplicate")
+                or body.get("live")
+                or body.get("backfill_ack")
+            ):
                 _publish_ack(machine_code, recorded_at)
+            elif body.get("ignored"):
+                print(
+                    f"[WARN] no ack — ignored {machine_code} @ {recorded_at} "
+                    f"({body.get('message', '')[:60]})"
+                )
+            else:
+                print(
+                    f"[WARN] no ack — response {machine_code} @ {recorded_at} "
+                    f"keys={list(body.keys())}"
+                )
 
             if body.get("recorded") and not body.get("duplicate"):
                 sv = payload.get("sv")
@@ -236,6 +260,7 @@ def on_message(client, userdata, msg):
 
     esp_id = raw.get("id") or raw.get("machine_code", "")
     logging = _to_bool(raw.get("logging", False))
+    backfill = _to_bool(raw.get("backfill", False))
 
     phase = str(raw.get("phase", raw.get("process_status", "idle"))).lower()
     _MEANINGFUL_PHASES = {"heating", "holding", "sterilizing", "cooling"}
@@ -257,6 +282,7 @@ def on_message(client, userdata, msg):
         "pressure": _to_float(raw.get("pressure", 0)),
         "process_status": process_status,
         "logging": logging,
+        "backfill": backfill,
         "recorded_at": recorded_at,
         "ps": _format_ps(raw),
         "pattern": _to_int_or_none(raw.get("pattern")),

@@ -67,6 +67,22 @@ void rtcSyncNtp(bool force) {
   Serial.println(F("[RTC] NTP sync gagal — pakai waktu RTC hardware"));
 }
 
+// Satu baca I2C RTC — isi clock (WIB) + ISO sekaligus (hemat vs 2× now()).
+void fillTimestampFromRtc(char* clockBuf, size_t clockLen, char* isoBuf, size_t isoLen) {
+  if (!rtcOk) {
+    snprintf(clockBuf, clockLen, "--/--/---- --:--:-- WIB");
+    snprintf(isoBuf, isoLen, "1970-01-01T00:00:00+07:00");
+    return;
+  }
+  DateTime now = rtcModule.now();
+  snprintf(clockBuf, clockLen, "%02d-%02d-%04d %02d:%02d:%02d WIB",
+           now.day(), now.month(), now.year(),
+           now.hour(), now.minute(), now.second());
+  snprintf(isoBuf, isoLen, "%04d-%02d-%02dT%02d:%02d:%02d+07:00",
+           now.year(), now.month(), now.day(),
+           now.hour(), now.minute(), now.second());
+}
+
 // Format manusia: "DD-MM-YYYY HH:MM:SS WIB" — dashboard, CSV, MQTT ts
 void getTimestampClock(char* buf, size_t len) {
   if (!rtcOk) {
@@ -107,6 +123,12 @@ bool rtcNtpIsSynced() { return false; }
 void setupRTC() {}
 void loopRTC() {}
 void rtcSyncNtp(bool) {}
+
+void fillTimestampFromRtc(char* clockBuf, size_t clockLen, char* isoBuf, size_t isoLen) {
+  unsigned long s = millis() / 1000;
+  snprintf(clockBuf, clockLen, "UPTIME %lus", s);
+  snprintf(isoBuf, isoLen, "1970-01-01T00:00:00+07:00");
+}
 
 void getTimestamp(char* buf, size_t len) {
   unsigned long s = millis() / 1000;

@@ -16,8 +16,19 @@ extern volatile bool gFwdHasBacklog;
 static WiFiClient   mqttWifi;
 static PubSubClient mqtt(mqttWifi);
 
+// Cepat dulu (3s), naik ke sedang (8s) setelah gagal berulang; timeout socket titik tengah 6s.
+#define MQTT_SOCKET_TIMEOUT_S   6
+#define MQTT_RECON_FAST_MS      3000
+#define MQTT_RECON_MED_MS       8000
+#define MQTT_FAIL_TO_MED        4
+
 static unsigned long lastRecon = 0;
-static unsigned long lastPub = 0;
+static unsigned long lastPub   = 0;
+static uint8_t       mqttFailStreak = 0;
+
+static unsigned long mqttReconIntervalMs() {
+  return (mqttFailStreak >= MQTT_FAIL_TO_MED) ? MQTT_RECON_MED_MS : MQTT_RECON_FAST_MS;
+}
 
 static void mqttHandleAck(const char* json) {
   const char* p = strstr(json, "\"iso\":\"");
@@ -65,16 +76,19 @@ static bool mqttRecon() {
   if (cfg.mqttUser[0]) ok = mqtt.connect(cfg.machineId, cfg.mqttUser, cfg.mqttPass);
   else ok = mqtt.connect(cfg.machineId);
   if (ok) {
+    mqttFailStreak = 0;
     mqtt.subscribe(cfg.mqttCmdTopic);
     mqtt.subscribe(MQTT_ACK_TOPIC);
     state.mqttConnected = true;
     gLastMqttState = 0;
     Serial.printf("[MQTT] Connected. Sub: %s + %s\n", cfg.mqttCmdTopic, MQTT_ACK_TOPIC);
   } else {
+    if (mqttFailStreak < 255) mqttFailStreak++;
     state.mqttConnected = false;
     gLastMqttState = mqtt.state();
-    Serial.printf("[MQTT] Gagal, state=%d (broker=%s:%d)\n",
-                  gLastMqttState, cfg.mqttBroker, cfg.mqttPort);
+    Serial.printf("[MQTT] Gagal, state=%d (broker=%s:%d, retry=%us)\n",
+                  gLastMqttState, cfg.mqttBroker, cfg.mqttPort,
+                  (unsigned)(mqttReconIntervalMs() / 1000));
   }
   return ok;
 }
@@ -88,7 +102,9 @@ void setupMQTT() {
   mqtt.setCallback(mqttCb);
   mqtt.setKeepAlive(30);
   mqtt.setBufferSize(768);
-  mqtt.setSocketTimeout(2);
+  mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_S);
+  // Percobaan connect pertama segera setelah WiFi siap (tanpa tunggu interval).
+  lastRecon = millis() - mqttReconIntervalMs();
 }
 
 void loopMQTT() {
@@ -96,7 +112,7 @@ void loopMQTT() {
   if (!mqtt.connected()) {
     state.mqttConnected = false;
     unsigned long now = millis();
-    if (now - lastRecon >= 5000) { lastRecon = now; mqttRecon(); }
+    if (now - lastRecon >= mqttReconIntervalMs()) { lastRecon = now; mqttRecon(); }
     return;
   }
   mqtt.loop();
@@ -128,7 +144,7 @@ void mqttPublishState() {
     "\"actual\":%.1f,\"setting\":%.1f,\"mv\":%.1f,"
     "\"ps\":\"%s\",\"tot\":\"%s\",\"stp\":\"%s\","
     "\"pattern\":%u,\"step\":%u,"
-    "\"run\":%s,\"logging\":%s}",
+    "\"run\":%s,\"logging\":%s,\"backfill\":false}",
     cfg.machineId, gLastTs, gLastIso, phaseName(state.phase),
     state.temperature, state.setpoint, mvSimEffectivePercent(),
     ps, state.totMs, state.stpMs,

@@ -248,6 +248,7 @@ void getTimestamp(char* buf, size_t len);
 void getTimestampClock(char* buf, size_t len);
 void getTimestampFile(char* buf, size_t len);
 void getTimestampIso(char* buf, size_t len);
+void fillTimestampFromRtc(char* clockBuf, size_t clockLen, char* isoBuf, size_t isoLen);
 void rtcSyncNtp(bool force);
 bool rtcIsOk();
 bool rtcNtpIsSynced();
@@ -290,11 +291,10 @@ static void loggerTask(void* pv) {
   TickType_t last = xTaskGetTickCount();
   const TickType_t period = pdMS_TO_TICKS(1000);
   for (;;) {
-    // Refresh cache timestamp (RTC/I2C HANYA dibaca di task ini → tak ada race)
-    getTimestampClock(gLastClock, sizeof(gLastClock));
+    // Satu baca RTC/I2C per detik — cache clock + ISO + ts.
+    fillTimestampFromRtc(gLastClock, sizeof(gLastClock), gLastIso, sizeof(gLastIso));
     strncpy(gLastTs, gLastClock, sizeof(gLastTs) - 1);
     gLastTs[sizeof(gLastTs) - 1] = '\0';
-    getTimestampIso(gLastIso, sizeof(gLastIso));
 #if USE_MODBUS
     loopModbus();      // 1x poll PV+SV (timeout pendek, tak pernah block lama)
 #endif
@@ -366,10 +366,9 @@ void setup() {
 
   // Buat mutex SD & seed timestamp SEBELUM task logger jalan.
   gSdMutex = xSemaphoreCreateMutex();
-  getTimestampClock(gLastClock, sizeof(gLastClock));
+  fillTimestampFromRtc(gLastClock, sizeof(gLastClock), gLastIso, sizeof(gLastIso));
   strncpy(gLastTs, gLastClock, sizeof(gLastTs) - 1);
   gLastTs[sizeof(gLastTs) - 1] = '\0';
-  getTimestampIso(gLastIso, sizeof(gLastIso));
 
   // Task logger di core 1, prioritas 3 (di atas loop Arduino = prioritas 1).
   // Stack 8 KB cukup untuk SD + snprintf.
