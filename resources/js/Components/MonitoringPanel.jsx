@@ -48,38 +48,6 @@ export default function MonitoringPanel({
 
     return (
         <div className="card overflow-hidden">
-            <div className="card-header flex-col sm:flex-row gap-2">
-                <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-                    <h3 className="text-sm font-semibold text-gray-700">Monitoring Panel</h3>
-                    <span className="hidden sm:inline text-xs text-gray-400">
-                        &middot; UPDATE {lastUpdate}
-                    </span>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                    {valveClosed && (
-                        <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                            Katup tertutup &mdash; PV/SV live
-                        </span>
-                    )}
-                    {!valveClosed && displayMode === 'paused' && (
-                        <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                            Menunggu data...
-                        </span>
-                    )}
-                    {!valveClosed && displayMode === 'idle' && (
-                        <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                            Siap proses berikutnya
-                        </span>
-                    )}
-                    <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${
-                        isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                        {isOnline ? 'ONLINE' : 'OFFLINE'}
-                    </span>
-                </div>
-            </div>
-
             <div className="p-4 space-y-3">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {/* PV */}
