@@ -22,19 +22,22 @@ extern float mvSimEffectivePercent();
 
 #define K_FWD_PATH "fwd_path"
 #define K_FWD_OFF  "fwd_off"
-#define FWD_ACK_TIMEOUT_MS 4000   // ulang kirim bila tak ada ack dari bridge
+#define FWD_ACK_TIMEOUT_MS 4000
+#define FWD_ACK_MAX_RETRIES 3
+#define FWD_SAVE_EVERY    1
 
 static char     gFwdPath[48] = {0};
-static uint32_t gFwdOffset   = 0;   // offset terkonfirmasi (NVS) = sudah di DB
+static uint32_t gFwdOffset   = 0;
 static uint16_t gFwdUnsaved  = 0;
 volatile bool   gFwdHasBacklog = false;
 
-// Satu baris menunggu konfirmasi bridge
 static bool          gFwdWaitingAck = false;
 static uint32_t      gFwdPendingOffset = 0;
 static char          gFwdPendingIso[28] = {0};
 static char          gFwdPendingPayload[320] = {0};
 static unsigned long gFwdPendingSince = 0;
+static uint8_t       gFwdAckRetries = 0;
+static unsigned long gFwdLastHeartbeat = 0;
 
 static void fwdSaveOffset() {
   prefs.begin(PREF_NS, false);
@@ -82,11 +85,34 @@ void forwardOnAck(const char* iso) {
 
   gFwdOffset = gFwdPendingOffset;
   gFwdWaitingAck = false;
+  gFwdAckRetries = 0;
   gFwdPendingIso[0] = '\0';
   fwdSaveOffset();
   gFwdHasBacklog = fwdHasPending();
   Serial.printf("[FWD] ack OK %s → offset %u\n", iso, gFwdOffset);
 }
+
+#if USE_MQTT_ACK
+
+static void fwdAdvanceWithoutAck() {
+  Serial.printf("[FWD] no ack — maju offset anyway (cek bridge/ACL retort/ack)\n");
+  gFwdOffset = gFwdPendingOffset;
+  gFwdWaitingAck = false;
+  gFwdAckRetries = 0;
+  gFwdPendingIso[0] = '\0';
+  fwdSaveOffset();
+  gFwdHasBacklog = fwdHasPending();
+}
+
+// Heartbeat live tiap 1 dtk agar dashboard web tetap update walau menunggu ack SD.
+static void fwdMaybeHeartbeat() {
+  unsigned long now = millis();
+  if (now - gFwdLastHeartbeat < 1000) return;
+  gFwdLastHeartbeat = now;
+  mqttPublishState();
+}
+
+#endif
 
 static void fwdAdoptFile(const char* path) {
   if (gFwdWaitingAck) return;  // selesaikan pending dulu
@@ -210,12 +236,18 @@ static bool fwdSendOneLine() {
 
     if (!mqttPublishRaw(payload)) return false;
 
+#if USE_MQTT_ACK
     gFwdWaitingAck = true;
     gFwdPendingOffset = nextOffset;
+    gFwdAckRetries = 0;
     strncpy(gFwdPendingIso, iso, sizeof(gFwdPendingIso) - 1);
     gFwdPendingIso[sizeof(gFwdPendingIso) - 1] = '\0';
     strncpy(gFwdPendingPayload, payload, sizeof(gFwdPendingPayload) - 1);
     gFwdPendingSince = millis();
+#else
+    gFwdOffset = nextOffset;
+    if (++gFwdUnsaved >= FWD_SAVE_EVERY) fwdSaveOffset();
+#endif
     return true;
   }
 }
@@ -241,12 +273,23 @@ void forwardTick() {
     return;
   }
 
-  // Tunggu ack bridge; timeout → kirim ulang baris yang sama
+  // Tunggu ack bridge; timeout → retry, lalu maju offset (anti macet selamanya)
   if (gFwdWaitingAck) {
+#if USE_MQTT_ACK
+    fwdMaybeHeartbeat();
     if (millis() - gFwdPendingSince < FWD_ACK_TIMEOUT_MS) return;
-    Serial.printf("[FWD] ack timeout %s — retry\n", gFwdPendingIso);
+    gFwdAckRetries++;
+    if (gFwdAckRetries >= FWD_ACK_MAX_RETRIES) {
+      fwdAdvanceWithoutAck();
+      return;
+    }
+    Serial.printf("[FWD] ack timeout %s — retry %u/%u\n",
+                  gFwdPendingIso, gFwdAckRetries, FWD_ACK_MAX_RETRIES);
     mqttPublishRaw(gFwdPendingPayload);
     gFwdPendingSince = millis();
+#else
+    fwdAdvanceWithoutAck();
+#endif
     return;
   }
 

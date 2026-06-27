@@ -23,9 +23,10 @@
 #define USE_OTA         false  // OTA update
 // Simulasi MV via tombol dashboard — set false + reflash saat pakai trigger MV asli
 #define USE_MV_SIMULATION true
-// Store-and-forward: replay baris SD yang belum terkirim saat MQTT reconnect,
-// agar data tidak hilang selama jaringan putus. Set false untuk publish live saja.
+// Store-and-forward: replay baris SD yang belum terkirim saat MQTT reconnect.
 #define USE_STORE_FORWARD true
+// Tunggu retort/ack dari bridge sebelum maju offset SD. false = mode lama (publish=OK).
+#define USE_MQTT_ACK      true
 
 // --- Pin Assignments ---
 #define PIN_RTC_SDA     8

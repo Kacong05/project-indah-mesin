@@ -89,9 +89,13 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
 
         connect();
 
+        // Fallback polling — jika SSE/nginx macet, UI tetap update tiap 2 dtk.
+        const pollId = setInterval(fetchLive, 2000);
+
         return () => {
             active = false;
             es?.close();
+            clearInterval(pollId);
             if (reconnectTimer) clearTimeout(reconnectTimer);
         };
     }, [applyPayload]);
