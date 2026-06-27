@@ -39,13 +39,25 @@ trait ProvidesMachineData
           : 0;
 
         if ($displayMode === 'idle' || ! $machine) {
-            return $this->buildIdleMonitoringStats($machine, $totalDataToday);
+            return $this->buildIdleMonitoringStats($machine, $latestReading, $totalDataToday);
         }
 
         $live = MonitoringLiveCache::get($machine->id);
 
-        // Katup tertutup: tampilkan PV/SV live dari cache, tanpa perekaman proses.
+        // Katup tertutup (preview): ambil suhu dari sesi proses terakhir, bukan live cache
+        // agar tidak menampilkan suhu saat katup tertutup (idle/CUT).
         if ($displayMode === 'active' && MonitoringLiveCache::isPreview($live)) {
+            $lastProcessReading = SensorReading::where('machine_id', $machine->id)
+                ->whereNotIn('process_status', ['idle', 'cut', 'stop', ''])
+                ->orderByDesc('recorded_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($lastProcessReading) {
+                $live['temperature'] = $lastProcessReading->temperature;
+                $live['sv'] = $lastProcessReading->sv;
+            }
+
             return $this->buildPreviewMonitoringStats($machine, $live, $totalDataToday);
         }
 
@@ -137,16 +149,29 @@ trait ProvidesMachineData
         ];
     }
 
-    protected function buildIdleMonitoringStats($machine, int $totalDataToday): array
+    protected function buildIdleMonitoringStats($machine, $latestReading, int $totalDataToday): array
     {
         $lastHeartbeat = $machine?->last_heartbeat_at;
         $lastUpdate = $lastHeartbeat
           ? $lastHeartbeat->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
           : 'N/A';
 
+        // Ambil suhu terakhir saat proses aktif (bukan saat idle/cut)
+        $lastActiveReading = $machine
+            ? SensorReading::where('machine_id', $machine->id)
+                ->whereNotIn('process_status', ['idle', 'cut', 'stop', ''])
+                ->orderByDesc('recorded_at')
+                ->orderByDesc('id')
+                ->first()
+            : null;
+
+        $lastTemp = $lastActiveReading
+            ? (float) $lastActiveReading->temperature
+            : ($latestReading ? (float) $latestReading->temperature : 0);
+
         return [
             'displayMode' => 'idle',
-            'currentTemperature' => 0,
+            'currentTemperature' => $lastTemp,
             'machineStatus' => $machine ? $machine->status : 'Offline',
             'isOnline' => false,
             'isLogging' => false,
