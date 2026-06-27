@@ -115,11 +115,11 @@ export default function MonitoringPanel({
                         />
                         <InfoCard
                             icon={Zap}
-                            label="Output (MV)"
-                            value={formatMv(mv)}
-                            unit="%"
-                            colorClass="text-purple-500"
-                            bgClass="bg-purple-50"
+                            label="Katup (MV)"
+                            value={mv > 0 ? 'Terbuka' : 'Tertutup'}
+                            unit={null}
+                            colorClass={mv > 0 ? 'text-green-600' : 'text-red-500'}
+                            bgClass={mv > 0 ? 'bg-green-50' : 'bg-red-50'}
                             large
                         />
                     </div>
