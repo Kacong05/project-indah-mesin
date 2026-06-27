@@ -10,7 +10,16 @@ extern bool sdLock(uint32_t ms);
 extern void sdUnlock();
 
 #if USE_SD
+
 #include <SD.h>
+
+static void storBasename(const String& full, char* out, size_t outLen) {
+  int sl = full.lastIndexOf('/');
+  if (sl >= 0) full.substring(sl + 1).toCharArray(out, outLen);
+  else full.toCharArray(out, outLen);
+}
+
+#endif
 
 // Kirim file CSV sebagai attachment (browser HP & desktop).
 void sendCsvDownload(AsyncWebServerRequest* req, const String& p) {
@@ -38,10 +47,10 @@ static String findLatestCsv() {
     File e = dir.openNextFile();
     while (e) {
       if (!e.isDirectory()) {
-        String n = String(e.name());
-        int sl = n.lastIndexOf('/');
-        if (sl >= 0) n = n.substring(sl + 1);
-        if (n.endsWith(".csv") && n > latest) latest = n;
+        char n[48];
+        storBasename(String(e.name()), n, sizeof(n));
+        if (strstr(n, ".csv") && (latest.length() == 0 || strcmp(n, latest.c_str()) > 0))
+          latest = n;
       }
       e.close();
       e = dir.openNextFile();

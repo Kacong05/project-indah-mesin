@@ -123,6 +123,14 @@ static void fwdAdoptFile(const char* path) {
   Serial.printf("[FWD] file baru: %s\n", gFwdPath);
 }
 
+static bool parseWibClockToIso(const char* wib, char* isoOut, size_t isoLen) {
+  int d = 0, mo = 0, y = 0, h = 0, mi = 0, s = 0;
+  if (sscanf(wib, "%d-%d-%d %d:%d:%d", &d, &mo, &y, &h, &mi, &s) < 6)
+    return false;
+  snprintf(isoOut, isoLen, "%04d-%02d-%02dT%02d:%02d:%02d+07:00", y, mo, d, h, mi, s);
+  return true;
+}
+
 static bool parseHumanTsToIso(const char* human, char* isoOut, size_t isoLen) {
   int mo = 0, d = 0, y = 0, h = 0, mi = 0, s = 0;
   char ampm[4] = {0};
@@ -166,8 +174,9 @@ static bool fwdBuildPayload(const char* line, char* out, size_t outLen,
     run = atoi(fields[6]) != 0;
     logging = atoi(fields[7]) != 0;
   } else {
-    if (!parseHumanTsToIso(fields[0], isoBuf, sizeof(isoBuf))) return false;
-    iso = isoBuf;
+    if (parseWibClockToIso(fields[0], isoBuf, sizeof(isoBuf))) iso = isoBuf;
+    else if (!parseHumanTsToIso(fields[0], isoBuf, sizeof(isoBuf))) return false;
+    else iso = isoBuf;
     phase = phaseName(state.phase);
     snprintf(mvStr, sizeof(mvStr), "%.1f", mvSimEffectivePercent());
     run = state.ctrlRun;

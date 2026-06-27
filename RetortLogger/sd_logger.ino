@@ -1,7 +1,7 @@
 // ============================================================
 //  sd_logger.ino  –  MicroSD CSV logging
 //  Pin: CS=10, MOSI=11, CLK=12, MISO=13
-//  CSV: Tanggal Jam, Actual, Setting
+// CSV: Tanggal Jam (WIB), Actual, Setting, ISO, Phase, MV, Run, Logging
 // ============================================================
 
 #if USE_SD
@@ -13,7 +13,7 @@ extern AppConfig   cfg;
 extern RetortState state;
 extern volatile bool gLogStartReq;
 extern volatile bool gLogStopReq;
-extern char gLastTs[24];
+extern char gLastClock[32];
 extern char gLastIso[26];
 extern bool sdLock(uint32_t ms);
 extern void sdUnlock();
@@ -84,7 +84,7 @@ void sdLogEntry() {
   // ISO + Phase + MV + Run + Logging dipakai forwarder untuk merekonstruksi
   // payload MQTT identik dengan publish live (recorded_at = ISO baris ini).
   logFile.printf("%s,%.1f,%.1f,%s,%s,%.1f,%d,%d\n",
-                 gLastTs, state.temperature, state.setpoint,
+                 gLastClock, state.temperature, state.setpoint,
                  gLastIso, phaseName(state.phase), mvSimEffectivePercent(),
                  state.ctrlRun ? 1 : 0, state.logging ? 1 : 0);
   logFile.flush();

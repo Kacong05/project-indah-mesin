@@ -67,23 +67,7 @@ void rtcSyncNtp(bool force) {
   Serial.println(F("[RTC] NTP sync gagal — pakai waktu RTC hardware"));
 }
 
-// Format: "M/D/YYYY h:mm:ssPM" — sama dengan kolom CSV "Tanggal Jam"
-void getTimestamp(char* buf, size_t len) {
-  if (!rtcOk) {
-    snprintf(buf, len, "0/0/0000 0:00:00AM");
-    return;
-  }
-  DateTime now = rtcModule.now();
-  int h = now.hour();
-  const char* ampm = (h >= 12) ? "PM" : "AM";
-  if (h == 0) h = 12;
-  else if (h > 12) h -= 12;
-  snprintf(buf, len, "%d/%d/%04d %d:%02d:%02d%s",
-           now.month(), now.day(), now.year(),
-           h, now.minute(), now.second(), ampm);
-}
-
-// Jam dashboard & tampilan manusia: "DD-MM-YYYY HH:MM:SS WIB" (24 jam)
+// Format manusia: "DD-MM-YYYY HH:MM:SS WIB" — dashboard, CSV, MQTT ts
 void getTimestampClock(char* buf, size_t len) {
   if (!rtcOk) {
     snprintf(buf, len, "--/--/---- --:--:-- WIB");
@@ -93,6 +77,10 @@ void getTimestampClock(char* buf, size_t len) {
   snprintf(buf, len, "%02d-%02d-%04d %02d:%02d:%02d WIB",
            now.day(), now.month(), now.year(),
            now.hour(), now.minute(), now.second());
+}
+
+void getTimestamp(char* buf, size_t len) {
+  getTimestampClock(buf, len);
 }
 
 void getTimestampFile(char* buf, size_t len) {

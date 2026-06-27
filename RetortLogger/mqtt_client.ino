@@ -8,7 +8,7 @@
 extern AppConfig   cfg;
 extern RetortState state;
 extern int gLastMqttState;
-extern char gLastTs[24];
+extern char gLastTs[32];
 extern char gLastIso[26];
 
 extern volatile bool gFwdHasBacklog;

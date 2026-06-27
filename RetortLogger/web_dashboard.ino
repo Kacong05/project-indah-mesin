@@ -8,7 +8,7 @@ extern RetortState    state;
 extern AsyncWebServer server;
 extern int gLastStaDiscReason;
 extern int gLastMqttState;
-extern char gLastTs[24];
+extern char gLastTs[32];
 extern char gLastClock[32];
 extern char gLastIso[26];
 

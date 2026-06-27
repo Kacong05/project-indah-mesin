@@ -9,6 +9,32 @@ extern bool sdLock(uint32_t ms);
 extern void sdUnlock();
 void sendCsvDownload(AsyncWebServerRequest* req, const String& p);
 
+#if USE_SD
+#include <SD.h>
+#include <stdlib.h>
+
+#define STOR_MAX 64
+
+struct StorEntry {
+  char name[48];
+  bool dir;
+  size_t size;
+};
+
+static int storCmpDesc(const void* a, const void* b) {
+  const StorEntry* ea = (const StorEntry*)a;
+  const StorEntry* eb = (const StorEntry*)b;
+  if (ea->dir != eb->dir) return ea->dir ? -1 : 1;
+  return strcmp(eb->name, ea->name);
+}
+
+static void storBasename(const String& full, char* out, size_t outLen) {
+  int sl = full.lastIndexOf('/');
+  if (sl >= 0) full.substring(sl + 1).toCharArray(out, outLen);
+  else full.toCharArray(out, outLen);
+}
+#endif
+
 static const char STOR_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -33,6 +59,9 @@ h1{font-size:19px;margin:0 0 12px}
 table{width:100%;border-collapse:collapse;font-size:14px;background:#fff;min-width:340px}
 th{background:#f0f1f3;padding:8px;text-align:left;color:#555}
 td{padding:8px;border-top:1px solid #e3e3e3}
+tr.latest td{background:#eff6ff}
+.tag{display:inline-block;font-size:10px;font-weight:600;color:#fff;background:#2563eb;
+padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle}
 .dlt{background:#16a34a;color:#fff;border:none;padding:10px 16px;border-radius:4px;cursor:pointer;margin-bottom:12px;font-size:14px}
 .dl{background:#2563eb;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px;margin-right:4px}
 .rm{background:#dc2626;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px}
@@ -112,12 +141,9 @@ acc+=pt+'/';var s=document.createElement('span');s.textContent=pt;
 var t=acc;s.addEventListener('click',function(){go(t);});pb.appendChild(s);
 });
 var tb=document.getElementById('tb');tb.textContent='';
-// Folder dulu, lalu file TERBARU di atas (nama YYYYMMDD_HHMMSS → sort desc).
-if(d.files)d.files.sort(function(a,b){
-if(a.dir!==b.dir)return a.dir?-1:1;
-return a.name<b.name?1:(a.name>b.name?-1:0);});
 if(d.files)d.files.forEach(function(f){
 var tr=document.createElement('tr');
+if(d.latestFile&&f.name===d.latestFile&&!f.dir)tr.className='latest';
 var t1=document.createElement('td');
 if(f.dir){
 var btn=document.createElement('button');btn.className='dir';
@@ -125,7 +151,14 @@ btn.textContent='\uD83D\uDCC1 '+f.name;
 var tgt=p+(p.endsWith('/')?'':'/')+f.name;
 btn.addEventListener('click',function(){go(tgt);});
 t1.appendChild(btn);
-}else{t1.textContent='\uD83D\uDCC4 '+fmtName(f.name);t1.title=f.name;}
+}else{
+t1.textContent='\uD83D\uDCC4 '+fmtName(f.name);
+t1.title=f.name;
+if(d.latestFile&&f.name===d.latestFile){
+var tg=document.createElement('span');tg.className='tag';tg.textContent='TERBARU';
+t1.appendChild(tg);
+}
+}
 var t2=document.createElement('td');t2.textContent=f.dir?'--':fs(f.size);
 var t3=document.createElement('td');
 if(!f.dir){
@@ -174,39 +207,52 @@ void setupWebStorage() {
 
     uint64_t tot = SD.totalBytes();
     uint64_t usd = SD.usedBytes();
-    // Gunakan %llu (64-bit). Cast ke unsigned long (32-bit) membuat kartu
-    // > 4GB terpotong / wrap-around (mis. 16GB tampil ~2GB).
-    char cap[128];
-    snprintf(cap, sizeof(cap),
-      "{\"sd\":true,\"total\":%llu,\"used\":%llu,\"free\":%llu,\"files\":[",
-      (unsigned long long)tot, (unsigned long long)usd,
-      (unsigned long long)(tot - usd));
-    String json = cap;
+    StorEntry entries[STOR_MAX];
+    int nEntries = 0;
+    char latestCsv[48] = {0};
 
     if (!sdLock(1500)) {
       req->send(503, "application/json", "{\"sd\":true,\"busy\":true}");
       return;
     }
     File dir = SD.open(path);
-    bool first = true;
     if (dir && dir.isDirectory()) {
       File e = dir.openNextFile();
-      while (e) {
-        if (!first) json += ',';
-        String n = String(e.name());
-        int sl = n.lastIndexOf('/');
-        if (sl >= 0) n = n.substring(sl + 1);
-        json += "{\"name\":\"" + n + "\",\"dir\":" +
-          (e.isDirectory() ? "true" : "false") +
-          ",\"size\":" + String((unsigned long)e.size()) + "}";
-        first = false;
+      while (e && nEntries < STOR_MAX) {
+        char base[48];
+        storBasename(String(e.name()), base, sizeof(base));
+        StorEntry& ent = entries[nEntries++];
+        strncpy(ent.name, base, sizeof(ent.name) - 1);
+        ent.name[sizeof(ent.name) - 1] = '\0';
+        ent.dir = e.isDirectory();
+        ent.size = e.size();
+        if (!ent.dir && strstr(ent.name, ".csv")) {
+          if (latestCsv[0] == '\0' || strcmp(ent.name, latestCsv) > 0)
+            strncpy(latestCsv, ent.name, sizeof(latestCsv) - 1);
+        }
         e.close();
         e = dir.openNextFile();
       }
       dir.close();
     }
-    json += "]}";
     sdUnlock();
+
+    if (nEntries > 1) qsort(entries, nEntries, sizeof(StorEntry), storCmpDesc);
+
+    char cap[160];
+    snprintf(cap, sizeof(cap),
+      "{\"sd\":true,\"total\":%llu,\"used\":%llu,\"free\":%llu,\"latestFile\":\"%s\",\"files\":[",
+      (unsigned long long)tot, (unsigned long long)usd,
+      (unsigned long long)(tot - usd), latestCsv);
+    String json = cap;
+
+    for (int i = 0; i < nEntries; i++) {
+      if (i > 0) json += ',';
+      json += "{\"name\":\"" + String(entries[i].name) + "\",\"dir\":" +
+        (entries[i].dir ? "true" : "false") +
+        ",\"size\":" + String((unsigned long)entries[i].size) + "}";
+    }
+    json += "]}";
     req->send(200, "application/json", json);
 #else
     req->send(200, "application/json", "{\"sd\":false}");
