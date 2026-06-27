@@ -1,4 +1,3 @@
-import { useEffect, useState, useRef } from 'react';
 import {
     Thermometer,
     Gauge,
@@ -62,30 +61,10 @@ export default function MonitoringPanel({
     timerStp = '00:00',
     isOnline = false,
     displayMode = 'idle',
+    valveClosed = false,
     lastUpdate = 'N/A',
     runState = 'stop',
 }) {
-    // Debounce displayMode 800ms agar badge tidak kedip saat bolak-balik mode
-    const [stableMode, setStableMode] = useState(displayMode);
-    const modeTimerRef = useRef(null);
-
-    useEffect(() => {
-        if (modeTimerRef.current) clearTimeout(modeTimerRef.current);
-        modeTimerRef.current = setTimeout(() => setStableMode(displayMode), 800);
-        return () => clearTimeout(modeTimerRef.current);
-    }, [displayMode]);
-
-    // Stabilkan PV — hanya update jika nilai berbeda signifikan (>0.2°C)
-    // untuk menghindari kedip saat mode berganti bolak-balik
-    const [stablePv, setStablePv] = useState(pv);
-    const pvTimerRef = useRef(null);
-
-    useEffect(() => {
-        if (pvTimerRef.current) clearTimeout(pvTimerRef.current);
-        pvTimerRef.current = setTimeout(() => setStablePv(pv), 600);
-        return () => clearTimeout(pvTimerRef.current);
-    }, [pv]);
-
     const formatTemp = (temp) => {
         if (temp === null || temp === undefined) return '—';
         return typeof temp === 'number' ? temp.toFixed(1) : temp;
@@ -97,7 +76,6 @@ export default function MonitoringPanel({
     };
 
     const svIsStop = sv === 'Stop' || sv === 'stop';
-    const badgeStatus = runState === 'stop' || stableMode === 'idle' ? 'stop' : processPhase;
 
     return (
         <div className="card overflow-hidden">
@@ -110,17 +88,17 @@ export default function MonitoringPanel({
                     </span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                    {stableMode === 'preview' && (
+                    {valveClosed && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-800">
-                            Katup tertutup — PV/SV live
+                            Katup tertutup
                         </span>
                     )}
-                    {stableMode === 'paused' && (
+                    {!valveClosed && displayMode === 'paused' && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-amber-100 text-amber-800">
                             Menunggu data…
                         </span>
                     )}
-                    {stableMode === 'idle' && (
+                    {!valveClosed && displayMode === 'idle' && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-gray-100 text-gray-600">
                             Siap proses berikutnya
                         </span>
@@ -144,7 +122,7 @@ export default function MonitoringPanel({
                         <p className="text-base font-semibold text-gray-500 uppercase tracking-wide">Process Value (PV)</p>
                         <div className="flex items-baseline gap-2">
                             <p className="text-6xl sm:text-7xl font-bold tabular-nums text-yellow-500 leading-none">
-                                {formatTemp(stablePv ?? 0)}
+                                {formatTemp(pv ?? 0)}
                             </p>
                             <span className="text-2xl text-gray-400">°C</span>
                         </div>

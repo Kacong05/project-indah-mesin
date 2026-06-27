@@ -37,36 +37,12 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
     const userScrollingRef = useRef(false);
     const [showJumpBtn, setShowJumpBtn] = useState(false);
 
-    const lastDisplayModeRef = useRef(initialStats?.displayMode ?? 'idle');
-    const stableStatsRef = useRef(initialStats);
-
     const applyPayload = useCallback((payload) => {
         if (!payload) return;
         if (payload.seq) lastSeqRef.current = payload.seq;
 
         if (payload.stats) {
-            const incoming = payload.stats;
-            const prevMode = lastDisplayModeRef.current;
-            const newMode = incoming.displayMode;
-
-            // Jika displayMode berubah bolak-balik antara active/preview dalam
-            // satu siklus, pertahankan nilai PV sebelumnya agar tidak kedip.
-            const modeFlipping =
-                (prevMode === 'active' && newMode === 'preview') ||
-                (prevMode === 'preview' && newMode === 'active');
-
-            if (modeFlipping) {
-                // Update semua stats kecuali currentTemperature (pertahankan nilai sebelumnya)
-                setStats(prev => ({
-                    ...incoming,
-                    currentTemperature: prev.currentTemperature,
-                }));
-            } else {
-                setStats(incoming);
-            }
-
-            lastDisplayModeRef.current = newMode;
-            stableStatsRef.current = incoming;
+            setStats(payload.stats);
         }
 
         if (payload.chartData) setChartData(payload.chartData);
@@ -292,6 +268,7 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
                     timerStp={stats.timerStp}
                     isOnline={stats.isOnline}
                     displayMode={stats.displayMode}
+                    valveClosed={stats.valveClosed}
                     lastUpdate={stats.lastUpdate}
                     runState={stats.runState}
                 />
