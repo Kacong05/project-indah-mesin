@@ -155,12 +155,14 @@ export default function MonitoringPanel({
                     <div className="rounded-xl bg-white border border-gray-200 p-3 min-w-0">
                         <div className="flex flex-col items-center text-center gap-2 h-full justify-center">
                             <div className={`flex items-center justify-center w-12 h-12 rounded-xl ${
-                                isOnline ? 'bg-blue-50' : 'bg-red-50'
+                                isOnline ? 'bg-green-50' : 'bg-red-50'
                             }`}>
-                                <Activity className={`w-6 h-6 ${isOnline ? 'text-blue-500' : 'text-red-500'}`} />
+                                <Activity className={`w-6 h-6 ${isOnline ? 'text-green-500' : 'text-red-500'}`} />
                             </div>
                             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Machine Status</p>
-                            <StatusBadge status={badgeStatus} />
+                            <p className={`text-base font-bold ${isOnline ? 'text-green-600' : 'text-red-600'}`}>
+                                {isOnline ? 'Online' : 'Offline'}
+                            </p>
                         </div>
                     </div>
 
