@@ -100,6 +100,7 @@ volatile bool gLogStartReq = false;    // permintaan mulai rekam (dari web/MQTT)
 volatile bool gLogStopReq  = false;    // permintaan stop rekam
 char gLastTs[24] = "0/0/0000 0:00:00AM";  // timestamp cache (RTC dibaca di task)
 char gLastIso[26] = "1970-01-01T00:00:00+07:00";  // ISO cache (recorded_at akurat)
+char gLastClock[32] = "--/--/---- --:--:-- WIB";  // jam dashboard (24 jam WIB)
 
 // Ambil/lepas kunci SD. Timeout supaya task logger tak menunggu terlalu lama.
 bool sdLock(uint32_t ms) {
@@ -200,8 +201,12 @@ void loopModbus();
 void setupRTC();
 void loopRTC();
 void getTimestamp(char* buf, size_t len);
+void getTimestampClock(char* buf, size_t len);
 void getTimestampFile(char* buf, size_t len);
 void getTimestampIso(char* buf, size_t len);
+void rtcSyncNtp(bool force);
+bool rtcIsOk();
+bool rtcNtpIsSynced();
 void setupSDLogger();
 void loopSDLogger();
 void sdLogEntry();
@@ -242,6 +247,7 @@ static void loggerTask(void* pv) {
     // Refresh cache timestamp (RTC/I2C HANYA dibaca di task ini → tak ada race)
     getTimestamp(gLastTs, sizeof(gLastTs));
     getTimestampIso(gLastIso, sizeof(gLastIso));
+    getTimestampClock(gLastClock, sizeof(gLastClock));
 #if USE_MODBUS
     loopModbus();      // 1x poll PV+SV (timeout pendek, tak pernah block lama)
 #endif
@@ -309,6 +315,8 @@ void setup() {
   // Buat mutex SD & seed timestamp SEBELUM task logger jalan.
   gSdMutex = xSemaphoreCreateMutex();
   getTimestamp(gLastTs, sizeof(gLastTs));
+  getTimestampIso(gLastIso, sizeof(gLastIso));
+  getTimestampClock(gLastClock, sizeof(gLastClock));
 
   // Task logger di core 1, prioritas 3 (di atas loop Arduino = prioritas 1).
   // Stack 8 KB cukup untuk SD + snprintf.

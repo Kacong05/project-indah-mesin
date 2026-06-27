@@ -8,6 +8,9 @@ extern RetortState    state;
 extern AsyncWebServer server;
 extern int gLastStaDiscReason;
 extern int gLastMqttState;
+extern char gLastTs[24];
+extern char gLastClock[32];
+extern char gLastIso[26];
 
 static const char DASH_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -30,6 +33,12 @@ h1{font-size:19px;margin:0 0 14px}
 .tfill.wr{background:#d97706}.tfill.er{background:#dc2626}
 .tlbl{font-size:13px;color:#666}
 .tlbl b{color:#2563eb;font-weight:600}
+.clk{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:12px 16px;margin-bottom:14px;
+display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.clk .time{font-size:clamp(22px,6vw,28px);font-weight:700;font-variant-numeric:tabular-nums;color:#1e40af}
+.clk .meta{font-size:12px;color:#666;line-height:1.5;text-align:right}
+.clk .meta b{color:#374151;font-weight:600}
+.clk .bad{color:#dc2626;font-size:11px}
 .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:16px}
 .c{background:#fff;border:1px solid #e3e3e3;padding:12px;border-radius:6px}
 .c small{color:#777;font-size:12px}
@@ -53,6 +62,15 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 </nav>
 <div class="m">
 <h1>Dashboard</h1>
+<div class="clk">
+<div class="time" id="clkTime">--:--:--</div>
+<div class="meta">
+<div id="clkDate">--/--/----</div>
+<div>Log: <b id="clkLog">--</b></div>
+<span class="bad" id="clkRtcWarn" style="display:none">RTC tidak terdeteksi</span>
+<span id="clkNtp" style="font-size:11px;color:#16a34a"></span>
+</div>
+</div>
 <div class="tg">
 <div class="tn" id="tbig">--<span>°C</span></div>
 <div class="tbar"><div class="tfill" id="tbar"></div></div>
@@ -81,6 +99,17 @@ if(r.status===401){sessionStorage.removeItem('st');location='/login';return null
 if(!r.ok)throw new Error('http');
 return r.json();
 }).then(function(d){if(!d)return;
+if(d.clock){
+var p=d.clock.split(' ');
+if(p.length>=2){
+document.getElementById('clkDate').textContent=p[0];
+var t=p[1]+(p[2]==='WIB'?' WIB':'');
+document.getElementById('clkTime').textContent=t;
+}
+}
+if(d.ts){document.getElementById('clkLog').textContent=d.ts;}
+document.getElementById('clkRtcWarn').style.display=d.rtc?'none':'inline';
+document.getElementById('clkNtp').textContent=d.ntpSync?'● NTP WIB':'';
 var w=document.getElementById('wifi');w.textContent=d.wifi?'OK':'OFF';w.className='v '+(d.wifi?'ok':'er');
 var mq=document.getElementById('mqtt');mq.textContent=d.mqtt?'OK':'OFF';mq.className='v '+(d.mqtt?'ok':'er');
 var p=document.getElementById('phase');p.textContent=d.phase||'--';p.className='v '+(d.log?'wr':'ok');
@@ -132,7 +161,7 @@ h.textContent='MQTT '+(d.broker||'?')+':'+(d.mport||1883)+' - '+(me[mk]||'gagal 
 }).catch(function(){
 document.getElementById('hint').textContent='API tidak merespons. Logout lalu login ulang.';
 });}
-u();setInterval(u,2000);
+u();setInterval(u,1000);
 </script>
 </body></html>
 )rawliteral";
@@ -150,7 +179,7 @@ void setupWebDashboard() {
     }
     // Fase nyata (heating/holding/cooling) — di mode Modbus dihitung dari PV/SV.
     const char* st = phaseName(state.phase);
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<768> doc;
     doc["wifi"]  = state.wifiConnected;
     doc["mqtt"]  = state.mqttConnected;
     doc["phase"] = st;
@@ -163,6 +192,11 @@ void setupWebDashboard() {
     doc["run"]   = state.ctrlRun;
     doc["sd"]    = state.sdReady;
     doc["log"]   = state.logging;
+    doc["clock"] = gLastClock;
+    doc["ts"]    = gLastTs;
+    doc["iso"]   = gLastIso;
+    doc["rtc"]   = rtcIsOk();
+    doc["ntpSync"] = rtcNtpIsSynced();
     doc["ssid"]  = cfg.wifiSSID;
     doc["broker"]= cfg.mqttBroker;
     doc["mport"] = cfg.mqttPort;

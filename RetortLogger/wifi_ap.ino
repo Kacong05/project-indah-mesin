@@ -94,9 +94,9 @@ void loopWiFiAP() {
   if (connected && !state.wifiConnected) {
     gLastStaDiscReason = 0;
     state.wifiConnected = true;
-    // AP config tetap hidup — dashboard 192.168.4.1 tetap bisa diakses
     Serial.printf("[WiFi] STA OK  IP=%s  RSSI=%d\n",
                   WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    rtcSyncNtp(true);
   } else if (!connected && state.wifiConnected) {
     state.wifiConnected = false;
     Serial.println(F("[WiFi] STA lost"));
@@ -108,5 +108,9 @@ void loopWiFiAP() {
       Serial.println(F("[WiFi] Retry STA..."));
       staConnect();
     }
+  }
+
+  if (connected) {
+    rtcSyncNtp(false);
   }
 }
