@@ -1,33 +1,32 @@
 // ============================================================
-//  mv_sim.ino  –  Simulasi katup/MV untuk testing (dashboard toggle)
-//  Aktif hanya bila USE_MV_SIMULATION = true di RetortLogger.ino.
+//  mv_sim.ino  –  MV & trigger perekaman
 //
-//  Selaras dengan web (SensorController):
-//    Sim OFF → MV laporan = 0  → katup tertutup, PV/SV live, tidak ke database
-//    Sim ON  → MV laporan = 50% → katup terbuka, data disimpan ke database
+//  PRODUKSI (default): MV & trigger 100% dari Modbus TNL
+//    • mv laporan = Heating/Cooling MV (0x03EC/0x03ED)
+//    • rekam aktif saat RUN atau MV > 0
+//    • Uji lab & retort sungguhan pakai jalur yang sama — tanpa reflash ESP
 //
-//  Matikan permanen: set USE_MV_SIMULATION false lalu reflash.
+//  DEV ONLY: USE_MV_SIMULATION true → dashboard bisa paksa MV 50%
 // ============================================================
 
 extern RetortState state;
 extern Preferences prefs;
 
 #define K_MV_SIM       "mv_sim"
-#define MV_SIM_PERCENT 50.0f   // katup terbuka (MV > 0)
-#define MV_SIM_RAW     500     // raw Modbus 50.0%
+#define MV_SIM_PERCENT 50.0f
+#define MV_SIM_RAW     500
 
 #if USE_MV_SIMULATION
-
 static bool gMvSimActive = false;
+#endif
+
+#if USE_MV_SIMULATION
 
 void mvSimLoad() {
   prefs.begin(PREF_NS, true);
   gMvSimActive = prefs.getBool(K_MV_SIM, false);
   prefs.end();
-  Serial.printf("[MV_SIM] %s — laporan MV=%s (web: %s)\n",
-                gMvSimActive ? "KATUP TERBUKA" : "KATUP TERTUTUP",
-                gMvSimActive ? "50.0%" : "0.0%",
-                gMvSimActive ? "simpan DB" : "hanya PV/SV live");
+  Serial.printf("[MV] mode=DEV sim web=%s\n", gMvSimActive ? "ON" : "OFF");
 }
 
 void mvSimSetActive(bool on) {
@@ -35,35 +34,31 @@ void mvSimSetActive(bool on) {
   prefs.begin(PREF_NS, false);
   prefs.putBool(K_MV_SIM, on);
   prefs.end();
-  Serial.printf("[MV_SIM] toggle → %s | MV laporan=%.1f%% | web: %s\n",
-                on ? "KATUP TERBUKA" : "KATUP TERTUTUP",
-                on ? MV_SIM_PERCENT : 0.0f,
-                on ? "simpan ke database" : "PV/SV saja, tanpa database");
 }
 
 bool mvSimIsAvailable() { return true; }
 bool mvSimIsActive()    { return gMvSimActive; }
 
-// Nilai MV yang dikirim MQTT/API — gate yang dipakai web untuk simpan DB.
 float mvSimEffectivePercent() {
-  return gMvSimActive ? MV_SIM_PERCENT : 0.0f;
+  return gMvSimActive ? MV_SIM_PERCENT : state.mv;
 }
 
 uint16_t mvSimEffectiveRaw(uint16_t hardwareRaw) {
-  (void)hardwareRaw;
-  return gMvSimActive ? MV_SIM_RAW : 0;
+  if (gMvSimActive) return MV_SIM_RAW;
+  return hardwareRaw;
 }
 
-// Trigger perekaman lokal (SD) mengikuti MV simulasi, sama seperti gate web.
 bool mvSimProcessRunning(bool ctrlRun, uint16_t hardwareMvRaw) {
-  (void)ctrlRun;
-  (void)hardwareMvRaw;
-  return gMvSimActive;
+  if (gMvSimActive) return true;
+  return ctrlRun || (hardwareMvRaw > 0);
 }
 
 #else
 
-void mvSimLoad() {}
+void mvSimLoad() {
+  Serial.println(F("[MV] mode=PRODUKSI — trigger dari MV/RUN Modbus TNL"));
+}
+
 void mvSimSetActive(bool) {}
 bool mvSimIsAvailable() { return false; }
 bool mvSimIsActive()    { return false; }
@@ -80,4 +75,8 @@ bool mvSimProcessRunning(bool ctrlRun, uint16_t hardwareMvRaw) {
   return ctrlRun || (hardwareMvRaw > 0);
 }
 
+#endif
+
+#if USE_TNL_DI_TRIGGER
+bool tnlDiIsActive();  // modbus_hw.ino
 #endif

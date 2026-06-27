@@ -35,6 +35,16 @@ extern RetortState state;
 #define MV_ON_RAW        0    // MV raw > nilai ini → output kontrol aktif
 #define STOP_DEBOUNCE_N  5    // siklus (detik) berturut non-aktif sebelum stop
 
+#if USE_TNL_DI_TRIGGER
+#ifndef TNL_DI_BIT
+#define TNL_DI_BIT 0
+#endif
+static bool gTnlDiOn = false;
+bool tnlDiIsActive() { return gTnlDiOn; }
+#else
+bool tnlDiIsActive() { return false; }
+#endif
+
 // Kode khusus PV controller (sensor error)
 #define TNL_PV_OPEN   31000  // sensor terbuka / putus
 #define TNL_PV_HHHH   30000  // over range
@@ -231,6 +241,14 @@ void loopModbus() {
   }
   // Bila gagal baca: pertahankan status terakhir (hindari stop palsu).
 
+#if USE_TNL_DI_TRIGGER
+  // 3) Status saklar Digital IN (FC04 0x03F1). Bit0=DI-1 … bit5=DI-6.
+  uint16_t diStat;
+  if (mbRead(0x04, TNL_REG_DI_STATUS, 1, &diStat)) {
+    gTnlDiOn = ((diStat >> TNL_DI_BIT) & 1) != 0;
+  }
+#endif
+
   updatePhaseFromData();
   updateAutoTrigger();   // auto mulai/stop perekaman sesuai katup/MV/RUN
 }
@@ -239,5 +257,6 @@ void loopModbus() {
 
 void setupModbus() {}
 void loopModbus() {}
+bool tnlDiIsActive() { return false; }
 
 #endif

@@ -34,6 +34,8 @@ Edit bagian atas `RetortLogger.ino`:
 #define USE_RTC         true   // DS3231M RTC
 #define USE_SD          true   // MicroSD logging
 #define USE_OTA         false  // OTA update
+#define USE_MV_SIMULATION false  // default produksi — MV asli dari TNL
+#define USE_TNL_DI_TRIGGER false // jangan dipakai produksi
 ```
 
 PENTING: `USE_FAKE_SENSOR` dan `USE_MODBUS` tidak boleh `true` bersamaan —
@@ -57,8 +59,6 @@ simulasi akan menimpa data nyata dari controller.
 > **TNL-13 → board A+**, **TNL-14 → board B−**. Jika tidak ada komunikasi,
 > tukar A+↔B− di terminal RS485 board.
 
-biru a
-coklat -
 ---
 
 ## Sumber Data (Autonics TNL-P46RR-RS-035)
@@ -79,15 +79,9 @@ Read Input Registers (FC04) membaca blok kontigu `0x03E8`–`0x03ED`:
 PV dan SV memakai skala decimal point yang sama (mis. `dp=1` → /10).
 MV memakai skala tetap (`raw / 10 = %`). `state.mv` = MV terbesar (heating/cooling).
 
-Transaksi kedua membaca **status RUN/STOP** via Holding Register (FC03):
+Transaksi ketiga: **status RUN/STOP** FC03 holding `0x0000` (`0=RUN`, `1=STOP`).
 
-| Register | Isi |
-|----------|-----|
-| `0x0000` | RUN/STOP — `0 = RUN`, `1 = STOP` |
-
-> SV **bukan** di holding register `0x0000` — itu adalah RUN-STOP. SV live
-> read-only ada di input register `0x03EB` (FC04), sumber: TN Series
-> Communications Manual.
+> SV live read-only ada di input register `0x03EB` (FC04), bukan di `0x0000`.
 
 Komunikasi terpasang: `9600 8N1`, unit address `1` (terbukti terbaca).
 
@@ -303,22 +297,40 @@ PostgreSQL  (tabel sensor_readings)
 | `run` | bool | Status controller (`true` = RUN, `false` = STOP) |
 | `logging` | bool | `true` saat sesi perekaman aktif (auto-trigger) |
 
-### Simulasi MV (testing)
+### MV & trigger — satu jalur (uji lab = retort sungguhan)
 
-Untuk menguji alur penyimpanan data ke Laravel saat MV hardware masih `0`:
+**Default firmware** (`USE_MV_SIMULATION false`, `USE_TNL_DI_TRIGGER false`):
 
-1. Pastikan `USE_MV_SIMULATION true` di `RetortLogger.ino`.
-2. Dashboard ESP → kartu **MV Simulasi** → **Nyalakan Simulasi MV**.
-3. MV laporan ke MQTT/API dipaksa **50%**; trigger perekaman ikut aktif.
-4. MV hardware asli tetap dibaca (`mvReal` di `/api/status`).
+| Sumber | Register Modbus | Dipakai untuk |
+|--------|-----------------|---------------|
+| **MV** | FC04 `0x03EC` / `0x03ED` | Laporan MQTT/API + gate simpan database (MV > 0) |
+| **RUN** | FC03 `0x0000` | Rekam SD tetap jalan walau MV sesaat 0 saat holding |
 
-**Matikan permanen** saat trigger MV asli dipakai:
+Tidak ada “trigger palsu” di ESP. **Yang dibaca dan dilaporkan selalu MV asli dari TNL.**
+
+#### Uji dengan saklar di TNL (tanpa reflash ESP)
+
+Agar uji **mirip retort masuk**, saklar/proses harus membuat **register MV TNL naik** — sama seperti saat katup uap retort sungguhan terbuka:
+
+1. TNL mode **RUN** (bukan STOP di layar).
+2. Saat uji: mode **Manual (MAN)** → set **Heating MV** > 0 (mis. 50,0%) saat saklar ditutup / proses dimulai.  
+   Saat produksi: biarkan **PID Auto** — MV naik sendiri saat heating.
+3. ESP otomatis deteksi MV > 0 → rekam SD + kirim web. **Tidak perlu ubah firmware** saat pindah ke retort live.
+
+Saklar di terminal TNL (DI-1, interlock retort, dll.) hanya perlu **mengaktifkan proses/MV di controller** — bukan input terpisah ke ESP.
+
+Spesifikasi kontak DI (manual TCD210227AH): ON ≤ 2 kΩ, OFF ≥ 90 kΩ.  
+Setting **Digital Input Func = OFF** jika DI hanya interlock mekanik; jika DI dipakai start RUN, sesuaikan parameter TNL sekali di panel (bukan di ESP).
+
+#### Dev only (jangan dipakai produksi)
+
+Hanya jika MV TNL tetap 0 dan Anda tetap ingin uji pipeline web:
 
 ```cpp
-#define USE_MV_SIMULATION false   // RetortLogger.ino, lalu reflash
+#define USE_MV_SIMULATION true   // dashboard paksa MV 50%
 ```
 
-Tombol dashboard & `POST /api/mv-sim` hilang dari firmware. State ON/OFF disimpan di NVS (`mv_sim`).
+Reflash diperlukan. **Jangan** dipakai saat retort sungguhan sudah terpasang.
 
 ### Pemetaan oleh `mqtt_bridge.py` → `/api/sensor`
 

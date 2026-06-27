@@ -85,7 +85,12 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <small>MV Simulasi</small>
 <div class="v" id="mvSim">OFF</div>
 <button type="button" id="mvSimBtn">Nyalakan Simulasi MV</button>
-<small class="hint" id="mvSimHint">MV hardware tetap dibaca; nilai laporan dipaksa 50% agar data masuk DB.</small>
+<small class="hint" id="mvSimHint">MV hardware tetap dibaca; laporan 50% bila simulasi web ATAU saklar DI TNL ON.</small>
+</div>
+<div class="c" id="tnlDiCard" style="display:none">
+<small>Saklar DI TNL</small>
+<div class="v" id="tnlDi">--</div>
+<small class="hint" style="font-size:11px;color:#666">DI-1 ON (Modbus) = trigger seperti katup terbuka</small>
 </div>
 <div class="c"><small>SD Card</small><div class="v" id="sd">--</div></div>
 </div>
@@ -129,8 +134,9 @@ if(d.mvSimAvail){
 var card=document.getElementById('mvSimCard');card.style.display='';
 var ms=document.getElementById('mvSim');
 var simOn=!!d.mvSim;
-ms.textContent=simOn?'ON (50%)':'OFF';
-ms.className='v '+(simOn?'wr':'ok');
+var diOn=!!d.tnlDi;
+ms.textContent=(simOn||diOn)?'ON (50%)':'OFF';
+ms.className='v '+(simOn||diOn?'wr':'ok');
 var btn=document.getElementById('mvSimBtn');
 btn.textContent=simOn?'Matikan Simulasi MV':'Nyalakan Simulasi MV';
 btn.className=simOn?'off':'';
@@ -145,8 +151,14 @@ credentials:'same-origin',body:JSON.stringify({on:!simOn})})
 if(d.mvReal!=null&&simOn){
 document.getElementById('mvSimHint').textContent='MV hardware: '+Number(d.mvReal).toFixed(1)+'% · laporan simulasi: 50%';
 }else{
-document.getElementById('mvSimHint').textContent='MV hardware tetap dibaca; nilai laporan dipaksa 50% agar data masuk DB.';
+document.getElementById('mvSimHint').textContent='MV hardware tetap dibaca; laporan 50% bila simulasi web ATAU saklar DI TNL ON.';
 }
+}
+if(typeof d.tnlDi!=='undefined'){
+document.getElementById('tnlDiCard').style.display='';
+var di=document.getElementById('tnlDi');
+di.textContent=d.tnlDi?'ON (DI-1)':'OFF';
+di.className='v '+(d.tnlDi?'wr':'ok');
 }
 var h=document.getElementById('hint');
 if(d.wifi&&d.mqtt){h.textContent='';}
@@ -189,6 +201,9 @@ void setupWebDashboard() {
     doc["mvReal"]= state.mv;
     doc["mvSim"] = mvSimIsActive();
     doc["mvSimAvail"] = mvSimIsAvailable();
+#if USE_TNL_DI_TRIGGER
+    doc["tnlDi"] = tnlDiIsActive();
+#endif
     doc["run"]   = state.ctrlRun;
     doc["sd"]    = state.sdReady;
     doc["log"]   = state.logging;

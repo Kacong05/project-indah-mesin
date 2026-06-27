@@ -21,8 +21,14 @@
 #define USE_RTC         true   // DS3231M RTC
 #define USE_SD          true   // MicroSD logging
 #define USE_OTA         false  // OTA update
-// Simulasi MV via tombol dashboard — set false + reflash saat pakai trigger MV asli
-#define USE_MV_SIMULATION true
+// --- Trigger & MV: default PRODUKSI (sama uji & retort sungguhan) ---
+// Hanya MV + RUN asli dari Modbus TNL. Tidak perlu reflash saat pindah ke retort live.
+#define USE_MV_SIMULATION false  // true = tombol dashboard paksa MV 50% (dev only)
+#define USE_TNL_DI_TRIGGER false // true = fake MV dari DI (dev only — jangan dipakai produksi)
+#if USE_TNL_DI_TRIGGER
+#define TNL_REG_DI_STATUS 0x03F1
+#define TNL_DI_BIT        0
+#endif
 // Store-and-forward: replay baris SD yang belum terkirim saat MQTT reconnect.
 #define USE_STORE_FORWARD true
 // Tunggu retort/ack dari bridge sebelum maju offset SD. false = mode lama (publish=OK).
@@ -224,6 +230,7 @@ void mvSimLoad();
 void mvSimSetActive(bool on);
 bool mvSimIsAvailable();
 bool mvSimIsActive();
+bool tnlDiIsActive();
 float mvSimEffectivePercent();
 uint16_t mvSimEffectiveRaw(uint16_t hardwareRaw);
 bool mvSimProcessRunning(bool ctrlRun, uint16_t hardwareMvRaw);
