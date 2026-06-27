@@ -9,17 +9,14 @@ import { exportDataOnly } from '@/utils/exportExcel';
 
 const F0_TARGET = 6;
 
-// Hanya 3 fase proses: heating(CUT) → holding(Sterilization) → cooling(Cooling).
-const PROCESS_STATUS_LABELS = {
-    heating: 'CUT',
-    sterilizing: 'Sterilization',
-    holding: 'Sterilization',
-    cooling: 'Cooling',
-};
-
+// Hanya 3 fase proses, mengikuti logika monitoring (normalizePhase):
+// cooling → Cooling, holding/sterilizing → Sterilization,
+// selain itu (heating/idle/running/logging/kosong) → CUT.
 function formatProcessStatus(status) {
-    if (!status) return '—';
-    return PROCESS_STATUS_LABELS[status.toLowerCase()] ?? '—';
+    const key = (status ?? '').toLowerCase();
+    if (key === 'cooling') return 'Cooling';
+    if (key === 'holding' || key === 'sterilizing' || key === 'sterilization') return 'Sterilization';
+    return 'CUT';
 }
 
 function getF0Color(f0) {
