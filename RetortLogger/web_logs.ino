@@ -10,7 +10,6 @@ extern bool sdLock(uint32_t ms);
 extern void sdUnlock();
 
 #if USE_SD
-
 #include <SD.h>
 
 static void storBasename(const String& full, char* out, size_t outLen) {
@@ -18,8 +17,6 @@ static void storBasename(const String& full, char* out, size_t outLen) {
   if (sl >= 0) full.substring(sl + 1).toCharArray(out, outLen);
   else full.toCharArray(out, outLen);
 }
-
-#endif
 
 // Kirim file CSV sebagai attachment (browser HP & desktop).
 void sendCsvDownload(AsyncWebServerRequest* req, const String& p) {
