@@ -29,16 +29,14 @@ class SensorController extends Controller
             'mv' => 'nullable|numeric',
             'pressure' => 'required|numeric',
             'process_status' => 'nullable|string',
-            'recorded_at' => 'nullable|date',
+            'recorded_at' => 'required|date',
             'logging' => 'nullable|boolean',
         ]);
 
         $machine = RetortMachine::where('machine_code', $validated['machine_code'])->first();
 
-        // Parse timestamp dari ESP, atau pakai waktu server jika tidak ada
-        $timestamp = isset($validated['recorded_at'])
-            ? Carbon::parse($validated['recorded_at'])
-            : now();
+        // Parse timestamp dari ESP — wajib untuk akurasi history (bukan now() server).
+        $timestamp = Carbon::parse($validated['recorded_at'])->timezone('Asia/Jakarta');
 
         // ============================================
         // GATE PEREKAMAN: hanya simpan ke database saat katup terbuka (MV > 0).
@@ -46,6 +44,7 @@ class SensorController extends Controller
         // MV null → perilaku lama (tetap simpan) agar klien lama kompatibel.
         // ============================================
         $mv = isset($validated['mv']) ? (float) $validated['mv'] : null;
+        $logging = (bool) ($validated['logging'] ?? false);
 
         $liveData = [
             'temperature' => (float) $validated['temperature'],
@@ -53,10 +52,12 @@ class SensorController extends Controller
             'mv' => $mv ?? 0.0,
             'pressure' => (float) $validated['pressure'],
             'process_status' => $validated['process_status'] ?? 'idle',
-            'recorded_at' => $timestamp->toIso8601String(),
+            'recorded_at' => $timestamp->copy()->timezone('Asia/Jakarta')->toIso8601String(),
         ];
 
-        $valveOpen = $mv === null || $mv > 0;
+        // Simpan bila MV > 0 ATAU sesi rekam aktif (logging=true dari ESP/SD).
+        // MV=0 sesaat di holding tidak boleh membuat detik hilang di history.
+        $valveOpen = $mv === null || $mv > 0 || $logging;
 
         if (! $valveOpen) {
             $machine->update([
@@ -77,8 +78,30 @@ class SensorController extends Controller
 
         MonitoringLiveCache::put($machine->id, $liveData, recording: true);
 
+        // Cegah duplikat: 1 mesin = 1 reading per detik (recorded_at dari ESP).
+        $tsStart = $timestamp->copy()->timezone('Asia/Jakarta')->startOfSecond();
+        $duplicate = SensorReading::where('machine_id', $machine->id)
+            ->where('recorded_at', '>=', $tsStart)
+            ->where('recorded_at', '<', $tsStart->copy()->addSecond())
+            ->exists();
+
+        if ($duplicate) {
+            $machine->update([
+                'last_heartbeat_at' => now(),
+                'status' => 'running',
+            ]);
+            MonitoringBroadcast::tick($machine->id);
+
+            return response()->json([
+                'success' => true,
+                'recorded' => false,
+                'duplicate' => true,
+                'message' => 'Reading sudah ada untuk timestamp ini — dilewati.',
+            ]);
+        }
+
         // ============================================
-        // LOGIKA UTAMA: Dapatkan atau buat sesi proses (katup terbuka)
+        // LOGIKA UTAMA: Dapatkan atau buat sesi proses (katup terbuka / logging)
         // ============================================
         $session = $this->processSessionService->getOrCreateSession($timestamp, $machine->id);
 

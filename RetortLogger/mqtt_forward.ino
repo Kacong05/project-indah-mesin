@@ -22,9 +22,9 @@ extern float mvSimEffectivePercent();
 
 #define K_FWD_PATH "fwd_path"
 #define K_FWD_OFF  "fwd_off"
-#define FWD_BURST_LIVE    5    // baris per tick saat live (≈1 dtk)
-#define FWD_BURST_CATCHUP 50   // baris per tick saat mengejar backlog
-#define FWD_SAVE_EVERY    5    // simpan offset ke NVS tiap N baris sukses
+#define FWD_BURST_LIVE    1     // live: 1 baris per tick (= 1 detik)
+#define FWD_BURST_CATCHUP 30    // catch-up: kirim berurutan, bridge 1 worker
+#define FWD_SAVE_EVERY    1     // simpan offset tiap baris sukses (anti replay duplikat)
 
 static char     gFwdPath[48] = {0};
 static uint32_t gFwdOffset   = 0;

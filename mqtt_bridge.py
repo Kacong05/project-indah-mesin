@@ -11,6 +11,7 @@ Butuh:
 import json
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -25,7 +26,8 @@ MQTT_USER = os.getenv("MQTT_USER", "")
 MQTT_PASS = os.getenv("MQTT_PASS", "")
 
 _POST_QUEUE: queue.Queue = queue.Queue(maxsize=8000)
-_POST_WORKERS = int(os.getenv("MQTT_BRIDGE_WORKERS", "4"))
+# Default 1 worker: insert berurutan (recorded_at naik) → sesi & history akurat.
+_POST_WORKERS = int(os.getenv("MQTT_BRIDGE_WORKERS", "1"))
 
 
 def _read_laravel_env() -> dict:
@@ -46,7 +48,6 @@ def _read_laravel_env() -> dict:
 
 _laravel_env = _read_laravel_env()
 
-# Default port 8080 (deploy.sh APP_PORT); override via Environment= di systemd
 _default_api = "http://127.0.0.1:8080/api/sensor"
 API_URL = os.getenv("API_URL") or _laravel_env.get("MQTT_BRIDGE_API_URL") or _default_api
 SENSOR_API_TOKEN = os.getenv("SENSOR_API_TOKEN") or _laravel_env.get("SENSOR_API_TOKEN", "")
@@ -94,6 +95,44 @@ def _to_bool(value) -> bool:
     return bool(value)
 
 
+def _normalize_recorded_at(raw: dict) -> str | None:
+    """
+    Normalisasi timestamp ESP → ISO-8601 +07:00.
+    WAJIB ada agar recorded_at di DB = waktu ukur mesin, bukan now() server
+    (now() saat catch-up = banyak baris timestamp identik + detik hilang).
+    """
+    iso = raw.get("iso")
+    if iso and "T" in str(iso):
+        return str(iso).strip()
+
+    ts = raw.get("ts")
+    if not ts:
+        return None
+
+    ts = str(ts).strip()
+    if "T" in ts and re.match(r"\d{4}-\d{2}-\d{2}T", ts):
+        return ts
+
+    # Human ESP/CSV: M/D/YYYY h:mm:ssAM
+    m = re.match(
+        r"^(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM|am|pm)?$",
+        ts,
+    )
+    if m:
+        mo, d, y, h, mi, s, ampm = m.groups()
+        h = int(h)
+        if ampm and ampm.upper() == "PM" and h < 12:
+            h += 12
+        elif ampm and ampm.upper() == "AM" and h == 12:
+            h = 0
+        return (
+            f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+            f"T{h:02d}:{int(mi):02d}:{int(s):02d}+07:00"
+        )
+
+    return None
+
+
 def _post_worker(worker_id: int):
     """Worker thread: POST ke Laravel tanpa mem-block loop MQTT."""
     while True:
@@ -102,7 +141,7 @@ def _post_worker(worker_id: int):
             r = requests.post(API_URL, json=payload, headers=api_headers(), timeout=10)
             if r.status_code == 200:
                 body = r.json() if r.content else {}
-                if body.get("recorded", True):
+                if body.get("recorded", True) and not body.get("duplicate"):
                     sv = payload.get("sv")
                     sv_txt = f" | SV {sv}°C" if sv is not None else ""
                     ts = payload.get("recorded_at", "")
@@ -137,6 +176,11 @@ def on_message(client, userdata, msg):
     else:
         process_status = "logging" if logging else phase
 
+    recorded_at = _normalize_recorded_at(raw)
+    if not recorded_at:
+        print(f"[WARN] {esp_id} dibuang — field iso/ts tidak valid (data tak masuk DB)")
+        return
+
     payload = {
         "machine_code": esp_id,
         "temperature": _to_float(raw.get("actual", raw.get("temperature", 0))),
@@ -145,11 +189,8 @@ def on_message(client, userdata, msg):
         "pressure": _to_float(raw.get("pressure", 0)),
         "process_status": process_status,
         "logging": logging,
+        "recorded_at": recorded_at,
     }
-
-    recorded_at = raw.get("iso") or raw.get("ts")
-    if recorded_at:
-        payload["recorded_at"] = recorded_at
 
     if not SENSOR_API_TOKEN:
         print("[ERROR] SENSOR_API_TOKEN belum diset — data tidak dikirim ke Laravel")
@@ -168,7 +209,7 @@ def main():
     print(f"  MQTT   : {MQTT_HOST}:{MQTT_PORT}  topic={MQTT_TOPIC}")
     print(f"  API    : {API_URL}")
     print(f"  Auth   : MQTT={'ya' if MQTT_USER else 'tidak'}, API token={'ya' if SENSOR_API_TOKEN else 'TIDAK'}")
-    print(f"  Workers: {_POST_WORKERS} thread POST async")
+    print(f"  Workers: {_POST_WORKERS} thread POST (1 = urutan recorded_at terjaga)")
     print("  Ctrl+C untuk berhenti.\n")
 
     for i in range(_POST_WORKERS):
