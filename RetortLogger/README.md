@@ -261,6 +261,23 @@ PostgreSQL  (tabel sensor_readings)
 | `run` | bool | Status controller (`true` = RUN, `false` = STOP) |
 | `logging` | bool | `true` saat sesi perekaman aktif (auto-trigger) |
 
+### Simulasi MV (testing)
+
+Untuk menguji alur penyimpanan data ke Laravel saat MV hardware masih `0`:
+
+1. Pastikan `USE_MV_SIMULATION true` di `RetortLogger.ino`.
+2. Dashboard ESP → kartu **MV Simulasi** → **Nyalakan Simulasi MV**.
+3. MV laporan ke MQTT/API dipaksa **50%**; trigger perekaman ikut aktif.
+4. MV hardware asli tetap dibaca (`mvReal` di `/api/status`).
+
+**Matikan permanen** saat trigger MV asli dipakai:
+
+```cpp
+#define USE_MV_SIMULATION false   // RetortLogger.ino, lalu reflash
+```
+
+Tombol dashboard & `POST /api/mv-sim` hilang dari firmware. State ON/OFF disimpan di NVS (`mv_sim`).
+
 ### Pemetaan oleh `mqtt_bridge.py` → `/api/sensor`
 
 | API Laravel | Sumber dari payload ESP |

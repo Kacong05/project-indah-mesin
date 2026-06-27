@@ -170,7 +170,7 @@ static void updateAutoTrigger() {
   if (!USE_AUTO_TRIGGER) return;
 
   static uint8_t stopCnt = 0;
-  bool running = state.ctrlRun || (gMvRaw > MV_ON_RAW);
+  bool running = mvSimProcessRunning(state.ctrlRun, gMvRaw);
 
   if (running) {
     stopCnt = 0;

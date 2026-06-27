@@ -21,6 +21,8 @@
 #define USE_RTC         true   // DS3231M RTC
 #define USE_SD          true   // MicroSD logging
 #define USE_OTA         false  // OTA update
+// Simulasi MV via tombol dashboard — set false + reflash saat pakai trigger MV asli
+#define USE_MV_SIMULATION true
 
 // --- Pin Assignments ---
 #define PIN_RTC_SDA     8
@@ -207,6 +209,13 @@ void setupWebDashboard();
 void setupWebSettings();
 void setupWebLogs();
 void setupWebStorage();
+void mvSimLoad();
+void mvSimSetActive(bool on);
+bool mvSimIsAvailable();
+bool mvSimIsActive();
+float mvSimEffectivePercent();
+uint16_t mvSimEffectiveRaw(uint16_t hardwareRaw);
+bool mvSimProcessRunning(bool ctrlRun, uint16_t hardwareMvRaw);
 
 // ============================================================
 //  Task logger: akuisisi Modbus + tulis SD, presisi 1 detik.
@@ -253,6 +262,7 @@ void setup() {
   state.logging       = false;
 
   loadConfig();
+  mvSimLoad();
   state.setpoint = cfg.targetTemp;
 
   setupWiFiAP();

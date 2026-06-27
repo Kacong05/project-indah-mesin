@@ -95,7 +95,7 @@ void mqttPublishState() {
     "\"actual\":%.1f,\"setting\":%.1f,\"mv\":%.1f,"
     "\"run\":%s,\"logging\":%s}",
     cfg.machineId, gLastTs, phaseName(state.phase),
-    state.temperature, state.setpoint, state.mv,
+    state.temperature, state.setpoint, mvSimEffectivePercent(),
     state.ctrlRun ? "true" : "false",
     state.logging ? "true" : "false");
   mqtt.publish(cfg.mqttPubTopic, buf, false);

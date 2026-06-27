@@ -34,6 +34,11 @@ h1{font-size:19px;margin:0 0 14px}
 .c{background:#fff;border:1px solid #e3e3e3;padding:12px;border-radius:6px}
 .c small{color:#777;font-size:12px}
 .c .v{font-size:clamp(16px,4vw,19px);font-weight:700;margin-top:3px}
+.sim{border-color:#f59e0b;background:#fffbeb}
+.sim button{margin-top:8px;width:100%;padding:10px 8px;border:0;border-radius:6px;
+font-size:13px;font-weight:600;cursor:pointer;background:#f59e0b;color:#fff}
+.sim button.off{background:#6b7280}
+.sim small.hint{display:block;margin-top:6px;font-size:11px;color:#92400e;line-height:1.4}
 .ok{color:#16a34a}.er{color:#dc2626}.wr{color:#d97706}
 @media(max-width:640px){body{flex-direction:column}
 nav{width:100%;display:flex;flex-wrap:wrap}
@@ -58,6 +63,12 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 <div class="c"><small>MQTT</small><div class="v" id="mqtt">--</div></div>
 <div class="c"><small>Status</small><div class="v" id="phase">--</div></div>
 <div class="c"><small>Output MV</small><div class="v" id="mv">--</div></div>
+<div class="c sim" id="mvSimCard" style="display:none">
+<small>MV Simulasi</small>
+<div class="v" id="mvSim">OFF</div>
+<button type="button" id="mvSimBtn">Nyalakan Simulasi MV</button>
+<small class="hint" id="mvSimHint">MV hardware tetap dibaca; nilai laporan dipaksa 50% agar data masuk DB.</small>
+</div>
 <div class="c"><small>SD Card</small><div class="v" id="sd">--</div></div>
 </div>
 <p id="hint" style="font-size:12px;color:#555;line-height:1.5;margin:0 0 14px"></p>
@@ -85,6 +96,29 @@ document.getElementById('tph').textContent=d.phase||'--';
 var rec=document.getElementById('trec');rec.textContent=d.log?'● REC':(d.run?'RUN':'idle');
 var mv=document.getElementById('mv');mv.textContent=d.mv!=null?Number(d.mv).toFixed(1)+'%':'--';mv.className='v '+(d.mv>0?'wr':'');
 var s=document.getElementById('sd');s.textContent=d.sd?'OK':'N/A';s.className='v '+(d.sd?'ok':'er');
+if(d.mvSimAvail){
+var card=document.getElementById('mvSimCard');card.style.display='';
+var ms=document.getElementById('mvSim');
+var simOn=!!d.mvSim;
+ms.textContent=simOn?'ON (50%)':'OFF';
+ms.className='v '+(simOn?'wr':'ok');
+var btn=document.getElementById('mvSimBtn');
+btn.textContent=simOn?'Matikan Simulasi MV':'Nyalakan Simulasi MV';
+btn.className=simOn?'off':'';
+btn.onclick=function(){
+btn.disabled=true;
+fetch('/api/mv-sim',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},ah()),
+credentials:'same-origin',body:JSON.stringify({on:!simOn})})
+.then(function(r){if(r.status===401){sessionStorage.removeItem('st');location='/login';return null}return r.json()})
+.then(function(){btn.disabled=false;u();})
+.catch(function(){btn.disabled=false;});
+};
+if(d.mvReal!=null&&simOn){
+document.getElementById('mvSimHint').textContent='MV hardware: '+Number(d.mvReal).toFixed(1)+'% · laporan simulasi: 50%';
+}else{
+document.getElementById('mvSimHint').textContent='MV hardware tetap dibaca; nilai laporan dipaksa 50% agar data masuk DB.';
+}
+}
 var h=document.getElementById('hint');
 if(d.wifi&&d.mqtt){h.textContent='';}
 else if(!d.wifi){
@@ -122,7 +156,10 @@ void setupWebDashboard() {
     doc["phase"] = st;
     doc["temp"]  = state.temperature;
     doc["sp"]    = state.setpoint;
-    doc["mv"]    = state.mv;
+    doc["mv"]    = mvSimEffectivePercent();
+    doc["mvReal"]= state.mv;
+    doc["mvSim"] = mvSimIsActive();
+    doc["mvSimAvail"] = mvSimIsAvailable();
     doc["run"]   = state.ctrlRun;
     doc["sd"]    = state.sdReady;
     doc["log"]   = state.logging;
@@ -135,4 +172,29 @@ void setupWebDashboard() {
     serializeJson(doc, out);
     req->send(200, "application/json", out);
   });
+
+#if USE_MV_SIMULATION
+  server.on("/api/mv-sim", HTTP_POST, [](AsyncWebServerRequest* req) {},
+    NULL,
+    [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+      if (!isSessionValid(req)) {
+        req->send(401, "application/json", "{\"ok\":false}");
+        return;
+      }
+      StaticJsonDocument<64> in;
+      if (deserializeJson(in, data, len)) {
+        req->send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
+        return;
+      }
+      bool on = in["on"] | false;
+      mvSimSetActive(on);
+      StaticJsonDocument<96> out;
+      out["ok"]    = true;
+      out["mvSim"] = mvSimIsActive();
+      out["mv"]    = mvSimEffectivePercent();
+      String body;
+      serializeJson(out, body);
+      req->send(200, "application/json", body);
+    });
+#endif
 }

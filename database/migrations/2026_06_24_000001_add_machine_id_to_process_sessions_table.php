@@ -20,18 +20,20 @@ return new class extends Migration
             $table->index(['machine_id', 'status']);
         });
 
-        // Backfill dari sensor readings yang sudah terhubung ke sesi
-        DB::statement('
-            UPDATE process_sessions ps
-            SET machine_id = (
-                SELECT sr.machine_id
-                FROM sensor_readings sr
-                WHERE sr.process_session_id = ps.id
-                  AND sr.machine_id IS NOT NULL
-                LIMIT 1
-            )
-            WHERE ps.machine_id IS NULL
-        ');
+        // Backfill hanya bila kolom process_session_id sudah ada di sensor_readings
+        if (Schema::hasColumn('sensor_readings', 'process_session_id')) {
+            DB::statement('
+                UPDATE process_sessions ps
+                SET machine_id = (
+                    SELECT sr.machine_id
+                    FROM sensor_readings sr
+                    WHERE sr.process_session_id = ps.id
+                      AND sr.machine_id IS NOT NULL
+                    LIMIT 1
+                )
+                WHERE ps.machine_id IS NULL
+            ');
+        }
     }
 
     public function down(): void
