@@ -98,6 +98,34 @@ def _to_bool(value) -> bool:
     return bool(value)
 
 
+def _to_int_or_none(value):
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_ps(raw: dict) -> str | None:
+    ps = raw.get("ps")
+    if ps is not None and str(ps).strip() != "":
+        return str(ps).strip()
+    pat = _to_int_or_none(raw.get("pattern"))
+    step = _to_int_or_none(raw.get("step"))
+    if pat is not None or step is not None:
+        return f"{max(0, pat or 0)}-{max(0, step or 0):02d}"
+    return None
+
+
+def _format_timer(raw: dict, *keys) -> str | None:
+    for key in keys:
+        val = raw.get(key)
+        if val is not None and str(val).strip() != "":
+            return str(val).strip()
+    return None
+
+
 def _normalize_recorded_at(raw: dict) -> str | None:
     """
     Normalisasi timestamp ESP → ISO-8601 +07:00.
@@ -230,9 +258,11 @@ def on_message(client, userdata, msg):
         "process_status": process_status,
         "logging": logging,
         "recorded_at": recorded_at,
-        "ps": raw.get("ps"),
-        "timer_tot": raw.get("tot"),
-        "timer_stp": raw.get("stp"),
+        "ps": _format_ps(raw),
+        "pattern": _to_int_or_none(raw.get("pattern")),
+        "step": _to_int_or_none(raw.get("step")),
+        "timer_tot": _format_timer(raw, "tot", "timer_tot"),
+        "timer_stp": _format_timer(raw, "stp", "timer_stp"),
     }
 
     if not SENSOR_API_TOKEN:

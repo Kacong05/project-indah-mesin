@@ -122,15 +122,17 @@ void mqttPublishState() {
   if (!mqtt.connected()) return;
   char ps[8];
   tnlFormatPs(ps, sizeof(ps));
-  char buf[420];
+  char buf[460];
   snprintf(buf, sizeof(buf),
     "{\"id\":\"%s\",\"ts\":\"%s\",\"iso\":\"%s\",\"phase\":\"%s\","
     "\"actual\":%.1f,\"setting\":%.1f,\"mv\":%.1f,"
     "\"ps\":\"%s\",\"tot\":\"%s\",\"stp\":\"%s\","
+    "\"pattern\":%u,\"step\":%u,"
     "\"run\":%s,\"logging\":%s}",
     cfg.machineId, gLastTs, gLastIso, phaseName(state.phase),
     state.temperature, state.setpoint, mvSimEffectivePercent(),
     ps, state.totMs, state.stpMs,
+    (unsigned)state.pattern, (unsigned)state.step,
     state.ctrlRun ? "true" : "false",
     state.logging ? "true" : "false");
   mqtt.publish(cfg.mqttPubTopic, buf, false);

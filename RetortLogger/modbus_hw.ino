@@ -69,7 +69,15 @@ static void tnlSecondsToMsStr(int sec, char* out, size_t outLen) {
 // Mirror P/S, TOT, STP dari register program TNL (FC04 0x03FB..0x03FF).
 static void tnlUpdateProgramMirror() {
   uint16_t prog[TNL_PROG_N];
-  if (!mbRead(0x04, TNL_REG_PROG_BLOCK, TNL_PROG_N, prog)) return;
+  if (!mbRead(0x04, TNL_REG_PROG_BLOCK, TNL_PROG_N, prog)) {
+    if (!state.ctrlRun) {
+      state.pattern = 0;
+      state.step    = 0;
+      strncpy(state.totMs, "00:00", sizeof(state.totMs));
+      strncpy(state.stpMs, "00:00", sizeof(state.stpMs));
+    }
+    return;
+  }
 
   state.pattern = (uint8_t)prog[0];
   state.step    = (uint8_t)prog[1];

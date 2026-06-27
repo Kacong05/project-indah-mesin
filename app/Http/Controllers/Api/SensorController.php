@@ -32,6 +32,8 @@ class SensorController extends Controller
             'recorded_at' => 'required|date',
             'logging' => 'nullable|boolean',
             'ps' => 'nullable|string|max:16',
+            'pattern' => 'nullable|integer|min:0|max:99',
+            'step' => 'nullable|integer|min:0|max:99',
             'timer_tot' => 'nullable|string|max:16',
             'timer_stp' => 'nullable|string|max:16',
         ]);
@@ -55,7 +57,13 @@ class SensorController extends Controller
             'pressure' => (float) $validated['pressure'],
             'process_status' => $validated['process_status'] ?? 'idle',
             'recorded_at' => $timestamp->copy()->timezone('Asia/Jakarta')->toIso8601String(),
-            'ps' => $validated['ps'] ?? null,
+            'ps' => $this->normalizePsField(
+                $validated['ps'] ?? null,
+                $validated['pattern'] ?? null,
+                $validated['step'] ?? null
+            ),
+            'pattern' => isset($validated['pattern']) ? (int) $validated['pattern'] : null,
+            'step' => isset($validated['step']) ? (int) $validated['step'] : null,
             'timer_tot' => $validated['timer_tot'] ?? null,
             'timer_stp' => $validated['timer_stp'] ?? null,
         ];
@@ -166,5 +174,19 @@ class SensorController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /** Normalisasi P/S dari field ps atau fallback pattern/step (MQTT lama). */
+    private function normalizePsField(?string $ps, ?int $pattern, ?int $step): ?string
+    {
+        if (is_string($ps) && $ps !== '') {
+            return $ps;
+        }
+
+        if ($pattern !== null || $step !== null) {
+            return sprintf('%d-%02d', max(0, $pattern ?? 0), max(0, $step ?? 0));
+        }
+
+        return null;
     }
 }

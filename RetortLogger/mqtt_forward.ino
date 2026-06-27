@@ -186,12 +186,19 @@ static bool fwdBuildPayload(const char* line, char* out, size_t outLen,
   strncpy(isoOut, iso, isoLen - 1);
   isoOut[isoLen - 1] = '\0';
 
+  char ps[8];
+  tnlFormatPs(ps, sizeof(ps));
+
   snprintf(out, outLen,
     "{\"id\":\"%s\",\"iso\":\"%s\",\"phase\":\"%s\","
     "\"actual\":%s,\"setting\":%s,\"mv\":%s,"
+    "\"ps\":\"%s\",\"tot\":\"%s\",\"stp\":\"%s\","
+    "\"pattern\":%u,\"step\":%u,"
     "\"run\":%s,\"logging\":%s}",
     cfg.machineId, iso, phase,
     actual, setting, mvStr,
+    ps, state.totMs, state.stpMs,
+    (unsigned)state.pattern, (unsigned)state.step,
     run ? "true" : "false",
     logging ? "true" : "false");
   return true;

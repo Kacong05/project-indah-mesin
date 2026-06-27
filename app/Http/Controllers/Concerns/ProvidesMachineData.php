@@ -89,11 +89,11 @@ trait ProvidesMachineData
             'dataIntervalMs' => null,
             'sv' => round((float) ($live['sv'] ?? 121.1), 1),
             'mv' => $mv,
-            'processStep' => '-',
-            'processStepCode' => '00',
+            'processStep' => $this->resolvePsDisplay($live),
+            'processStepCode' => $this->resolvePsCode($live),
             'processPhase' => $processPhase,
-            'timerTot' => '00:00',
-            'timerStp' => '00:00',
+            'timerTot' => $this->resolveTimerDisplay($live, 'timer_tot'),
+            'timerStp' => $this->resolveTimerDisplay($live, 'timer_stp'),
             'liveRecordedAt' => $live['recorded_at'] ?? null,
         ], $live);
     }
@@ -285,24 +285,54 @@ trait ProvidesMachineData
             return $stats;
         }
 
+        $stats['processStep'] = $this->resolvePsDisplay($live);
+        $stats['processStepCode'] = $this->resolvePsCode($live);
+        $stats['timerTot'] = $this->resolveTimerDisplay($live, 'timer_tot');
+        $stats['timerStp'] = $this->resolveTimerDisplay($live, 'timer_stp');
+
+        return $stats;
+    }
+
+    protected function resolvePsDisplay(array $live): string
+    {
         $ps = $live['ps'] ?? null;
 
         if (is_string($ps) && $ps !== '' && $ps !== '0-00') {
-            $stats['processStep'] = $ps;
-            if (preg_match('/-(\d{1,2})$/', $ps, $m)) {
-                $stats['processStepCode'] = sprintf('%02d', (int) $m[1]);
-            }
+            return $ps;
         }
 
-        if (array_key_exists('timer_tot', $live) && $live['timer_tot'] !== null && $live['timer_tot'] !== '') {
-            $stats['timerTot'] = (string) $live['timer_tot'];
+        $pat = isset($live['pattern']) ? (int) $live['pattern'] : 0;
+        $step = isset($live['step']) ? (int) $live['step'] : 0;
+
+        if ($pat > 0 || $step > 0) {
+            return sprintf('%d-%02d', $pat, $step);
         }
 
-        if (array_key_exists('timer_stp', $live) && $live['timer_stp'] !== null && $live['timer_stp'] !== '') {
-            $stats['timerStp'] = (string) $live['timer_stp'];
+        return '-';
+    }
+
+    protected function resolvePsCode(array $live): string
+    {
+        $ps = $this->resolvePsDisplay($live);
+
+        if ($ps === '-' || $ps === 'Stop') {
+            return '00';
         }
 
-        return $stats;
+        if (preg_match('/-(\d{1,2})$/', $ps, $m)) {
+            return sprintf('%02d', (int) $m[1]);
+        }
+
+        return '00';
+    }
+
+    protected function resolveTimerDisplay(array $live, string $key): string
+    {
+        if (array_key_exists($key, $live) && $live[$key] !== null && $live[$key] !== '') {
+            return (string) $live[$key];
+        }
+
+        return '00:00';
     }
 
     /** Format menit:detik (TOT M:S / STP M:S) seperti software existing. */
