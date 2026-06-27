@@ -90,7 +90,7 @@ export default function MonitoringPanel({
                 <div className="flex items-center gap-2 flex-wrap">
                     {valveClosed && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-800">
-                            Katup tertutup
+                            Katup tertutup — PV/SV live
                         </span>
                     )}
                     {!valveClosed && displayMode === 'paused' && (

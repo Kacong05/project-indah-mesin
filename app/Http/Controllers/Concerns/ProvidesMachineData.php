@@ -49,6 +49,10 @@ trait ProvidesMachineData
         $currentLatest = $currentProcessReadings->last() ?? $latestReading;
 
         if (! $currentLatest) {
+            if ($displayMode === 'active' && is_array($live)) {
+                return $this->buildLiveMonitoringStats($machine, $live, $totalDataToday, $valveClosed, $isOnline);
+            }
+
             return $this->buildIdleMonitoringStats($machine, $latestReading, $totalDataToday);
         }
 
@@ -62,12 +66,24 @@ trait ProvidesMachineData
 
         $dataIntervalMs = $this->resolveDataIntervalMs($machine);
 
-        $showLastValues = $isRunning || $valveClosed;
+        $pv = $isRunning ? (float) $currentLatest->temperature : 0;
+        $sv = $this->formatSvForDisplay($currentLatest, $isRunning);
+        $mv = 0.0;
+
+        // Katup tertutup: PV/SV/MV live dari cache ESP, timer & step tetap dari DB terakhir.
+        if ($valveClosed && is_array($live)) {
+            $pv = (float) $live['temperature'];
+            $sv = round((float) ($live['sv'] ?? 121.1), 1);
+            $mv = (float) ($live['mv'] ?? 0);
+            $lastUpdate = isset($live['recorded_at'])
+                ? Carbon::parse($live['recorded_at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
+                : $lastUpdate;
+        }
 
         return [
             'displayMode' => $displayMode,
             'valveClosed' => $valveClosed,
-            'currentTemperature' => $showLastValues ? (float) $currentLatest->temperature : 0,
+            'currentTemperature' => $pv,
             'machineStatus' => $machine->status,
             'isOnline' => $isOnline,
             'isLogging' => $this->isLoggingStatus($currentLatest->process_status),
@@ -75,15 +91,45 @@ trait ProvidesMachineData
             'totalDataToday' => $totalDataToday,
             'lastUpdate' => $lastUpdate,
             'dataIntervalMs' => $dataIntervalMs,
-            'sv' => $valveClosed
-                ? round((float) ($currentLatest->sv ?? 121.1), 1)
-                : $this->formatSvForDisplay($currentLatest, $isRunning),
-            'mv' => 0,
+            'sv' => $sv,
+            'mv' => $mv,
             'processStep' => $this->formatProcessStepLabel($currentLatest->process_status),
             'processStepCode' => $this->formatProcessStepCode($currentLatest->process_status),
             'processPhase' => $processPhase,
             'timerTot' => $timers['timerTot'],
             'timerStp' => $timers['timerStp'],
+        ];
+    }
+
+    /**
+     * Mesin online, belum ada reading DB — PV/SV/grafik dari cache live saja.
+     */
+    protected function buildLiveMonitoringStats($machine, array $live, int $totalDataToday, bool $valveClosed, bool $isOnline): array
+    {
+        $lastUpdate = isset($live['recorded_at'])
+            ? Carbon::parse($live['recorded_at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
+            : 'N/A';
+
+        $processPhase = $this->normalizePhase($live['process_status'] ?? 'idle');
+
+        return [
+            'displayMode' => 'active',
+            'valveClosed' => $valveClosed,
+            'currentTemperature' => (float) $live['temperature'],
+            'machineStatus' => $machine->status,
+            'isOnline' => $isOnline,
+            'isLogging' => false,
+            'runState' => 'stop',
+            'totalDataToday' => $totalDataToday,
+            'lastUpdate' => $lastUpdate,
+            'dataIntervalMs' => null,
+            'sv' => round((float) ($live['sv'] ?? 121.1), 1),
+            'mv' => (float) ($live['mv'] ?? 0),
+            'processStep' => $this->formatProcessStepLabel($live['process_status'] ?? 'idle'),
+            'processStepCode' => $this->formatProcessStepCode($live['process_status'] ?? 'idle'),
+            'processPhase' => $processPhase,
+            'timerTot' => '00:00',
+            'timerStp' => '00:00',
         ];
     }
 
@@ -335,11 +381,7 @@ trait ProvidesMachineData
         }
 
         $dbReadings = $this->getCurrentProcessReadings($machine);
-        $live = MonitoringLiveCache::get($machine->id);
-        $valveClosed = MonitoringLiveCache::isPreview($live);
-
-        // Katup tertutup: grafik tetap di titik terakhir proses (tanpa buffer live).
-        $buffer = $valveClosed ? [] : MonitoringLiveCache::getChartBuffer($machine->id);
+        $buffer = MonitoringLiveCache::getChartBuffer($machine->id);
         $merged = $this->mergeChartPoints($dbReadings, $buffer);
 
         if ($merged->isEmpty()) {
