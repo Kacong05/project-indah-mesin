@@ -7,6 +7,7 @@ extern RetortState    state;
 extern AsyncWebServer server;
 extern bool sdLock(uint32_t ms);
 extern void sdUnlock();
+void sendCsvDownload(AsyncWebServerRequest* req, const String& p);
 
 static const char STOR_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -21,7 +22,7 @@ nav a:hover{background:#374151;color:#fff}
 nav a.a{background:#374151;color:#fff;border-left:3px solid #2563eb}
 .m{flex:1;min-width:0;padding:18px}
 h1{font-size:19px;margin:0 0 12px}
-.warn{background:#fef3c7;color:#92400e;padding:10px;border-radius:4px;margin-bottom:12px;display:none}
+.wr{background:#fef3c7;color:#92400e;padding:10px;border-radius:4px;margin-bottom:12px;display:none;font-size:14px}
 .cap{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .ci{background:#fff;border:1px solid #e3e3e3;padding:8px 14px;border-radius:4px;flex:1 1 90px}
 .ci small{color:#777;font-size:12px}
@@ -57,7 +58,8 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 </nav>
 <div class="m">
 <h1>Log &amp; Storage</h1>
-<div class="warn" id="w">SD Card tidak tersedia.</div>
+<div class="wr" id="w">SD Card tidak tersedia.</div>
+<div class="wr" id="wb" style="background:#dbeafe;color:#1e40af">Memuat daftar file…</div>
 <button class="dlt" id="bl" onclick="location='/api/dl?latest=1&t='+tok()">Download CSV Terbaru</button>
 <div class="cap" id="ca"></div>
 <div class="path" id="pb"></div>
@@ -83,9 +85,12 @@ function fmtName(n){var m=/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.csv$/i.
 return m?m[3]+'-'+m[2]+'-'+m[1]+' '+m[4]+':'+m[5]+':'+m[6]:n;}
 function go(p){
 cp=p;
+document.getElementById('wb').style.display='block';
 fetch('/api/stor?path='+encodeURIComponent(p),{headers:ah(),credentials:'same-origin'}).then(function(r){
 if(r.status==401){location='/login';return null}return r.json()
-}).then(function(d){if(!d)return;
+}).then(function(d){document.getElementById('wb').style.display='none';if(!d)return;
+if(d.busy){document.getElementById('wb').textContent='SD sibuk, coba lagi…';
+document.getElementById('wb').style.display='block';setTimeout(function(){go(p);},800);return;}
 if(!d.sd){document.getElementById('w').style.display='block';
 document.getElementById('bl').style.display='none';return;}
 var ca=document.getElementById('ca');ca.textContent='';
@@ -126,7 +131,7 @@ var t3=document.createElement('td');
 if(!f.dir){
 var fp=p+(p.endsWith('/')?'':'/')+f.name;
 var db=document.createElement('button');db.className='dl';db.textContent='DL';
-db.addEventListener('click',function(){location='/api/stor/dl?path='+encodeURIComponent(fp)+'&t='+tok();});
+db.addEventListener('click',function(){location='/api/dl?path='+encodeURIComponent(fp)+'&t='+tok();});
 t3.appendChild(db);
 var rb=document.createElement('button');rb.className='rm';rb.textContent='Del';
 rb.addEventListener('click',function(){sm(fp,f.name);});
@@ -178,7 +183,10 @@ void setupWebStorage() {
       (unsigned long long)(tot - usd));
     String json = cap;
 
-    if (!sdLock(600)) { req->send(200, "application/json", json + "]}"); return; }
+    if (!sdLock(1500)) {
+      req->send(503, "application/json", "{\"sd\":true,\"busy\":true}");
+      return;
+    }
     File dir = SD.open(path);
     bool first = true;
     if (dir && dir.isDirectory()) {
@@ -206,14 +214,10 @@ void setupWebStorage() {
   });
 
   server.on("/api/stor/dl", HTTP_GET, [](AsyncWebServerRequest* req) {
-    if (!isSessionValid(req)) { req->send(401, "text/plain", "No"); return; }
+    if (!isSessionValid(req)) { req->send(401, "text/plain", "Unauthorized"); return; }
 #if USE_SD
-    if (!state.sdReady) { req->send(503, "text/plain", "SD err"); return; }
     if (!req->hasParam("path")) { req->send(400, "text/plain", "No path"); return; }
-    String p = req->getParam("path")->value();
-    if (p.indexOf("..") >= 0) { req->send(403, "text/plain", "Forbidden"); return; }
-    if (!SD.exists(p)) { req->send(404, "text/plain", "Not found"); return; }
-    req->send(SD, p, "application/octet-stream", true);
+    sendCsvDownload(req, req->getParam("path")->value());
 #else
     req->send(503, "text/plain", "SD disabled");
 #endif

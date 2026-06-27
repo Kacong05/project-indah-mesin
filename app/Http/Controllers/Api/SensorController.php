@@ -28,6 +28,7 @@ class SensorController extends Controller
             'pressure' => 'required|numeric',
             'process_status' => 'nullable|string',
             'recorded_at' => 'nullable|date',
+            'logging' => 'nullable|boolean',
         ]);
 
         $machine = RetortMachine::where('machine_code', $validated['machine_code'])->first();
@@ -46,8 +47,12 @@ class SensorController extends Controller
         // agar klien lama tetap kompatibel.
         // ============================================
         $mv = isset($validated['mv']) ? (float) $validated['mv'] : null;
+        $logging = (bool) ($validated['logging'] ?? false);
 
-        if ($mv !== null && $mv <= 0) {
+        // Simpan bila MV > 0 ATAU sesi perekaman aktif (logging=true dari ESP).
+        // MV=0 sesaat di fase holding tidak boleh membuat detik hilang di web
+        // selama SD lokal tetap merekam baris tersebut.
+        if ($mv !== null && $mv <= 0 && ! $logging) {
             $machine->update([
                 'last_heartbeat_at' => now(),
                 'status' => RetortMachine::STATUS_STANDBY,

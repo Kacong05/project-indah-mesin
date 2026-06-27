@@ -55,6 +55,16 @@ void getTimestampFile(char* buf, size_t len) {
            now.hour(), now.minute(), now.second());
 }
 
+// ISO-8601 dengan offset WIB (+07:00) agar recorded_at di server akurat &
+// tak ambigu. Dipakai untuk payload MQTT (live & replay store-and-forward).
+void getTimestampIso(char* buf, size_t len) {
+  if (!rtcOk) { snprintf(buf, len, "1970-01-01T00:00:00+07:00"); return; }
+  DateTime now = rtcModule.now();
+  snprintf(buf, len, "%04d-%02d-%02dT%02d:%02d:%02d+07:00",
+           now.year(), now.month(), now.day(),
+           now.hour(), now.minute(), now.second());
+}
+
 #else
 
 void setupRTC() {}
@@ -65,6 +75,9 @@ void getTimestamp(char* buf, size_t len) {
 }
 void getTimestampFile(char* buf, size_t len) {
   snprintf(buf, len, "UP_%010lu", millis() / 1000);
+}
+void getTimestampIso(char* buf, size_t len) {
+  snprintf(buf, len, "1970-01-01T00:00:00+07:00");
 }
 
 #endif

@@ -57,6 +57,8 @@ simulasi akan menimpa data nyata dari controller.
 > **TNL-13 → board A+**, **TNL-14 → board B−**. Jika tidak ada komunikasi,
 > tukar A+↔B− di terminal RS485 board.
 
+biru a
+coklat -
 ---
 
 ## Sumber Data (Autonics TNL-P46RR-RS-035)
@@ -122,6 +124,41 @@ buka/tutup file CSV dikerjakan `loggerTask` agar seluruh I/O SD satu konteks.
 
 ---
 
+## Store-and-Forward MQTT (anti kehilangan data saat jaringan putus)
+
+Flag: `USE_STORE_FORWARD` (default `true`) di `RetortLogger.ino`. Modul: `mqtt_forward.ino`.
+
+**Masalah:** publish MQTT biasa hanya mengirim *state saat ini*. Bila WiFi/MQTT
+putus 2 menit, 2 menit data **tidak pernah sampai ke database** (walau aman di SD).
+
+**Solusi:** MQTT mengirim **dari log SD**, bukan dari RAM:
+
+1. Tiap baris CSV sudah berisi `ISO` (timestamp asli) + `Phase`, `MV`, `Run`, `Logging`.
+2. Forwarder menyimpan **offset byte "sudah terkirim"** per file di NVS.
+3. **Tersambung & caught-up** → kirim baris terbaru (live, 1 detik).
+4. **Putus** → offset diam, backlog menumpuk di SD.
+5. **Reconnect** → kirim backlog cepat (≤30 baris/detik) dengan **timestamp asli**
+   sampai mengejar live. `mqtt_bridge.py` meneruskan `iso` → `recorded_at`, jadi
+   data susulan masuk ke **sesi & urutan waktu yang benar** (bukan menumpuk di
+   waktu reconnect).
+6. **Idle** (tak ada proses & sudah caught-up) → kirim heartbeat status agar mesin
+   tetap terdeteksi ONLINE. Saat sedang logging, heartbeat ditahan agar tak ada
+   reading ganda berstempel waktu server.
+
+Tahan **reboot**: offset di NVS, jadi baris yang belum terkirim sebelum mati listrik
+tetap dikirim setelah nyala kembali.
+
+**Batas yang diketahui:**
+- Gate API hanya menyimpan saat `MV > 0` (idle/ambient sengaja tak disimpan). Saat
+  fase holding MV bisa 0 sesaat → baris itu di-*drop* server (perilaku eksisting).
+  Gunakan **Simulasi MV** saat testing agar semua baris tersimpan.
+- Rotasi file di 5 MB (~puluhan jam) meninggalkan sisa file lama yang belum
+  terkirim; sangat jarang pada operasi normal.
+- Resume setelah crash bisa mengirim ulang ≤10 baris terakhir (interval simpan
+  offset) → kemungkinan duplikat kecil; dipilih demi **tidak ada data hilang**.
+
+---
+
 ## Output CSV
 
 File `/retort/YYYYMMDD_HHMMSS.csv` (nama = waktu mulai sesi, 24 jam). Format ini
@@ -130,12 +167,15 @@ bisa menampilkan **file terbaru di atas** cukup dengan sort desc, dan nama file
 ditampilkan rapi sebagai `DD-MM-YYYY HH:MM:SS`. Isi kolom:
 
 ```
-Tanggal Jam,Actual,Setting
-1/16/2026 5:02:14PM,97.0,121.2
+Tanggal Jam,Actual,Setting,ISO,Phase,MV,Run,Logging
+1/16/2026 5:02:14PM,97.0,121.2,2026-01-16T17:02:14+07:00,HOLDING,50.0,1,1
 ```
 
-> Kolom **Tanggal Jam** di dalam CSV tetap format 12 jam (`M/D/YYYY h:mm:ssPM`)
-> agar cocok dengan laporan Indah Mesin; yang berubah hanya **nama file**.
+> Kolom **Tanggal Jam** (12 jam, `M/D/YYYY h:mm:ssPM`) + **Actual** + **Setting**
+> dipertahankan agar cocok dengan laporan Indah Mesin & pembaca lama. Kolom
+> tambahan (`ISO`, `Phase`, `MV`, `Run`, `Logging`) dipakai **store-and-forward
+> MQTT** untuk merekonstruksi payload identik dengan publish live (termasuk
+> `recorded_at` dari `ISO`). Yang berubah pada nama file hanya formatnya.
 
 Tiap sesi perekaman membuat file baru (lihat *auto-trigger* di atas).
 
@@ -241,6 +281,7 @@ PostgreSQL  (tabel sensor_readings)
 {
   "id": "RT-001",
   "ts": "6/27/2026 12:05:30AM",
+  "iso": "2026-06-27T00:05:30+07:00",
   "phase": "HOLDING",
   "actual": 121.3,
   "setting": 121.0,
@@ -253,7 +294,8 @@ PostgreSQL  (tabel sensor_readings)
 | Field ESP | Tipe | Keterangan |
 |-----------|------|------------|
 | `id` | string | Nomor mesin (= `machine_code` di Laravel, default `RT-001`) |
-| `ts` | string | Timestamp dari RTC |
+| `ts` | string | Timestamp RTC (12 jam, untuk tampilan) |
+| `iso` | string | Timestamp ISO-8601 + offset WIB → dipetakan ke `recorded_at` (store-and-forward) |
 | `phase` | string | `IDLE` / `HEATING` / `HOLDING` / `COOLING` |
 | `actual` | float | PV (suhu aktual) dari TNL |
 | `setting` | float | SV (setpoint) dari TNL |
@@ -286,7 +328,8 @@ Tombol dashboard & `POST /api/mv-sim` hilang dari firmware. State ON/OFF disimpa
 | `temperature` | `actual` |
 | `sv` | `setting` |
 | `pressure` | `pressure` (TNL tak punya → `0`) |
-| `process_status` | `logging ? "logging" : phase.lower()` |
+| `process_status` | fase asli bila bermakna (`heating`/`holding`/`sterilizing`/`cooling`); selain itu `logging ? "logging" : phase` |
+| `recorded_at` | `iso` (fallback `ts`) — timestamp asli ESP, kunci akurasi store-and-forward |
 
 > `machine_code` **wajib sudah ada** di tabel `retort_machines` (default seeder
 > `RT-001`), jika tidak API balas `422`.

@@ -10,7 +10,9 @@ Butuh:
 
 import json
 import os
+import queue
 import sys
+import threading
 import time
 
 import paho.mqtt.client as mqtt
@@ -21,6 +23,9 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "retort/data")
 MQTT_USER = os.getenv("MQTT_USER", "")
 MQTT_PASS = os.getenv("MQTT_PASS", "")
+
+_POST_QUEUE: queue.Queue = queue.Queue(maxsize=8000)
+_POST_WORKERS = int(os.getenv("MQTT_BRIDGE_WORKERS", "4"))
 
 
 def _read_laravel_env() -> dict:
@@ -81,6 +86,40 @@ def _to_float_or_none(value):
         return None
 
 
+def _to_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes")
+    return bool(value)
+
+
+def _post_worker(worker_id: int):
+    """Worker thread: POST ke Laravel tanpa mem-block loop MQTT."""
+    while True:
+        payload = _POST_QUEUE.get()
+        try:
+            r = requests.post(API_URL, json=payload, headers=api_headers(), timeout=10)
+            if r.status_code == 200:
+                body = r.json() if r.content else {}
+                if body.get("recorded", True):
+                    sv = payload.get("sv")
+                    sv_txt = f" | SV {sv}°C" if sv is not None else ""
+                    ts = payload.get("recorded_at", "")
+                    ts_txt = f" @ {ts}" if ts else ""
+                    print(
+                        f"[OK] {payload['machine_code']} | "
+                        f"{payload['temperature']}°C{sv_txt} | "
+                        f"{payload['process_status']}{ts_txt}"
+                    )
+            else:
+                print(f"[GAGAL] HTTP {r.status_code}: {r.text[:120]}")
+        except requests.RequestException as e:
+            print(f"[ERROR] POST ke Laravel: {e}")
+        finally:
+            _POST_QUEUE.task_done()
+
+
 def on_message(client, userdata, msg):
     try:
         raw = json.loads(msg.payload.decode("utf-8"))
@@ -89,38 +128,37 @@ def on_message(client, userdata, msg):
         return
 
     esp_id = raw.get("id") or raw.get("machine_code", "")
-    logging = raw.get("logging", False)
-    if isinstance(logging, str):
-        logging = logging.lower() in ("true", "1", "yes")
+    logging = _to_bool(raw.get("logging", False))
 
     phase = str(raw.get("phase", raw.get("process_status", "idle"))).lower()
-    process_status = "logging" if logging else phase
+    _MEANINGFUL_PHASES = {"heating", "holding", "sterilizing", "cooling"}
+    if phase in _MEANINGFUL_PHASES:
+        process_status = phase
+    else:
+        process_status = "logging" if logging else phase
 
     payload = {
         "machine_code": esp_id,
         "temperature": _to_float(raw.get("actual", raw.get("temperature", 0))),
-        # SV / setpoint dari controller (ESP kirim field "setting"). Nullable di API.
         "sv": _to_float_or_none(raw.get("setting", raw.get("sv"))),
-        # MV = output kontrol (%). API hanya menyimpan data saat MV > 0.
         "mv": _to_float(raw.get("mv", 0)),
         "pressure": _to_float(raw.get("pressure", 0)),
         "process_status": process_status,
+        "logging": logging,
     }
+
+    recorded_at = raw.get("iso") or raw.get("ts")
+    if recorded_at:
+        payload["recorded_at"] = recorded_at
 
     if not SENSOR_API_TOKEN:
         print("[ERROR] SENSOR_API_TOKEN belum diset — data tidak dikirim ke Laravel")
         return
 
     try:
-        r = requests.post(API_URL, json=payload, headers=api_headers(), timeout=10)
-        if r.status_code == 200:
-            sv = payload["sv"]
-            sv_txt = f" | SV {sv}°C" if sv is not None else ""
-            print(f"[OK] {esp_id} | {payload['temperature']}°C{sv_txt} | {payload['process_status']}")
-        else:
-            print(f"[GAGAL] HTTP {r.status_code}: {r.text[:120]}")
-    except requests.RequestException as e:
-        print(f"[ERROR] POST ke Laravel: {e}")
+        _POST_QUEUE.put_nowait(payload)
+    except queue.Full:
+        print("[ERROR] Antrian POST penuh — pesan MQTT dibuang (perbesar maxsize)")
 
 
 def main():
@@ -130,7 +168,12 @@ def main():
     print(f"  MQTT   : {MQTT_HOST}:{MQTT_PORT}  topic={MQTT_TOPIC}")
     print(f"  API    : {API_URL}")
     print(f"  Auth   : MQTT={'ya' if MQTT_USER else 'tidak'}, API token={'ya' if SENSOR_API_TOKEN else 'TIDAK'}")
+    print(f"  Workers: {_POST_WORKERS} thread POST async")
     print("  Ctrl+C untuk berhenti.\n")
+
+    for i in range(_POST_WORKERS):
+        t = threading.Thread(target=_post_worker, args=(i,), daemon=True)
+        t.start()
 
     try:
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)

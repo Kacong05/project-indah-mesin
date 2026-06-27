@@ -23,6 +23,9 @@
 #define USE_OTA         false  // OTA update
 // Simulasi MV via tombol dashboard — set false + reflash saat pakai trigger MV asli
 #define USE_MV_SIMULATION true
+// Store-and-forward: replay baris SD yang belum terkirim saat MQTT reconnect,
+// agar data tidak hilang selama jaringan putus. Set false untuk publish live saja.
+#define USE_STORE_FORWARD true
 
 // --- Pin Assignments ---
 #define PIN_RTC_SDA     8
@@ -95,6 +98,7 @@ SemaphoreHandle_t gSdMutex = NULL;     // lindungi akses SD lintas task/core
 volatile bool gLogStartReq = false;    // permintaan mulai rekam (dari web/MQTT)
 volatile bool gLogStopReq  = false;    // permintaan stop rekam
 char gLastTs[24] = "0/0/0000 0:00:00AM";  // timestamp cache (RTC dibaca di task)
+char gLastIso[26] = "1970-01-01T00:00:00+07:00";  // ISO cache (recorded_at akurat)
 
 // Ambil/lepas kunci SD. Timeout supaya task logger tak menunggu terlalu lama.
 bool sdLock(uint32_t ms) {
@@ -196,6 +200,7 @@ void setupRTC();
 void loopRTC();
 void getTimestamp(char* buf, size_t len);
 void getTimestampFile(char* buf, size_t len);
+void getTimestampIso(char* buf, size_t len);
 void setupSDLogger();
 void loopSDLogger();
 void sdLogEntry();
@@ -216,6 +221,11 @@ bool mvSimIsActive();
 float mvSimEffectivePercent();
 uint16_t mvSimEffectiveRaw(uint16_t hardwareRaw);
 bool mvSimProcessRunning(bool ctrlRun, uint16_t hardwareMvRaw);
+bool mqttIsConnected();
+bool mqttPublishRaw(const char* payload);
+const char* sdCurrentLogPath();
+void forwardSetup();
+void forwardTick();
 
 // ============================================================
 //  Task logger: akuisisi Modbus + tulis SD, presisi 1 detik.
@@ -228,6 +238,7 @@ static void loggerTask(void* pv) {
   for (;;) {
     // Refresh cache timestamp (RTC/I2C HANYA dibaca di task ini → tak ada race)
     getTimestamp(gLastTs, sizeof(gLastTs));
+    getTimestampIso(gLastIso, sizeof(gLastIso));
 #if USE_MODBUS
     loopModbus();      // 1x poll PV+SV (timeout pendek, tak pernah block lama)
 #endif
@@ -263,6 +274,7 @@ void setup() {
 
   loadConfig();
   mvSimLoad();
+  forwardSetup();
   state.setpoint = cfg.targetTemp;
 
   setupWiFiAP();

@@ -14,13 +14,19 @@ extern RetortState state;
 extern volatile bool gLogStartReq;
 extern volatile bool gLogStopReq;
 extern char gLastTs[24];
+extern char gLastIso[26];
 extern bool sdLock(uint32_t ms);
 extern void sdUnlock();
+extern float mvSimEffectivePercent();
+extern const char* phaseName(RetortPhase p);
 
 #define SD_LOG_DIR "/retort"
 
 static File logFile;
 static char logPath[48] = {0};
+
+// Path file log aktif (untuk store-and-forward MQTT). "" jika belum ada.
+const char* sdCurrentLogPath() { return logPath; }
 
 static void ensureDir() {
   if (!SD.exists(SD_LOG_DIR)) SD.mkdir(SD_LOG_DIR);
@@ -38,7 +44,9 @@ static void openNewLog() {
   logFile = SD.open(logPath, FILE_APPEND);
   if (logFile) {
     if (logFile.size() == 0) {
-      logFile.println(F("Tanggal Jam,Actual,Setting"));
+      // Kolom 1-3 (Tanggal Jam, Actual, Setting) dipertahankan agar kompatibel
+      // dengan pembaca lama; kolom tambahan dipakai store-and-forward MQTT.
+      logFile.println(F("Tanggal Jam,Actual,Setting,ISO,Phase,MV,Run,Logging"));
     }
     Serial.printf("[SD] Log: %s\n", logPath);
   }
@@ -52,6 +60,7 @@ void setupSDLogger() {
     return;
   }
   state.sdReady = true;
+  ensureDir();
   uint64_t t = SD.totalBytes();
   uint64_t u = SD.usedBytes();
   Serial.printf("[SD] OK. Total=%lluMB Free=%lluMB\n",
@@ -71,8 +80,13 @@ void loopSDLogger() {}
 // Tulis satu baris CSV. Dipanggil sdServiceLog (sudah memegang kunci SD).
 void sdLogEntry() {
   if (!state.sdReady || !logFile) return;
-  // CSV: Tanggal Jam, Actual, Setting
-  logFile.printf("%s,%.1f,%.1f\n", gLastTs, state.temperature, state.setpoint);
+  // CSV: Tanggal Jam, Actual, Setting, ISO, Phase, MV, Run, Logging
+  // ISO + Phase + MV + Run + Logging dipakai forwarder untuk merekonstruksi
+  // payload MQTT identik dengan publish live (recorded_at = ISO baris ini).
+  logFile.printf("%s,%.1f,%.1f,%s,%s,%.1f,%d,%d\n",
+                 gLastTs, state.temperature, state.setpoint,
+                 gLastIso, phaseName(state.phase), mvSimEffectivePercent(),
+                 state.ctrlRun ? 1 : 0, state.logging ? 1 : 0);
   logFile.flush();
   // Rotasi di 5MB
   if (logFile.size() > 5UL * 1024UL * 1024UL) {

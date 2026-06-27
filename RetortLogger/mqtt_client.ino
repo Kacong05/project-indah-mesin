@@ -9,6 +9,9 @@ extern AppConfig   cfg;
 extern RetortState state;
 extern int gLastMqttState;
 extern char gLastTs[24];
+extern char gLastIso[26];
+
+extern volatile bool gFwdHasBacklog;
 
 static WiFiClient   mqttWifi;
 static PubSubClient mqtt(mqttWifi);
@@ -65,7 +68,7 @@ void setupMQTT() {
   mqtt.setServer(cfg.mqttBroker, cfg.mqttPort);
   mqtt.setCallback(mqttCb);
   mqtt.setKeepAlive(30);
-  mqtt.setBufferSize(512);
+  mqtt.setBufferSize(768);
   // Default PubSubClient = 15 dtk: bila broker tak terjangkau, mqtt.connect()
   // bisa mem-block loop sampai 15 dtk. Pangkas ke 2 dtk. (Sampling data tetap
   // aman karena ada di task terpisah, ini hanya merapikan responsivitas web.)
@@ -82,19 +85,39 @@ void loopMQTT() {
   }
   mqtt.loop();
   unsigned long now = millis();
-  if (now - lastPub >= 2000) { lastPub = now; mqttPublishState(); }
+  // Saat backlog: kirim secepat mungkin (tanpa throttle 1 dtk) agar mengejar live.
+  if (!gFwdHasBacklog && (now - lastPub < 1000)) return;
+  lastPub = now;
+
+#if USE_STORE_FORWARD
+  // Forwarder yang menentukan apa yang dikirim: replay backlog SD bila ada,
+  // baris live bila sedang proses, atau heartbeat status bila idle.
+  forwardTick();
+#else
+  // Mode lama: publish state live tiap 1 detik (tanpa anti-hilang saat putus).
+  mqttPublishState();
+#endif
+}
+
+// Status koneksi untuk forwarder (mqtt object privat di file ini).
+bool mqttIsConnected() { return mqtt.connected(); }
+
+// Publish payload mentah ke topik data. Dipakai forwarder store-and-forward.
+bool mqttPublishRaw(const char* payload) {
+  if (!mqtt.connected()) return false;
+  return mqtt.publish(cfg.mqttPubTopic, payload, false);
 }
 
 void mqttPublishState() {
   if (!mqtt.connected()) return;
   // Pakai timestamp cache dari task logger (hindari baca RTC/I2C dari loop ini,
   // supaya tak bentrok dengan task yang juga memakai I2C).
-  char buf[256];
+  char buf[300];
   snprintf(buf, sizeof(buf),
-    "{\"id\":\"%s\",\"ts\":\"%s\",\"phase\":\"%s\","
+    "{\"id\":\"%s\",\"ts\":\"%s\",\"iso\":\"%s\",\"phase\":\"%s\","
     "\"actual\":%.1f,\"setting\":%.1f,\"mv\":%.1f,"
     "\"run\":%s,\"logging\":%s}",
-    cfg.machineId, gLastTs, phaseName(state.phase),
+    cfg.machineId, gLastTs, gLastIso, phaseName(state.phase),
     state.temperature, state.setpoint, mvSimEffectivePercent(),
     state.ctrlRun ? "true" : "false",
     state.logging ? "true" : "false");
