@@ -33,6 +33,8 @@ ChartJS.register(
 
 const PIXELS_PER_POINT = 28;
 const EXPORT_CHART_HEIGHT = 400;
+const TABLE_PAGE_SIZE = 50;
+const TABLE_PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 function formatChartTime(reading) {
     return reading.time_formatted
@@ -246,6 +248,8 @@ export default function ProcessDetail({ session, onBack }) {
     const [exporting, setExporting] = useState(false);
     const [exportMode, setExportMode] = useState('both');
     const [showScrollTop, setShowScrollTop] = useState(false);
+    const [tablePage, setTablePage] = useState(1);
+    const [tablePageSize, setTablePageSize] = useState(TABLE_PAGE_SIZE);
 
     // Deteksi scroll untuk tampilkan tombol ke atas
     useEffect(() => {
@@ -254,7 +258,10 @@ export default function ProcessDetail({ session, onBack }) {
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
-    const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Reset halaman tabel saat sesi berubah
+    useEffect(() => {
+        setTablePage(1);
+    }, [session?.session?.id]);
 
     if (!session) return null;
 
@@ -267,6 +274,22 @@ export default function ProcessDetail({ session, onBack }) {
     const chartMinWidth = Math.max(chartReadings.length * PIXELS_PER_POINT, 600);
     const chartData = buildChartData(chartReadings, currentSV);
     const chartOptions = buildChartOptions(false);
+
+    const tableReadings = [...chartReadings].reverse();
+    const totalTableRows = tableReadings.length;
+    const totalTablePages = Math.max(1, Math.ceil(totalTableRows / tablePageSize));
+    const safeTablePage = Math.min(tablePage, totalTablePages);
+    const tableStartIndex = (safeTablePage - 1) * tablePageSize;
+    const paginatedReadings = tableReadings.slice(tableStartIndex, tableStartIndex + tablePageSize);
+    const tableRangeStart = totalTableRows === 0 ? 0 : tableStartIndex + 1;
+    const tableRangeEnd = Math.min(tableStartIndex + tablePageSize, totalTableRows);
+
+    const handleTablePageSizeChange = (e) => {
+        setTablePageSize(Number(e.target.value));
+        setTablePage(1);
+    };
+
+    const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
     const handleExport = async () => {
         setExporting(true);
@@ -481,6 +504,28 @@ export default function ProcessDetail({ session, onBack }) {
 
             {/* Data Table */}
             <div className="table-container">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50">
+                    <p className="text-sm text-gray-600">
+                        {totalTableRows > 0
+                            ? `Menampilkan ${tableRangeStart}–${tableRangeEnd} dari ${totalTableRows} data`
+                            : 'Tidak ada data'}
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="table-page-size" className="text-sm text-gray-500 whitespace-nowrap">
+                            Per halaman
+                        </label>
+                        <select
+                            id="table-page-size"
+                            value={tablePageSize}
+                            onChange={handleTablePageSizeChange}
+                            className="input text-sm py-1.5 min-w-[72px]"
+                        >
+                            {TABLE_PAGE_SIZE_OPTIONS.map((size) => (
+                                <option key={size} value={size}>{size}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
                 <table className="table">
                     <thead>
                         <tr>
@@ -490,16 +535,16 @@ export default function ProcessDetail({ session, onBack }) {
                         </tr>
                     </thead>
                     <tbody>
-                        {readings.length > 0 ? (
-                            [...readings].reverse().map((reading) => (
+                        {paginatedReadings.length > 0 ? (
+                            paginatedReadings.map((reading) => (
                                 <tr key={reading.id}>
-                                    <td className="font-medium text-gray-800 whitespace-nowrap">
+                                    <td className="font-medium text-gray-800 whitespace-nowrap text-base">
                                         {reading.time_formatted || reading.recorded_at?.split('T')[1]?.substring(0, 8)}
                                     </td>
-                                    <td className="font-bold text-[#FFB800] whitespace-nowrap">
+                                    <td className="font-bold text-[#FFB800] whitespace-nowrap text-base">
                                         {reading.sv ? reading.sv.toFixed(1) : '-'}
                                     </td>
-                                    <td className="whitespace-nowrap">
+                                    <td className="whitespace-nowrap text-base">
                                         <span className={`font-bold ${
                                             reading.temperature >= 120 ? 'text-red-600' :
                                                 reading.temperature >= 110 ? 'text-yellow-500' :
@@ -519,6 +564,29 @@ export default function ProcessDetail({ session, onBack }) {
                         )}
                     </tbody>
                 </table>
+                {totalTableRows > tablePageSize && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 bg-gray-50">
+                        <button
+                            type="button"
+                            onClick={() => setTablePage((p) => Math.max(1, Math.min(totalTablePages, p) - 1))}
+                            disabled={safeTablePage <= 1}
+                            className="btn btn-outline text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Sebelumnya
+                        </button>
+                        <span className="text-sm font-medium text-gray-600">
+                            Halaman {safeTablePage} dari {totalTablePages}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setTablePage((p) => Math.min(totalTablePages, p + 1))}
+                            disabled={safeTablePage >= totalTablePages}
+                            className="btn btn-outline text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Berikutnya
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
 
