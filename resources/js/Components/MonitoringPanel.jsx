@@ -92,6 +92,11 @@ export default function MonitoringPanel({
                     </span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                    {displayMode === 'preview' && (
+                        <span className="text-sm font-medium px-3 py-1 rounded-full bg-blue-100 text-blue-800">
+                            Katup tertutup — PV/SV live
+                        </span>
+                    )}
                     {displayMode === 'paused' && (
                         <span className="text-sm font-medium px-3 py-1 rounded-full bg-amber-100 text-amber-800">
                             Menunggu data…

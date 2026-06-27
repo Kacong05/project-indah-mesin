@@ -287,7 +287,9 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
                             </div>
                         ) : (
                             <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-                                {stats.displayMode === 'idle'
+                                {stats.displayMode === 'preview'
+                                    ? 'Katup tertutup — grafik menunggu perekaman proses'
+                                    : stats.displayMode === 'idle'
                                     ? 'Siap proses berikutnya'
                                     : 'Belum ada data grafik'}
                             </div>

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Models\ActivityLog;
 use App\Models\SensorReading;
+use App\Services\MonitoringLiveCache;
 use App\Services\ProcessSessionService;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 trait ProvidesMachineData
@@ -38,6 +40,13 @@ trait ProvidesMachineData
 
         if ($displayMode === 'idle' || ! $machine) {
             return $this->buildIdleMonitoringStats($machine, $totalDataToday);
+        }
+
+        $live = MonitoringLiveCache::get($machine->id);
+
+        // Katup tertutup: tampilkan PV/SV live dari cache, tanpa perekaman proses.
+        if ($displayMode === 'active' && MonitoringLiveCache::isPreview($live)) {
+            return $this->buildPreviewMonitoringStats($machine, $live, $totalDataToday);
         }
 
         $currentProcessReadings = $this->getCurrentProcessReadings($machine);
@@ -100,6 +109,32 @@ trait ProvidesMachineData
         }
 
         return 'paused';
+    }
+
+    protected function buildPreviewMonitoringStats($machine, array $live, int $totalDataToday): array
+    {
+        $lastUpdate = isset($live['recorded_at'])
+            ? Carbon::parse($live['recorded_at'])->timezone('Asia/Jakarta')->format('d/m/Y H:i:s')
+            : ($live['updated_at'] ?? 'N/A');
+
+        return [
+            'displayMode' => 'preview',
+            'currentTemperature' => (float) $live['temperature'],
+            'machineStatus' => $machine->status,
+            'isOnline' => true,
+            'isLogging' => false,
+            'runState' => 'stop',
+            'totalDataToday' => $totalDataToday,
+            'lastUpdate' => $lastUpdate,
+            'dataIntervalMs' => null,
+            'sv' => round((float) ($live['sv'] ?? 121.1), 1),
+            'mv' => (float) ($live['mv'] ?? 0),
+            'processStep' => 'Stop',
+            'processStepCode' => '00',
+            'processPhase' => 'idle',
+            'timerTot' => '00:00',
+            'timerStp' => '00:00',
+        ];
     }
 
     protected function buildIdleMonitoringStats($machine, int $totalDataToday): array

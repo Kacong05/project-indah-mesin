@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\RetortMachine;
 use App\Models\SensorReading;
 use App\Services\MonitoringBroadcast;
+use App\Services\MonitoringLiveCache;
 use App\Services\ProcessSessionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -40,36 +41,44 @@ class SensorController extends Controller
             : now();
 
         // ============================================
-        // GATE PEREKAMAN: hanya simpan saat katup terbuka (MV > 0).
-        // MV = 0 berarti mesin idle / proses selesai, sehingga data ambient
-        // tidak boleh membuat sesi & reading baru di database. Mesin tetap
-        // dianggap online (heartbeat) namun statusnya standby.
-        // Catatan: bila MV tidak dikirim (null), perilaku lama dipertahankan
-        // agar klien lama tetap kompatibel.
+        // GATE PEREKAMAN: hanya simpan ke database saat katup terbuka (MV > 0).
+        // MV <= 0 → data tetap masuk web (PV/SV live via cache), tidak dibuat sesi/reading.
+        // MV null → perilaku lama (tetap simpan) agar klien lama kompatibel.
         // ============================================
         $mv = isset($validated['mv']) ? (float) $validated['mv'] : null;
-        $logging = (bool) ($validated['logging'] ?? false);
 
-        // Simpan bila MV > 0 ATAU sesi perekaman aktif (logging=true dari ESP).
-        // MV=0 sesaat di fase holding tidak boleh membuat detik hilang di web
-        // selama SD lokal tetap merekam baris tersebut.
-        if ($mv !== null && $mv <= 0 && ! $logging) {
+        $liveData = [
+            'temperature' => (float) $validated['temperature'],
+            'sv' => isset($validated['sv']) ? (float) $validated['sv'] : null,
+            'mv' => $mv ?? 0.0,
+            'pressure' => (float) $validated['pressure'],
+            'process_status' => $validated['process_status'] ?? 'idle',
+            'recorded_at' => $timestamp->toIso8601String(),
+        ];
+
+        $valveOpen = $mv === null || $mv > 0;
+
+        if (! $valveOpen) {
             $machine->update([
                 'last_heartbeat_at' => now(),
                 'status' => RetortMachine::STATUS_STANDBY,
             ]);
 
+            MonitoringLiveCache::put($machine->id, $liveData, recording: false);
             MonitoringBroadcast::tick($machine->id);
 
             return response()->json([
                 'success' => true,
                 'recorded' => false,
-                'message' => 'MV <= 0 (mesin idle) — data tidak disimpan.',
+                'live' => true,
+                'message' => 'MV <= 0 (katup tertutup) — PV/SV ditampilkan di web, tidak disimpan ke database.',
             ]);
         }
 
+        MonitoringLiveCache::put($machine->id, $liveData, recording: true);
+
         // ============================================
-        // LOGIKA UTAMA: Dapatkan atau buat sesi proses
+        // LOGIKA UTAMA: Dapatkan atau buat sesi proses (katup terbuka)
         // ============================================
         $session = $this->processSessionService->getOrCreateSession($timestamp, $machine->id);
 
