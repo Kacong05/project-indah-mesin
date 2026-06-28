@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Clock, Thermometer, Activity, MoreVertical, Trash2, Download } from 'lucide-react';
-import { exportDataOnly } from '@/utils/exportExcel';
+import { exportPdf } from '@/utils/exportPdf';
 
 const F0_TARGET = 6;
 
@@ -70,7 +70,7 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
             const result = await response.json();
             if (result.success) {
                 const { session: sessionInfo, readings } = result.data;
-                await exportDataOnly(sessionInfo, readings);
+                await exportPdf(sessionInfo, readings, 'data');
             }
         } catch (err) {
             console.error('Download gagal:', err);
@@ -143,7 +143,7 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
                                         className="w-full flex items-center gap-2 px-3 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition-colors rounded-md disabled:opacity-50"
                                     >
                                         <Download className="w-4 h-4 flex-shrink-0" />
-                                        {downloading ? 'Mengunduh...' : 'Download Excel'}
+                                        {downloading ? 'Mengunduh...' : 'Download PDF'}
                                     </button>
                                     <button
                                         type="button"
