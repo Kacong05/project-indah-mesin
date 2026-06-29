@@ -6,6 +6,18 @@
 
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
+        <!-- Theme init (cegah flash sebelum React mount) -->
+        <script>
+            (function () {
+                try {
+                    var t = localStorage.getItem('theme');
+                    if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                        document.documentElement.classList.add('dark');
+                    }
+                } catch (e) {}
+            })();
+        </script>
+
         <!-- Favicon -->
         <link rel="icon" type="image/png" href="{{ asset('logo.png') }}">
 

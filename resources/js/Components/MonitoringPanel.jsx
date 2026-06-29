@@ -51,7 +51,7 @@ export default function MonitoringPanel({
             <div className="p-4 space-y-3">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {/* PV — kotak besar */}
-                    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50/40 to-white border border-amber-100/60 shadow-sm hover:shadow-md transition-all p-8 flex flex-col items-center justify-center text-center gap-4 min-h-[20rem]">
+                    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50/40 to-white dark:from-[#1f2128] dark:to-[#1a1d24] border border-amber-100/60 dark:border-[#2b303b] shadow-sm hover:shadow-md transition-all p-8 flex flex-col items-center justify-center text-center gap-4 min-h-[20rem]">
                         <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-amber-200/15 blur-2xl" />
                         <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-300/80 to-orange-400/80 shadow-sm">
                             <Thermometer className="w-10 h-10 text-white" strokeWidth={2.2} />

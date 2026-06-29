@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/react';
 import { Menu, LogOut, Maximize, Minimize } from 'lucide-react';
 import NavbarMenu from '@/Components/NavbarMenu';
 import MobileBlock from '@/Components/MobileBlock';
+import ThemeToggle from '@/Components/ThemeToggle';
 
 export default function AuthenticatedLayout({ header, children }) {
     const user = usePage().props.auth.user;
@@ -73,7 +74,8 @@ export default function AuthenticatedLayout({ header, children }) {
                             <Menu className="h-6 w-6" />
                         </button>
 
-
+                        {/* Theme Toggle — di kiri profil */}
+                        <ThemeToggle />
 
                         {/* User Dropdown */}
                         <div className="relative ml-2" ref={dropdownRef}>

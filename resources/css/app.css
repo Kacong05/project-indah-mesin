@@ -310,3 +310,240 @@ body {
 .gradient-text {
     @apply bg-gradient-to-r from-[#FFB800] to-[#FFC933] bg-clip-text text-transparent;
 }
+
+/* ──────────────────────────────────────────────────────────────
+   DARK MODE
+   Diaktifkan dengan menambah class `dark` pada <html>.
+   Palet gelap dipusatkan di sini agar semua halaman ikut tanpa
+   harus mengubah markup tiap komponen.
+   ────────────────────────────────────────────────────────────── */
+:root.dark {
+    --text-primary: #e5e7eb;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
+
+    --dk-bg: #0f1115;
+    --dk-surface: #1a1d24;
+    --dk-surface-2: #21252e;
+    --dk-border: #2b303b;
+    --dk-text: #e5e7eb;
+    --dk-text-muted: #9ca3af;
+}
+
+.dark {
+    color-scheme: dark;
+}
+
+.dark body {
+    background-color: var(--dk-bg);
+    color: var(--dk-text);
+}
+
+/* Komponen dasar */
+.dark .card {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+}
+
+.dark .card-hover:hover {
+    border-color: #3a4150;
+}
+
+.dark .card-header {
+    border-color: var(--dk-border);
+}
+
+.dark .table-container {
+    background-color: var(--dk-surface);
+    border-color: var(--dk-border);
+}
+
+.dark .table {
+    border-color: var(--dk-border);
+}
+
+.dark .table thead {
+    background-color: var(--dk-surface-2);
+}
+
+.dark .table th {
+    color: var(--dk-text-muted);
+}
+
+.dark .table td {
+    color: #cbd5e1;
+}
+
+.dark .table tbody tr {
+    border-color: var(--dk-border);
+}
+
+.dark .table tbody tr:hover {
+    background-color: var(--dk-surface-2);
+}
+
+.dark .table > :not([hidden]) ~ :not([hidden]),
+.dark [class*="divide-gray-1"] > :not([hidden]) ~ :not([hidden]),
+.dark [class*="divide-gray-2"] > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--dk-border) !important;
+}
+
+.dark .input {
+    background-color: var(--dk-surface-2);
+    border-color: var(--dk-border);
+    color: var(--dk-text);
+}
+
+.dark .input::placeholder {
+    color: #6b7280;
+}
+
+.dark .label {
+    color: #cbd5e1;
+}
+
+.dark .btn-secondary {
+    @apply bg-[#21252e] text-gray-100 hover:bg-[#2b303b] focus:ring-gray-600;
+}
+
+.dark .btn-outline {
+    @apply border-[#2b303b] text-gray-200 hover:bg-[#21252e] focus:ring-gray-600;
+}
+
+.dark .badge-gray {
+    @apply bg-[#21252e] text-gray-300;
+}
+
+.dark .stat-value {
+    color: #f3f4f6;
+}
+
+.dark .stat-label {
+    color: var(--dk-text-muted);
+}
+
+.dark .nav-item-inactive {
+    @apply text-gray-300 hover:bg-white/10 hover:text-white;
+}
+
+/* ── Override utilitas permukaan (surface) ── */
+.dark .bg-white,
+.dark .bg-gray-50,
+.dark .bg-gray-100 {
+    background-color: var(--dk-surface) !important;
+}
+
+.dark .bg-\[\#f4f5fa\] {
+    background-color: var(--dk-bg) !important;
+}
+
+/* Header & navbar transparan */
+.dark .bg-white\/85,
+.dark .bg-white\/70,
+.dark .bg-\[\#ffffff\]\/90 {
+    background-color: rgb(26 29 36 / 0.85) !important;
+}
+
+/* Hover surface */
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-gray-100:hover {
+    background-color: var(--dk-surface-2) !important;
+}
+
+/* ── Permukaan pastel (-50) → versi gelap bertint, warna status tetap terbaca ── */
+.dark .bg-green-50,
+.dark .bg-emerald-50 {
+    background-color: #102a1c !important;
+}
+
+.dark .bg-amber-50,
+.dark .bg-yellow-50,
+.dark .bg-orange-50 {
+    background-color: #2a2410 !important;
+}
+
+.dark .bg-red-50,
+.dark .bg-rose-50 {
+    background-color: #2a1515 !important;
+}
+
+.dark .bg-blue-50,
+.dark .bg-sky-50,
+.dark .bg-indigo-50,
+.dark .bg-violet-50,
+.dark .bg-purple-50 {
+    background-color: #181c30 !important;
+}
+
+.dark .bg-teal-50,
+.dark .bg-cyan-50 {
+    background-color: #0f2625 !important;
+}
+
+/* Hover pastel */
+.dark .hover\:bg-blue-50:hover {
+    background-color: #181c30 !important;
+}
+
+.dark .hover\:bg-red-50:hover {
+    background-color: #2a1515 !important;
+}
+
+.dark .hover\:bg-green-50:hover {
+    background-color: #102a1c !important;
+}
+
+/* Border pastel (-200) → dipadamkan agar serasi dengan latar gelap */
+.dark .border-green-200 { border-color: #1f4d36 !important; }
+.dark .border-amber-200,
+.dark .border-yellow-200 { border-color: #4d4216 !important; }
+.dark .border-red-200,
+.dark .border-rose-200 { border-color: #4d2424 !important; }
+.dark .border-blue-200,
+.dark .border-indigo-200,
+.dark .border-violet-200,
+.dark .border-purple-200 { border-color: #2b3160 !important; }
+.dark .border-teal-200,
+.dark .border-cyan-200 { border-color: #1a4a48 !important; }
+
+/* ── Border ── */
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-gray-300,
+.dark .border-\[\#d9dee3\],
+.dark .border-\[\#d9dee3\]\/50 {
+    border-color: var(--dk-border) !important;
+}
+
+/* ── Teks ── */
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-gray-700,
+.dark .text-\[\#32475c\] {
+    color: var(--dk-text) !important;
+}
+
+.dark .text-gray-600,
+.dark .text-gray-500,
+.dark .text-\[\#566a7f\],
+.dark .text-\[\#697a8d\] {
+    color: var(--dk-text-muted) !important;
+}
+
+.dark .text-gray-400 {
+    color: #6b7280 !important;
+}
+
+/* Scrollbar gelap */
+.dark ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* Tombol toggle tema saat dark */
+.dark .theme-toggle-btn {
+    @apply border-[#2b303b] text-gray-200 bg-white/5 hover:bg-white/10;
+}
