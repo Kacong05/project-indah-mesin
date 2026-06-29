@@ -76,6 +76,46 @@ class RetortProcessSeeder extends Seeder
             SensorReading::insert($chunk);
         }
 
+        // --- Tambahan: Masukkan data seed ke Cache Monitoring agar langsung tampil di halaman Monitoring ---
+        // 1. Update heartbeat & status mesin agar dianggap Online/Active
+        $machine->update([
+            'last_heartbeat_at' => now(),
+            'status' => RetortMachine::STATUS_RUNNING,
+        ]);
+
+        // 2. Kosongkan chart buffer live cache lama
+        \App\Services\MonitoringLiveCache::clearChartBuffer($machine->id);
+
+        // 3. Masukkan seluruh data point ke buffer chart live cache
+        foreach ($rows as $row) {
+            \App\Services\MonitoringLiveCache::appendChartPoint($machine->id, [
+                'temperature' => (float) $row['temperature'],
+                'sv' => (float) $row['sv'],
+                'process_status' => $row['process_status'],
+                'recorded_at' => $row['recorded_at']->copy()->timezone('Asia/Jakarta')->toIso8601String(),
+            ]);
+        }
+
+        // 4. Masukkan data point terakhir sebagai snapshot live data saat ini
+        $lastRow = end($rows);
+        \App\Services\MonitoringLiveCache::put($machine->id, [
+            'temperature' => (float) $lastRow['temperature'],
+            'sv' => (float) $lastRow['sv'],
+            'mv' => $lastRow['process_status'] === SensorReading::STATUS_COOLING ? 0.0 : 100.0,
+            'pressure' => (float) $lastRow['pressure'],
+            'process_status' => $lastRow['process_status'],
+            'recorded_at' => $lastRow['recorded_at']->copy()->timezone('Asia/Jakarta')->toIso8601String(),
+            'ps' => '1-03',
+            'pattern' => 1,
+            'step' => 3,
+            'timer_tot' => '80:00',
+            'timer_stp' => '40:00',
+        ], recording: true);
+
+        // 5. Trigger broadcast tick agar halaman web terupdate
+        \App\Services\MonitoringBroadcast::tick($machine->id);
+        // --------------------------------------------------------------------------------------------------
+
         // Hitung & laporkan F₀ untuk verifikasi.
         $readings = $session->sensorReadings()->orderBy('recorded_at')->get();
         $f0 = F0Calculator::fromReadings($readings);
