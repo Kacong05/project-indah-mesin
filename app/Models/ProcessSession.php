@@ -79,9 +79,9 @@ class ProcessSession extends Model
             return $this->name;
         }
 
-        // Fallback: hitung dari posisi sesi pada hari yang sama
+        // Fallback: urutan kronologis global per mesin (bukan reset harian)
         $query = self::query()
-            ->whereDate('started_at', $this->started_at->toDateString())
+            ->where('started_at', '<=', $this->started_at)
             ->where('id', '<=', $this->id);
 
         if ($this->machine_id) {

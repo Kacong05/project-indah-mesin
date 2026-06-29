@@ -66,10 +66,8 @@ class ProcessSessionService
                 ->active()
                 ->update(['status' => 'completed']);
 
-            // Nomor proses di-reset per hari (lihat ProcessSession::display_name).
-            $processNumber = ProcessSession::where('machine_id', $machineId)
-                ->whereDate('started_at', $timestamp->toDateString())
-                ->count() + 1;
+            // Nomor proses global per mesin: max(Proses N) + 1, tanpa reset harian.
+            $processNumber = $this->nextProcessNumber($machineId);
 
             return ProcessSession::create([
                 'machine_id' => $machineId,
@@ -80,6 +78,29 @@ class ProcessSessionService
                 'status' => 'active',
             ]);
         });
+    }
+
+    /**
+     * Nomor berikutnya untuk mesin: max dari nama "Proses {N}" + 1.
+     * Nama kustom (mis. seeder) tidak ikut dihitung.
+     */
+    private function nextProcessNumber(int $machineId): int
+    {
+        $names = ProcessSession::where('machine_id', $machineId)
+            ->lockForUpdate()
+            ->pluck('name');
+
+        $max = $names
+            ->map(function (?string $name) {
+                if (preg_match('/^Proses\s+(\d+)$/i', trim($name ?? ''), $matches)) {
+                    return (int) $matches[1];
+                }
+
+                return 0;
+            })
+            ->max();
+
+        return ($max ?? 0) + 1;
     }
 
     /**
