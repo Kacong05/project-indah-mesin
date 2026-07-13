@@ -24,6 +24,7 @@ class MonitoringController extends Controller
             'machineCode' => $machine?->machine_code,
             'stats' => $payload['stats'],
             'chartData' => $payload['chartData'],
+            'latestWdtEvent' => $payload['latestWdtEvent'],
         ]);
     }
 
@@ -104,9 +105,20 @@ class MonitoringController extends Controller
     {
         $today = Carbon::today();
 
+        $latestWdtEvent = null;
+        if ($machine) {
+            $latestWdtEvent = \App\Models\SystemEvent::where('machine_code', $machine->machine_code)
+                ->where('event', 'boot')
+                ->where('reason', 'WDT')
+                ->where('created_at', '>=', now()->subMinutes(30))
+                ->latest()
+                ->first();
+        }
+
         return [
             'stats' => $this->getMachineStats($machine, null, $today),
             'chartData' => $this->getTemperatureChartData($machine),
+            'latestWdtEvent' => $latestWdtEvent,
         ];
     }
 }

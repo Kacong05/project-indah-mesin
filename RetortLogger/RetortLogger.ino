@@ -125,6 +125,25 @@ void sdUnlock() {
 int gLastStaDiscReason = 0;  // kode putus WiFi STA (15=password salah)
 int gLastMqttState     = 0;  // PubSubClient state saat gagal (-2=jaringan, 4=user, 5=ACL)
 
+bool gBootEventPending = false;
+const char* gResetReason = "UNKNOWN";
+
+const char* getResetReasonStr(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON: return "POWERON";
+    case ESP_RST_EXT: return "EXT";
+    case ESP_RST_SW: return "SOFTWARE";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_INT_WDT: return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT: return "WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_SDIO: return "SDIO";
+    default: return "UNKNOWN";
+  }
+}
+
 // --- SHA256 ---
 void sha256Hex(const char* input, char* output) {
   unsigned char hash[32];
@@ -312,6 +331,11 @@ void setup() {
   Serial.setTxTimeoutMs(0);
   delay(300);
   Serial.println(F("\n=== RetortLogger ==="));
+
+  esp_reset_reason_t reason = esp_reset_reason();
+  gResetReason = getResetReasonStr(reason);
+  gBootEventPending = true;
+  Serial.printf("Reset reason: %s\n", gResetReason);
 
   // Turunkan clock CPU: 160 MHz cukup cepat untuk web + Modbus,
   // mengurangi panas & konsumsi daya ESP32-S3.

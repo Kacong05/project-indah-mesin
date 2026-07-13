@@ -53,6 +53,8 @@ _laravel_env = _read_laravel_env()
 
 _default_api = "http://127.0.0.1:8080/api/sensor"
 API_URL = os.getenv("API_URL") or _laravel_env.get("MQTT_BRIDGE_API_URL") or _default_api
+_system_api = "http://127.0.0.1:8080/api/system-event"
+SYSTEM_API_URL = os.getenv("SYSTEM_API_URL") or _laravel_env.get("MQTT_BRIDGE_SYSTEM_API_URL") or _system_api
 SENSOR_API_TOKEN = os.getenv("SENSOR_API_TOKEN") or _laravel_env.get("SENSOR_API_TOKEN", "")
 
 
@@ -69,7 +71,8 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
     if reason_code == 0:
         print(f"[MQTT] Terhubung ke {MQTT_HOST}:{MQTT_PORT}")
         client.subscribe(MQTT_TOPIC)
-        print(f"[MQTT] Subscribe: {MQTT_TOPIC}")
+        client.subscribe("retort/system")
+        print(f"[MQTT] Subscribe: {MQTT_TOPIC}, retort/system")
     else:
         print(f"[MQTT] Gagal connect, code={reason_code}")
 
@@ -251,11 +254,32 @@ def _post_worker(worker_id: int):
             _POST_QUEUE.task_done()
 
 
+def _post_system(payload):
+    try:
+        r = requests.post(SYSTEM_API_URL, json=payload, headers=api_headers(), timeout=10)
+        if r.status_code == 200:
+            print(f"[SYSTEM] {payload.get('machine_code')} event: {payload.get('event')} reason: {payload.get('reason')}")
+        else:
+            print(f"[SYSTEM ERROR] HTTP {r.status_code}: {r.text[:120]}")
+    except Exception as e:
+        print(f"[SYSTEM ERROR] {e}")
+
+
 def on_message(client, userdata, msg):
     try:
         raw = json.loads(msg.payload.decode("utf-8"))
     except json.JSONDecodeError as e:
         print(f"[ERROR] JSON tidak valid: {e}")
+        return
+
+    if msg.topic == "retort/system":
+        payload = {
+            "machine_code": raw.get("id", ""),
+            "event": raw.get("event", ""),
+            "reason": raw.get("reason", ""),
+            "iso": raw.get("iso", ""),
+        }
+        threading.Thread(target=_post_system, args=(payload,), daemon=True).start()
         return
 
     esp_id = raw.get("id") or raw.get("machine_code", "")

@@ -1,7 +1,7 @@
-﻿import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
-import { TrendingUp, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { TrendingUp, ZoomIn, ZoomOut, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -34,9 +34,10 @@ ChartJS.register(
 /** Safety net di browser — server sudah decimate ke ~360 titik. */
 const CHART_DECIMATION_SAMPLES = 360;
 
-export default function MonitoringIndex({ stats: initialStats, chartData: initialChartData, machineName }) {
+export default function MonitoringIndex({ stats: initialStats, chartData: initialChartData, machineName, latestWdtEvent }) {
     const [stats, setStats] = useState(initialStats);
     const [chartData, setChartData] = useState(initialChartData);
+    const [wdtEvent, setWdtEvent] = useState(latestWdtEvent);
     const lastSeqRef = useRef(0);
     const lastLiveAtRef = useRef('');
     const chartRef = useRef(null);
@@ -74,6 +75,10 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
 
         if (payload.chartData) {
             setChartData(payload.chartData);
+        }
+
+        if (payload.latestWdtEvent !== undefined) {
+            setWdtEvent(payload.latestWdtEvent);
         }
     }, []);
 
@@ -274,6 +279,18 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
             <Head title="Monitoring" />
 
             <div className="space-y-6">
+                {wdtEvent && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl relative flex items-center gap-3">
+                        <AlertTriangle className="w-5 h-5 text-red-500" />
+                        <div>
+                            <strong className="font-semibold block">Peringatan: Watchdog Reset Terdeteksi</strong>
+                            <span className="block text-sm">
+                                Perangkat IoT melakukan restart otomatis (Watchdog) pada {new Date(wdtEvent.created_at).toLocaleTimeString('id-ID')}. Kemungkinan terjadi overheat atau sistem macet sesaat.
+                            </span>
+                        </div>
+                    </div>
+                )}
+
                 <MonitoringPanel
                     pv={stats.currentTemperature}
                     sv={stats.sv}

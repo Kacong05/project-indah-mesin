@@ -1,10 +1,12 @@
-﻿import {
+import {
     Thermometer,
     Gauge,
     Zap,
     ZapOff,
     Wifi,
     WifiOff,
+    Timer,
+    ListOrdered
 } from 'lucide-react';
 
 function InfoCard({ icon: Icon, label, value, unit, valueClass = 'text-gray-800', iconGradient = 'from-slate-400 to-slate-500', valueSize = 'text-2xl', unitSize = 'text-sm', className = '' }) {
@@ -96,6 +98,33 @@ export default function MonitoringPanel({
                             unitSize="text-xl"
                         />
                     </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                    <InfoCard
+                        icon={ListOrdered}
+                        label="Process Step"
+                        value={processStep && processStep !== '-' && processStep !== '0-00' ? processStep : 'Stop'}
+                        unit={null}
+                        valueClass="text-slate-700"
+                        iconGradient="from-slate-400 to-slate-500"
+                    />
+                    <InfoCard
+                        icon={Timer}
+                        label="Total Time"
+                        value={timerTot}
+                        unit={null}
+                        valueClass="text-slate-700"
+                        iconGradient="from-slate-400 to-slate-500"
+                    />
+                    <InfoCard
+                        icon={Timer}
+                        label="Step Time"
+                        value={timerStp}
+                        unit={null}
+                        valueClass="text-slate-700"
+                        iconGradient="from-slate-400 to-slate-500"
+                    />
                 </div>
             </div>
         </div>

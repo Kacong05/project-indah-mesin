@@ -37,3 +37,7 @@ require __DIR__.'/auth.php';
 Route::post('/api/sensor', [\App\Http\Controllers\Api\SensorController::class, 'store'])
     ->middleware('sensor.token')
     ->name('api.sensor');
+
+Route::post('/api/system-event', [\App\Http\Controllers\SystemEventController::class, 'store'])
+    ->middleware('sensor.token')
+    ->name('api.system-event');

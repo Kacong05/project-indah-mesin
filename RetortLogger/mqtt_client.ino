@@ -12,6 +12,8 @@ extern char gLastTs[32];
 extern char gLastIso[26];
 
 extern volatile bool gFwdHasBacklog;
+extern bool gBootEventPending;
+extern const char* gResetReason;
 
 static WiFiClient   mqttWifi;
 static PubSubClient mqtt(mqttWifi);
@@ -21,6 +23,7 @@ static PubSubClient mqtt(mqttWifi);
 #define MQTT_RECON_FAST_MS      3000
 #define MQTT_RECON_MED_MS       8000
 #define MQTT_FAIL_TO_MED        4
+#define LIVE_INTERLEAVE_SEC     3
 
 static unsigned long lastRecon = 0;
 static unsigned long lastPub   = 0;
@@ -88,6 +91,15 @@ static bool mqttRecon() {
     state.mqttConnected = true;
     gLastMqttState = 0;
     Serial.printf("[MQTT] Connected. Sub: %s + %s\n", cfg.mqttCmdTopic, MQTT_ACK_TOPIC);
+
+    if (gBootEventPending) {
+      char bootBuf[128];
+      snprintf(bootBuf, sizeof(bootBuf),
+        "{\"id\":\"%s\",\"event\":\"boot\",\"reason\":\"%s\",\"iso\":\"%s\"}",
+        cfg.machineId, gResetReason, gLastIso);
+      mqtt.publish("retort/system", bootBuf, false);
+      gBootEventPending = false;
+    }
   } else {
     if (mqttFailStreak < 255) mqttFailStreak++;
     state.mqttConnected = false;
@@ -128,6 +140,13 @@ void loopMQTT() {
   unsigned long now = millis();
   if (!gFwdHasBacklog && !forwardIsWaitingAck() && (now - lastPub < 1000)) return;
   lastPub = now;
+
+  static unsigned long lastLivePub = 0;
+  if (gFwdHasBacklog && (now - lastLivePub >= LIVE_INTERLEAVE_SEC * 1000UL)) {
+    lastLivePub = now;
+    mqttPublishState();
+    return;
+  }
 
 #if USE_STORE_FORWARD
   forwardTick();
