@@ -168,7 +168,7 @@ class ProcessSessionService
 
                 $reading->update(['process_session_id' => $currentSession->id]);
 
-                if (!$shouldCreateNewSession) {
+                if (! $shouldCreateNewSession) {
                     $currentSession->update([
                         'ended_at' => $timestamp,
                         'data_count' => $currentSession->data_count + 1,
@@ -205,9 +205,17 @@ class ProcessSessionService
      */
     public function getSessionWithReadings(int $sessionId): ProcessSession
     {
-        return ProcessSession::with(['sensorReadings' => function ($query) {
+        $session = ProcessSession::with(['sensorReadings' => function ($query) {
             $query->orderBy('recorded_at');
         }])->findOrFail($sessionId);
+
+        abort_if(
+            $session->getRawOriginal('status') === 'active',
+            409,
+            'Riwayat proses yang sedang berjalan belum dapat dibuka.'
+        );
+
+        return $session;
     }
 
     public function setGapThreshold(int $minutes): self

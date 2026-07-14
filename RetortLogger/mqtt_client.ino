@@ -23,7 +23,6 @@ static PubSubClient mqtt(mqttWifi);
 #define MQTT_RECON_FAST_MS      3000
 #define MQTT_RECON_MED_MS       8000
 #define MQTT_FAIL_TO_MED        4
-#define LIVE_INTERLEAVE_SEC     3
 
 static unsigned long lastRecon = 0;
 static unsigned long lastPub   = 0;
@@ -34,20 +33,13 @@ static unsigned long mqttReconIntervalMs() {
 }
 
 static void mqttHandleAck(const char* json) {
-  const char* p = strstr(json, "\"iso\":\"");
-  if (!p) return;
-  p += 7;
-  const char* end = strchr(p, '"');
-  if (!end || (size_t)(end - p) >= 28) return;
-  char iso[28] = {0};
-  memcpy(iso, p, end - p);
-  forwardOnAck(iso);
-#if USE_STORE_FORWARD
-  // Langsung pump batch post-ack (10 baris) tanpa nunggu loop berikutnya.
-  for (uint8_t i = 0; i < 3 && gFwdHasBacklog && !forwardIsWaitingAck(); i++) {
-    forwardTick();
-  }
-#endif
+  StaticJsonDocument<256> doc;
+  if (deserializeJson(doc, json) != DeserializationError::Ok) return;
+  const char* target = doc["id"] | "";
+  const char* filename = doc["file"] | "";
+  const char* status = doc["status"] | "";
+  if (strcmp(target, cfg.machineId) != 0) return;
+  forwardOnAck(filename, status);
 }
 
 static void mqttCb(char* topic, byte* payload, unsigned int len) {
@@ -119,7 +111,7 @@ void setupMQTT() {
   mqtt.setServer(cfg.mqttBroker, cfg.mqttPort);
   mqtt.setCallback(mqttCb);
   mqtt.setKeepAlive(30);
-  mqtt.setBufferSize(768);
+  mqtt.setBufferSize(1024);
   mqtt.setSocketTimeout(MQTT_SOCKET_TIMEOUT_S);
   // Percobaan connect pertama segera setelah WiFi siap (tanpa tunggu interval).
   lastRecon = millis() - mqttReconIntervalMs();
@@ -138,20 +130,13 @@ void loopMQTT() {
   }
   mqtt.loop();
   unsigned long now = millis();
-  if (!gFwdHasBacklog && !forwardIsWaitingAck() && (now - lastPub < 1000)) return;
-  lastPub = now;
-
-  static unsigned long lastLivePub = 0;
-  if (gFwdHasBacklog && (now - lastLivePub >= LIVE_INTERLEAVE_SEC * 1000UL)) {
-    lastLivePub = now;
+  if (now - lastPub >= 1000) {
+    lastPub = now;
     mqttPublishState();
-    return;
   }
 
 #if USE_STORE_FORWARD
   forwardTick();
-#else
-  mqttPublishState();
 #endif
 }
 
@@ -160,6 +145,11 @@ bool mqttIsConnected() { return mqtt.connected(); }
 bool mqttPublishRaw(const char* payload) {
   if (!mqtt.connected()) return false;
   return mqtt.publish(cfg.mqttPubTopic, payload, false);
+}
+
+bool mqttPublishTopic(const char* topic, const char* payload) {
+  if (!mqtt.connected()) return false;
+  return mqtt.publish(topic, payload, false);
 }
 
 void mqttPublishState() {

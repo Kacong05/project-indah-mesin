@@ -127,7 +127,24 @@ buka/tutup file CSV dikerjakan `loggerTask` agar seluruh I/O SD satu konteks.
 
 ---
 
-## Store-and-Forward MQTT (anti kehilangan data saat jaringan putus)
+## Upload CSV setelah proses selesai (anti kehilangan data)
+
+Data MQTT selama proses hanya dipakai untuk monitoring live dan tidak disimpan
+per baris ke database. ESP32 tetap merekam setiap detik ke satu file CSV di
+MicroSD. Saat proses berhenti, firmware menutup file, membuat marker .ready,
+lalu mengirim CSV melalui topik retort/csv/meta, retort/csv/chunk, dan
+retort/csv/end.
+
+Bridge merakit file, memeriksa SHA-256, lalu mengimpor seluruh CSV dalam satu
+transaction. ACK retort/csv/ack baru dikirim setelah sesi dan semua reading
+berhasil disimpan. Marker .ready kemudian dihapus, sedangkan CSV asli tetap
+ada di MicroSD. Jika jaringan atau ESP restart, file bermarker dikirim ulang
+dan hash unik mencegah sesi ganda.
+
+### Mekanisme lama
+
+Bagian berikut mendokumentasikan store-and-forward per baris yang sudah
+digantikan dan tidak lagi digunakan firmware.
 
 Flag: `USE_STORE_FORWARD` (default `true`) di `RetortLogger.ino`. Modul: `mqtt_forward.ino`.
 

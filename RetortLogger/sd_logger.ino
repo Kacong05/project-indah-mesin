@@ -25,7 +25,7 @@ extern const char* phaseName(RetortPhase p);
 static File logFile;
 static char logPath[48] = {0};
 
-// Path file log aktif (untuk store-and-forward MQTT). "" jika belum ada.
+// Path file log aktif. Setelah ditutup dibuat marker .ready untuk uploader CSV.
 const char* sdCurrentLogPath() { return logPath; }
 
 static void ensureDir() {
@@ -88,11 +88,6 @@ void sdLogEntry() {
                  gLastIso, phaseName(state.phase), mvSimEffectivePercent(),
                  state.ctrlRun ? 1 : 0, state.logging ? 1 : 0);
   logFile.flush();
-  // Rotasi di 5MB
-  if (logFile.size() > 5UL * 1024UL * 1024UL) {
-    logFile.close();
-    openNewLog();
-  }
 }
 
 // Dipanggil tiap 1 detik dari loggerTask. Menangani start/stop rekam dan
@@ -112,6 +107,16 @@ void sdServiceLog() {
       logFile.flush();
       logFile.close();
       Serial.printf("[SD] Log closed: %s\n", logPath);
+      char readyPath[72];
+      snprintf(readyPath, sizeof(readyPath), "%s.ready", logPath);
+      File marker = SD.open(readyPath, FILE_WRITE);
+      if (marker) {
+        marker.print(F("ready"));
+        marker.close();
+        Serial.printf("[SD] CSV queued: %s\n", readyPath);
+      } else {
+        Serial.printf("[SD] Gagal membuat marker upload: %s\n", readyPath);
+      }
     }
   }
   if (state.logging && logFile) {

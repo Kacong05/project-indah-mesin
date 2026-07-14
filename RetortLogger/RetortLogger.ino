@@ -29,10 +29,8 @@
 #define TNL_REG_DI_STATUS 0x03F1
 #define TNL_DI_BIT        0
 #endif
-// Store-and-forward: replay baris SD yang belum terkirim saat MQTT reconnect.
+// Upload CSV lengkap setelah sesi selesai; marker .ready bertahan saat offline/restart.
 #define USE_STORE_FORWARD true
-// Tunggu retort/ack dari bridge sebelum maju offset SD. false = mode lama (publish=OK).
-#define USE_MQTT_ACK      true
 
 // --- Pin Assignments ---
 #define PIN_RTC_SDA     8
@@ -295,10 +293,11 @@ bool mvSimTriggerStart(uint16_t hardwareMvRaw, uint16_t mvOnRaw);
 bool mvSimTriggerEnd(bool ctrlRun, uint16_t hardwareMvRaw, uint16_t mvOnRaw);
 bool mqttIsConnected();
 bool mqttPublishRaw(const char* payload);
+bool mqttPublishTopic(const char* topic, const char* payload);
 const char* sdCurrentLogPath();
 void forwardSetup();
 void forwardTick();
-void forwardOnAck(const char* iso);
+void forwardOnAck(const char* filename, const char* status);
 bool forwardIsWaitingAck();
 void forwardOnMqttLost();
 
@@ -327,8 +326,6 @@ static void loggerTask(void* pv) {
 
 void setup() {
   Serial.begin(115200);
-  // Cegah USB-CDC mem-block task bila tak ada host yang membaca Serial.
-  Serial.setTxTimeoutMs(0);
   delay(300);
   Serial.println(F("\n=== RetortLogger ==="));
 

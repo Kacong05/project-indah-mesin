@@ -18,6 +18,8 @@ class ProcessSession extends Model
         'ended_at',
         'data_count',
         'status',
+        'source_file',
+        'source_hash',
     ];
 
     protected $casts = [
@@ -75,7 +77,7 @@ class ProcessSession extends Model
      */
     public function getDisplayNameAttribute(): string
     {
-        if (!empty($this->name)) {
+        if (! empty($this->name)) {
             return $this->name;
         }
 
@@ -88,7 +90,7 @@ class ProcessSession extends Model
             $query->where('machine_id', $this->machine_id);
         }
 
-        return 'Proses ' . $query->count();
+        return 'Proses '.$query->count();
     }
 
     /**
@@ -100,11 +102,12 @@ class ProcessSession extends Model
         $start = $this->started_at->format('H:i');
 
         // Jika ended_at null atau sama dengan started_at, tampilkan hanya waktu mulai
-        if (!$this->ended_at || $this->started_at->equalTo($this->ended_at)) {
+        if (! $this->ended_at || $this->started_at->equalTo($this->ended_at)) {
             return $start;
         }
 
         $end = $this->ended_at->format('H:i');
+
         return "{$start} - {$end}";
     }
 
@@ -113,7 +116,7 @@ class ProcessSession extends Model
      */
     public function getDurationInMinutesAttribute(): ?int
     {
-        if (!$this->ended_at) {
+        if (! $this->ended_at) {
             return null;
         }
 

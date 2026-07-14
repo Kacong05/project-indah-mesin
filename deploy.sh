@@ -156,13 +156,15 @@ cat > /etc/mosquitto/acl << ACLCONF
 # ESP32 logger
 user ${MQTT_ESP_USER}
 topic write retort/data
+topic write retort/csv/#
 topic read retort/cmd
-topic read retort/ack
+topic read retort/csv/ack
 
 # mqtt_bridge (server)
 user ${MQTT_BRIDGE_USER}
 topic read retort/data
-topic write retort/ack
+topic read retort/csv/#
+topic write retort/csv/ack
 
 # Laravel web dashboard (kirim START/STOP)
 user ${MQTT_WEB_USER}
@@ -362,6 +364,7 @@ After=network.target mosquitto.service nginx.service postgresql.service
 User=www-data
 WorkingDirectory=${APP_DIR}
 Environment=API_URL=http://127.0.0.1:${APP_PORT}/api/sensor
+Environment=CSV_API_URL=http://127.0.0.1:${APP_PORT}/api/sessions/import-csv
 Environment=MQTT_TOPIC=retort/data
 Environment=MQTT_USER=${MQTT_BRIDGE_USER}
 Environment=MQTT_PASS=${MQTT_BRIDGE_PASS}

@@ -47,6 +47,8 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
     };
 
     const handleSessionClick = async (session) => {
+        if (session.status === 'active') return;
+
         setSelectedSession(session);
         setLoading(true);
         try {
@@ -176,8 +178,8 @@ export default function HistoryIndex({ sessions, readings, machines, filters }) 
                                         key={session.id}
                                         session={session}
                                         isSelected={selectedSession?.id === session.id}
-                                        onClick={() => handleSessionClick(session)}
-                                        onDelete={() => handleDeleteSession(session)}
+                                        onClick={session.status === 'active' ? undefined : () => handleSessionClick(session)}
+                                        onDelete={session.status === 'active' ? undefined : () => handleDeleteSession(session)}
                                     />
                                 ))}
                             </div>

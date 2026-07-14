@@ -8,6 +8,8 @@ Butuh:
   - SENSOR_API_TOKEN (header ke Laravel /api/sensor)
 """
 
+import base64
+import hashlib
 import json
 import os
 import queue
@@ -15,6 +17,7 @@ import re
 import sys
 import threading
 import time
+from pathlib import Path
 
 import paho.mqtt.client as mqtt
 import requests
@@ -22,7 +25,8 @@ import requests
 MQTT_HOST = os.getenv("MQTT_HOST", "127.0.0.1")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "retort/data")
-MQTT_ACK_TOPIC = os.getenv("MQTT_ACK_TOPIC", "retort/ack")
+MQTT_CSV_TOPIC = os.getenv("MQTT_CSV_TOPIC", "retort/csv")
+MQTT_ACK_TOPIC = os.getenv("MQTT_ACK_TOPIC", "retort/csv/ack")
 MQTT_USER = os.getenv("MQTT_USER", "")
 MQTT_PASS = os.getenv("MQTT_PASS", "")
 
@@ -31,6 +35,10 @@ _POST_WORKERS = int(os.getenv("MQTT_BRIDGE_WORKERS", "1"))
 _POST_RETRIES = 3
 _mqtt_client: mqtt.Client | None = None
 _mqtt_lock = threading.Lock()
+_csv_lock = threading.Lock()
+_csv_uploads: dict[tuple[str, str], dict] = {}
+_csv_dir = Path(__file__).resolve().parent / "storage" / "app" / "mqtt-csv"
+_csv_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _read_laravel_env() -> dict:
@@ -55,6 +63,7 @@ _default_api = "http://127.0.0.1:8080/api/sensor"
 API_URL = os.getenv("API_URL") or _laravel_env.get("MQTT_BRIDGE_API_URL") or _default_api
 _system_api = "http://127.0.0.1:8080/api/system-event"
 SYSTEM_API_URL = os.getenv("SYSTEM_API_URL") or _laravel_env.get("MQTT_BRIDGE_SYSTEM_API_URL") or _system_api
+CSV_API_URL = os.getenv("CSV_API_URL") or _laravel_env.get("MQTT_BRIDGE_CSV_API_URL") or "http://127.0.0.1:8080/api/sessions/import-csv"
 SENSOR_API_TOKEN = os.getenv("SENSOR_API_TOKEN") or _laravel_env.get("SENSOR_API_TOKEN", "")
 
 
@@ -72,7 +81,8 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
         print(f"[MQTT] Terhubung ke {MQTT_HOST}:{MQTT_PORT}")
         client.subscribe(MQTT_TOPIC)
         client.subscribe("retort/system")
-        print(f"[MQTT] Subscribe: {MQTT_TOPIC}, retort/system")
+        client.subscribe(f"{MQTT_CSV_TOPIC}/#")
+        print(f"[MQTT] Subscribe: {MQTT_TOPIC}, retort/system, {MQTT_CSV_TOPIC}/#")
     else:
         print(f"[MQTT] Gagal connect, code={reason_code}")
 
@@ -186,6 +196,22 @@ def _publish_ack(machine_code: str, recorded_at: str) -> None:
     print(f"[ACK] {machine_code} @ {iso}")
 
 
+def _publish_csv_ack(machine_code: str, filename: str, status: str, message: str = "") -> None:
+    """ACK satu file setelah CSV lengkap berhasil atau gagal diproses."""
+    global _mqtt_client
+    if not _mqtt_client:
+        return
+    ack = json.dumps({
+        "id": machine_code,
+        "file": filename,
+        "status": status,
+        "message": message[:120],
+    })
+    with _mqtt_lock:
+        _mqtt_client.publish(MQTT_ACK_TOPIC, ack, qos=1)
+    print(f"[CSV ACK] {machine_code}/{filename}: {status}")
+
+
 def _post_worker(worker_id: int):
     """Worker thread: POST ke Laravel + kirim MQTT ack."""
     while True:
@@ -229,7 +255,8 @@ def _post_worker(worker_id: int):
                 or body.get("live")
                 or body.get("backfill_ack")
             ):
-                _publish_ack(machine_code, recorded_at)
+                # Live preview tidak memakai ACK per baris.
+                pass
             elif body.get("ignored"):
                 print(
                     f"[WARN] no ack — ignored {machine_code} @ {recorded_at} "
@@ -265,11 +292,125 @@ def _post_system(payload):
         print(f"[SYSTEM ERROR] {e}")
 
 
+def _safe_csv_name(value: str) -> str:
+    name = os.path.basename(str(value))
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.csv", name, re.IGNORECASE):
+        raise ValueError("nama file CSV tidak valid")
+    return name
+
+
+def _import_completed_csv(key: tuple[str, str]) -> None:
+    with _csv_lock:
+        state = _csv_uploads.get(key)
+        if not state:
+            return
+        path = state["path"]
+        expected_hash = state["sha256"]
+
+    machine_code, filename = key
+    try:
+        with open(path, "rb") as handle:
+            response = requests.post(
+                CSV_API_URL,
+                data={"machine_code": machine_code, "sha256": expected_hash},
+                files={"file": (filename, handle, "text/csv")},
+                headers=api_headers(),
+                timeout=120,
+            )
+        if response.status_code != 200:
+            raise RuntimeError(f"HTTP {response.status_code}: {response.text[:160]}")
+        body = response.json()
+        if not body.get("success"):
+            raise RuntimeError(f"respons impor tidak valid: {body}")
+
+        _publish_csv_ack(machine_code, filename, "imported")
+        print(f"[CSV OK] {machine_code}/{filename}: {body.get('data_count', 0)} data")
+    except Exception as exc:
+        print(f"[CSV ERROR] {machine_code}/{filename}: {exc}")
+        _publish_csv_ack(machine_code, filename, "error", str(exc))
+    finally:
+        with _csv_lock:
+            _csv_uploads.pop(key, None)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _handle_csv_message(topic: str, raw: dict) -> None:
+    machine_code = str(raw.get("id", "")).strip()
+    filename = _safe_csv_name(raw.get("file", ""))
+    key = (machine_code, filename)
+    kind = topic.rsplit("/", 1)[-1]
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", machine_code):
+        raise ValueError("id mesin tidak valid")
+
+    if kind == "meta":
+        size = int(raw.get("size", -1))
+        sha256 = str(raw.get("sha256", "")).lower()
+        if size <= 0 or size > 10 * 1024 * 1024:
+            raise ValueError("ukuran CSV tidak valid")
+        if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+            raise ValueError("SHA-256 tidak valid")
+        path = _csv_dir / f"{machine_code}_{filename}.part"
+        path.write_bytes(b"")
+        with _csv_lock:
+            _csv_uploads[key] = {
+                "path": path,
+                "size": size,
+                "sha256": sha256,
+                "next": 0,
+                "received": 0,
+            }
+        print(f"[CSV META] {machine_code}/{filename}: {size} byte")
+        return
+
+    with _csv_lock:
+        state = _csv_uploads.get(key)
+        if not state:
+            raise ValueError("metadata CSV belum diterima")
+
+        if kind == "chunk":
+            index = int(raw.get("index", -1))
+            if index < state["next"]:
+                return
+            if index != state["next"]:
+                raise ValueError(f"chunk tidak urut: {index}, diharapkan {state['next']}")
+            data = base64.b64decode(str(raw.get("data", "")), validate=True)
+            if not data:
+                raise ValueError("chunk CSV kosong")
+            with open(state["path"], "ab") as handle:
+                handle.write(data)
+            state["next"] += 1
+            state["received"] += len(data)
+            return
+
+        if kind != "end":
+            return
+        if state["received"] != state["size"]:
+            raise ValueError(f"ukuran diterima {state['received']} != {state['size']}")
+        digest = hashlib.sha256(state["path"].read_bytes()).hexdigest()
+        if digest != state["sha256"]:
+            raise ValueError("SHA-256 file hasil rakitan tidak cocok")
+
+    threading.Thread(target=_import_completed_csv, args=(key,), daemon=True).start()
+
+
 def on_message(client, userdata, msg):
     try:
         raw = json.loads(msg.payload.decode("utf-8"))
     except json.JSONDecodeError as e:
         print(f"[ERROR] JSON tidak valid: {e}")
+        return
+
+    if msg.topic.startswith(f"{MQTT_CSV_TOPIC}/"):
+        try:
+            _handle_csv_message(msg.topic, raw)
+        except Exception as exc:
+            machine_code = str(raw.get("id", ""))
+            filename = str(raw.get("file", ""))
+            print(f"[CSV ERROR] {machine_code}/{filename}: {exc}")
+            _publish_csv_ack(machine_code, filename, "error", str(exc))
         return
 
     if msg.topic == "retort/system":

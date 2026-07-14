@@ -97,10 +97,11 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
 
     return (
         <div
-            role="button"
-            tabIndex={0}
+            role={isActive ? undefined : 'button'}
+            tabIndex={isActive ? -1 : 0}
             onClick={onClick}
             onKeyDown={handleKeyDown}
+            aria-disabled={isActive}
             className={`relative w-full text-left p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
                 menuOpen ? 'z-30' : 'hover-lift'
             } ${
@@ -116,6 +117,11 @@ export default function ProcessCard({ session, isSelected, onClick, onDelete }) 
                         <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-sm font-semibold">
                             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                             Aktif
+                        </span>
+                    )}
+                    {isActive && (
+                        <span className="text-xs font-semibold text-amber-700">
+                            Menunggu CSV selesai
                         </span>
                     )}
                 </div>

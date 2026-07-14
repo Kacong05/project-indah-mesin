@@ -102,6 +102,12 @@ class HistoryController extends Controller
      */
     public function destroySession(Request $request, ProcessSession $session)
     {
+        abort_if(
+            $session->getRawOriginal('status') === 'active',
+            409,
+            'Proses yang sedang berjalan tidak dapat dihapus.'
+        );
+
         $machineId = $request->user()->machine_id;
         if ($machineId && $session->machine_id !== $machineId) {
             abort(403);

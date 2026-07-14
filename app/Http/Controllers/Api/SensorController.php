@@ -9,17 +9,14 @@ use App\Services\MonitoringBroadcast;
 use App\Services\MonitoringLiveCache;
 use App\Services\ProcessSessionService;
 use Carbon\Carbon;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SensorController extends Controller
 {
-    private ProcessSessionService $processSessionService;
-
-    public function __construct(ProcessSessionService $processSessionService)
-    {
-        $this->processSessionService = $processSessionService;
-    }
+    public function __construct(
+        private ProcessSessionService $processSessionService
+    ) {}
 
     public function store(Request $request): JsonResponse
     {
@@ -72,7 +69,7 @@ class SensorController extends Controller
             'recorded_at' => $liveData['recorded_at'],
         ];
 
-        if (! $backfill && ! MonitoringLiveCache::shouldAccept($machine->id, $liveData['recorded_at'])) {
+        if (! MonitoringLiveCache::shouldAccept($machine->id, $liveData['recorded_at'])) {
             return response()->json([
                 'success' => true,
                 'recorded' => false,
@@ -81,35 +78,26 @@ class SensorController extends Controller
             ]);
         }
 
-        $valveOpen = $mv === null || $mv > 0 || $logging;
-
-        if ($backfill) {
-            return $this->handleBackfill($machine, $validated, $timestamp, $liveData, $chartPoint, $valveOpen);
-        }
-
-        if (! $valveOpen) {
-            MonitoringLiveCache::put($machine->id, $liveData, recording: false);
-            MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
-
-            $machine->update([
-                'last_heartbeat_at' => now(),
-                'status' => RetortMachine::STATUS_STANDBY,
-            ]);
-
-            MonitoringBroadcast::tick($machine->id);
-
-            return response()->json([
-                'success' => true,
-                'recorded' => false,
-                'live' => true,
-                'message' => 'MV <= 0 (katup tertutup) — PV/SV ditampilkan di web, tidak disimpan ke database.',
-            ]);
-        }
-
-        MonitoringLiveCache::put($machine->id, $liveData, recording: true);
+        $recording = $logging || ($mv !== null && $mv > 0);
+        MonitoringLiveCache::put($machine->id, $liveData, recording: $recording);
         MonitoringLiveCache::appendChartPoint($machine->id, $chartPoint);
 
-        return $this->persistReading($machine, $validated, $timestamp, $chartPoint);
+        $machine->update([
+            'last_heartbeat_at' => now(),
+            'status' => $recording
+                ? RetortMachine::STATUS_RUNNING
+                : RetortMachine::STATUS_STANDBY,
+        ]);
+        MonitoringBroadcast::tick($machine->id);
+
+        return response()->json([
+            'success' => true,
+            'recorded' => false,
+            'live' => true,
+            'message' => $backfill
+                ? 'Backfill per baris tidak lagi disimpan; tunggu impor CSV sesi lengkap.'
+                : 'Data live diperbarui tanpa disimpan ke database.',
+        ]);
     }
 
     /**

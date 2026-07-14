@@ -1,3 +1,9 @@
-1.⁠ ⁠saat ini mirroring suhu idle (ketika TNH nyala tapi steam OFF) masih sering tidak realtime. dikarenakan ada delay akibat pengiriman data ketika steam ON dan menunggu selesai baru akan merecord suhu idle kembali. perbaikannya akan dibuat asyncronous supaya suhu yang tampilkan ketika idle identik dengan TNH
-2.⁠ ⁠⁠melakukan identifikasi fitur step NTH dan implementasi ke IoT dan dashboard
-3.⁠ ⁠⁠melakukan log/ pencatatan jika terjadi watchdog (ketika sitem IoT panas dan melakukan restart sendiri) dan menambahkan ke dashboard
+saya ingin merubah logika dimana sebelumnya data di cek terlebih dahulu menenggunakan iso kemudian mengirimkan 10 data
+
+1. saat ini data tidak perlu di cek dulu sebelum dikirim, dan web tidak perlu menyimpan data yg sedang berjalan
+2. kemudian saat proses berakhir, esp akan langsung mengirimkan csv lengkap jadi data tidak akan hilang
+3. saat proses berjalan riwayat data yg sedang berjalan tidak bisa dibuka
+
+
+solusi akan memberi dampak
+1. delay pengiriman data akan bisa diatasi, dan data tersimpan tidak akan hilang

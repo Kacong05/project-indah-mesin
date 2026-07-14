@@ -38,6 +38,10 @@ Route::post('/api/sensor', [\App\Http\Controllers\Api\SensorController::class, '
     ->middleware('sensor.token')
     ->name('api.sensor');
 
+Route::post('/api/sessions/import-csv', [\App\Http\Controllers\Api\CompletedCsvController::class, 'store'])
+    ->middleware('sensor.token')
+    ->name('api.sessions.import-csv');
+
 Route::post('/api/system-event', [\App\Http\Controllers\SystemEventController::class, 'store'])
     ->middleware('sensor.token')
     ->name('api.system-event');
