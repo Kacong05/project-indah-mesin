@@ -112,9 +112,16 @@ static bool csvPrepareMetadata() {
 static bool csvSendMeta() {
   if (!gCsvSize && !csvPrepareMetadata()) return false;
   char payload[260];
-  snprintf(payload, sizeof(payload),
-    "{\id\:\%s\,\file\:\%s\,\size\:%u,\sha256\:\%s\}",
-    cfg.machineId, gCsvName, (unsigned)gCsvSize, gCsvSha256);
+  StaticJsonDocument<256> doc;
+  doc["id"] = cfg.machineId;
+  doc["file"] = gCsvName;
+  doc["size"] = gCsvSize;
+  doc["sha256"] = gCsvSha256;
+  size_t payloadLen = serializeJson(doc, payload, sizeof(payload));
+  if (!payloadLen || payloadLen >= sizeof(payload) - 1) {
+    Serial.println(F("[CSV] gagal serialize metadata"));
+    return false;
+  }
   if (!mqttPublishTopic(CSV_META_TOPIC, payload)) return false;
   gCsvMetaSent = true;
   Serial.printf("[CSV] meta %s (%u byte)\n", gCsvName, (unsigned)gCsvSize);
@@ -142,9 +149,16 @@ static bool csvSendChunk() {
   encoded[encodedLen] = '\0';
 
   char payload[720];
-  snprintf(payload, sizeof(payload),
-    "{\id\:\%s\,\file\:\%s\,\index\:%u,\data\:\%s\}",
-    cfg.machineId, gCsvName, (unsigned)gCsvChunk, encoded);
+  StaticJsonDocument<704> doc;
+  doc["id"] = cfg.machineId;
+  doc["file"] = gCsvName;
+  doc["index"] = gCsvChunk;
+  doc["data"] = reinterpret_cast<const char*>(encoded);
+  size_t payloadLen = serializeJson(doc, payload, sizeof(payload));
+  if (!payloadLen || payloadLen >= sizeof(payload) - 1) {
+    Serial.println(F("[CSV] gagal serialize chunk"));
+    return false;
+  }
   if (!mqttPublishTopic(CSV_CHUNK_TOPIC, payload)) return false;
   gCsvOffset += count;
   gCsvChunk++;
@@ -153,9 +167,16 @@ static bool csvSendChunk() {
 
 static bool csvSendEnd() {
   char payload[180];
-  snprintf(payload, sizeof(payload),
-    "{\id\:\%s\,\file\:\%s\,\size\:%u,\sha256\:\%s\}",
-    cfg.machineId, gCsvName, (unsigned)gCsvSize, gCsvSha256);
+  StaticJsonDocument<256> doc;
+  doc["id"] = cfg.machineId;
+  doc["file"] = gCsvName;
+  doc["size"] = gCsvSize;
+  doc["sha256"] = gCsvSha256;
+  size_t payloadLen = serializeJson(doc, payload, sizeof(payload));
+  if (!payloadLen || payloadLen >= sizeof(payload) - 1) {
+    Serial.println(F("[CSV] gagal serialize penutup"));
+    return false;
+  }
   if (!mqttPublishTopic(CSV_END_TOPIC, payload)) return false;
   gCsvEndSent = true;
   gCsvEndSentAt = millis();
