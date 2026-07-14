@@ -297,7 +297,7 @@ bool mqttPublishTopic(const char* topic, const char* payload);
 const char* sdCurrentLogPath();
 void forwardSetup();
 void forwardTick();
-void forwardOnAck(const char* filename, const char* status);
+void forwardOnAck(const char* filename, const char* transferId, const char* status, const char* message);
 bool forwardIsWaitingAck();
 void forwardOnMqttLost();
 

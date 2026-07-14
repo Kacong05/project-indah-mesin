@@ -20,7 +20,8 @@ extern bool mqttPublishTopic(const char* topic, const char* payload);
 #define CSV_CHUNK_TOPIC "retort/csv/chunk"
 #define CSV_END_TOPIC   "retort/csv/end"
 #define CSV_CHUNK_BYTES 384
-#define CSV_ACK_TIMEOUT_MS 30000UL
+#define CSV_ACK_TIMEOUT_MS 180000UL
+#define CSV_CHUNK_INTERVAL_MS 75UL
 
 volatile bool gFwdHasBacklog = false;
 
@@ -28,6 +29,7 @@ static char gCsvPath[64] = {0};
 static char gCsvMarker[72] = {0};
 static char gCsvName[48] = {0};
 static char gCsvSha256[65] = {0};
+static char gCsvTransferId[24] = {0};
 static uint32_t gCsvSize = 0;
 static uint32_t gCsvOffset = 0;
 static uint32_t gCsvChunk = 0;
@@ -37,6 +39,8 @@ static unsigned long gCsvEndSentAt = 0;
 static unsigned long gCsvLastSendAt = 0;
 
 static void csvResetTransfer() {
+  snprintf(gCsvTransferId, sizeof(gCsvTransferId), "%08lx%08lx",
+           (unsigned long)millis(), (unsigned long)esp_random());
   gCsvOffset = 0;
   gCsvChunk = 0;
   gCsvMetaSent = false;
@@ -115,6 +119,7 @@ static bool csvSendMeta() {
   StaticJsonDocument<256> doc;
   doc["id"] = cfg.machineId;
   doc["file"] = gCsvName;
+  doc["transfer_id"] = gCsvTransferId;
   doc["size"] = gCsvSize;
   doc["sha256"] = gCsvSha256;
   size_t payloadLen = serializeJson(doc, payload, sizeof(payload));
@@ -148,10 +153,11 @@ static bool csvSendChunk() {
   }
   encoded[encodedLen] = '\0';
 
-  char payload[720];
-  StaticJsonDocument<704> doc;
+  char payload[768];
+  StaticJsonDocument<768> doc;
   doc["id"] = cfg.machineId;
   doc["file"] = gCsvName;
+  doc["transfer_id"] = gCsvTransferId;
   doc["index"] = gCsvChunk;
   doc["data"] = reinterpret_cast<const char*>(encoded);
   size_t payloadLen = serializeJson(doc, payload, sizeof(payload));
@@ -170,6 +176,7 @@ static bool csvSendEnd() {
   StaticJsonDocument<256> doc;
   doc["id"] = cfg.machineId;
   doc["file"] = gCsvName;
+  doc["transfer_id"] = gCsvTransferId;
   doc["size"] = gCsvSize;
   doc["sha256"] = gCsvSha256;
   size_t payloadLen = serializeJson(doc, payload, sizeof(payload));
@@ -188,8 +195,18 @@ void forwardSetup() {
   csvResetTransfer();
 }
 
-void forwardOnAck(const char* filename, const char* status) {
+void forwardOnAck(const char* filename, const char* transferId, const char* status, const char* message) {
   if (!filename || strcmp(filename, gCsvName) != 0) return;
+  if (!transferId || strcmp(transferId, gCsvTransferId) != 0) {
+    Serial.printf("[CSV] ACK lama diabaikan: %s\n", filename);
+    return;
+  }
+  if (status && strcmp(status, "processing") == 0) {
+    gCsvEndSent = true;
+    gCsvEndSentAt = millis();
+    Serial.printf("[CSV] diterima server, proses impor: %s\n", gCsvName);
+    return;
+  }
   if (status && strcmp(status, "imported") == 0) {
     if (sdLock(1200)) {
       SD.remove(gCsvMarker);
@@ -204,7 +221,8 @@ void forwardOnAck(const char* filename, const char* status) {
     gFwdHasBacklog = csvFindReady();
     return;
   }
-  Serial.printf("[CSV] server menolak %s, ulang dari awal\n", gCsvName);
+  Serial.printf("[CSV] server menolak %s: %s, ulang dari awal\n",
+                gCsvName, (message && message[0]) ? message : "tanpa keterangan");
   csvResetTransfer();
 }
 
@@ -232,7 +250,7 @@ void forwardTick() {
     }
     return;
   }
-  if (millis() - gCsvLastSendAt < 25) return;
+  if (millis() - gCsvLastSendAt < CSV_CHUNK_INTERVAL_MS) return;
   gCsvLastSendAt = millis();
 
   if (!gCsvMetaSent) {
@@ -248,7 +266,7 @@ void forwardTick() {
 
 volatile bool gFwdHasBacklog = false;
 void forwardSetup() {}
-void forwardOnAck(const char*, const char*) {}
+void forwardOnAck(const char*, const char*, const char*, const char*) {}
 bool forwardIsWaitingAck() { return false; }
 void forwardOnMqttLost() {}
 void forwardTick() {}

@@ -37,9 +37,11 @@ static void mqttHandleAck(const char* json) {
   if (deserializeJson(doc, json) != DeserializationError::Ok) return;
   const char* target = doc["id"] | "";
   const char* filename = doc["file"] | "";
+  const char* transferId = doc["transfer_id"] | "";
   const char* status = doc["status"] | "";
+  const char* message = doc["message"] | "";
   if (strcmp(target, cfg.machineId) != 0) return;
-  forwardOnAck(filename, status);
+  forwardOnAck(filename, transferId, status, message);
 }
 
 static void mqttCb(char* topic, byte* payload, unsigned int len) {

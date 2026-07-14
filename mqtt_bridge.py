@@ -36,7 +36,9 @@ _POST_RETRIES = 3
 _mqtt_client: mqtt.Client | None = None
 _mqtt_lock = threading.Lock()
 _csv_lock = threading.Lock()
-_csv_uploads: dict[tuple[str, str], dict] = {}
+_csv_uploads: dict[tuple[str, str, str], dict] = {}
+_csv_active_imports: dict[tuple[str, str], tuple[str, str, str]] = {}
+_csv_waiters: dict[tuple[str, str], set[str]] = {}
 _csv_dir = Path(__file__).resolve().parent / "storage" / "app" / "mqtt-csv"
 _csv_dir.mkdir(parents=True, exist_ok=True)
 
@@ -196,7 +198,13 @@ def _publish_ack(machine_code: str, recorded_at: str) -> None:
     print(f"[ACK] {machine_code} @ {iso}")
 
 
-def _publish_csv_ack(machine_code: str, filename: str, status: str, message: str = "") -> None:
+def _publish_csv_ack(
+    machine_code: str,
+    filename: str,
+    transfer_id: str,
+    status: str,
+    message: str = "",
+) -> None:
     """ACK satu file setelah CSV lengkap berhasil atau gagal diproses."""
     global _mqtt_client
     if not _mqtt_client:
@@ -204,6 +212,7 @@ def _publish_csv_ack(machine_code: str, filename: str, status: str, message: str
     ack = json.dumps({
         "id": machine_code,
         "file": filename,
+        "transfer_id": transfer_id,
         "status": status,
         "message": message[:120],
     })
@@ -299,7 +308,7 @@ def _safe_csv_name(value: str) -> str:
     return name
 
 
-def _import_completed_csv(key: tuple[str, str]) -> None:
+def _import_completed_csv(key: tuple[str, str, str]) -> None:
     with _csv_lock:
         state = _csv_uploads.get(key)
         if not state:
@@ -307,7 +316,11 @@ def _import_completed_csv(key: tuple[str, str]) -> None:
         path = state["path"]
         expected_hash = state["sha256"]
 
-    machine_code, filename = key
+    machine_code, filename, transfer_id = key
+    logical_key = (machine_code, filename)
+    status = "error"
+    message = ""
+    data_count = 0
     try:
         with open(path, "rb") as handle:
             response = requests.post(
@@ -322,28 +335,41 @@ def _import_completed_csv(key: tuple[str, str]) -> None:
         body = response.json()
         if not body.get("success"):
             raise RuntimeError(f"respons impor tidak valid: {body}")
-
-        _publish_csv_ack(machine_code, filename, "imported")
-        print(f"[CSV OK] {machine_code}/{filename}: {body.get('data_count', 0)} data")
+        status = "imported"
+        data_count = body.get("data_count", 0)
     except Exception as exc:
-        print(f"[CSV ERROR] {machine_code}/{filename}: {exc}")
-        _publish_csv_ack(machine_code, filename, "error", str(exc))
-    finally:
-        with _csv_lock:
+        message = str(exc)
+
+    with _csv_lock:
+        if _csv_active_imports.get(logical_key) == key:
+            _csv_active_imports.pop(logical_key, None)
+        waiting_transfers = _csv_waiters.pop(logical_key, {transfer_id})
+        if _csv_uploads.get(key) is state:
             _csv_uploads.pop(key, None)
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    for waiting_transfer in waiting_transfers:
+        _publish_csv_ack(machine_code, filename, waiting_transfer, status, message)
+    if status == "imported":
+        print(f"[CSV OK] {machine_code}/{filename}: {data_count} data")
+    else:
+        print(f"[CSV ERROR] {machine_code}/{filename}: {message}")
 
 
 def _handle_csv_message(topic: str, raw: dict) -> None:
     machine_code = str(raw.get("id", "")).strip()
     filename = _safe_csv_name(raw.get("file", ""))
-    key = (machine_code, filename)
+    transfer_id = str(raw.get("transfer_id", "")).strip()
+    key = (machine_code, filename, transfer_id)
+    logical_key = (machine_code, filename)
     kind = topic.rsplit("/", 1)[-1]
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", machine_code):
         raise ValueError("id mesin tidak valid")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,48}", transfer_id):
+        raise ValueError("transfer_id tidak valid")
 
     if kind == "meta":
         size = int(raw.get("size", -1))
@@ -352,19 +378,51 @@ def _handle_csv_message(topic: str, raw: dict) -> None:
             raise ValueError("ukuran CSV tidak valid")
         if not re.fullmatch(r"[0-9a-f]{64}", sha256):
             raise ValueError("SHA-256 tidak valid")
-        path = _csv_dir / f"{machine_code}_{filename}.part"
-        path.write_bytes(b"")
+        stale_paths = []
         with _csv_lock:
-            _csv_uploads[key] = {
-                "path": path,
-                "size": size,
-                "sha256": sha256,
-                "next": 0,
-                "received": 0,
-            }
-        print(f"[CSV META] {machine_code}/{filename}: {size} byte")
+            if logical_key in _csv_active_imports:
+                _csv_waiters.setdefault(logical_key, set()).add(transfer_id)
+                importing = True
+            else:
+                importing = False
+                for stale_key, stale_state in list(_csv_uploads.items()):
+                    if stale_key[:2] == logical_key:
+                        stale_paths.append(stale_state["path"])
+                        _csv_uploads.pop(stale_key, None)
+                path = _csv_dir / f"{machine_code}_{transfer_id}_{filename}.part"
+                path.write_bytes(b"")
+                _csv_uploads[key] = {
+                    "path": path,
+                    "size": size,
+                    "sha256": sha256,
+                    "next": 0,
+                    "received": 0,
+                    "phase": "receiving",
+                }
+        if importing:
+            _publish_csv_ack(machine_code, filename, transfer_id, "processing")
+            print(f"[CSV WAIT] {machine_code}/{filename}: impor sebelumnya masih berjalan")
+            return
+        for stale_path in stale_paths:
+            try:
+                stale_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        print(f"[CSV META] {machine_code}/{filename} [{transfer_id}]: {size} byte")
         return
 
+    with _csv_lock:
+        waiting_for_active_import = (
+            logical_key in _csv_active_imports
+            and transfer_id in _csv_waiters.get(logical_key, set())
+            and key not in _csv_uploads
+        )
+    if waiting_for_active_import:
+        if kind == "end":
+            _publish_csv_ack(machine_code, filename, transfer_id, "processing")
+        return
+
+    start_import = False
     with _csv_lock:
         state = _csv_uploads.get(key)
         if not state:
@@ -387,13 +445,22 @@ def _handle_csv_message(topic: str, raw: dict) -> None:
 
         if kind != "end":
             return
-        if state["received"] != state["size"]:
-            raise ValueError(f"ukuran diterima {state['received']} != {state['size']}")
-        digest = hashlib.sha256(state["path"].read_bytes()).hexdigest()
-        if digest != state["sha256"]:
-            raise ValueError("SHA-256 file hasil rakitan tidak cocok")
+        if state["phase"] == "importing":
+            _csv_waiters.setdefault(logical_key, set()).add(transfer_id)
+        else:
+            if state["received"] != state["size"]:
+                raise ValueError(f"ukuran diterima {state['received']} != {state['size']}")
+            digest = hashlib.sha256(state["path"].read_bytes()).hexdigest()
+            if digest != state["sha256"]:
+                raise ValueError("SHA-256 file hasil rakitan tidak cocok")
+            state["phase"] = "importing"
+            _csv_active_imports[logical_key] = key
+            _csv_waiters.setdefault(logical_key, set()).add(transfer_id)
+            start_import = True
 
-    threading.Thread(target=_import_completed_csv, args=(key,), daemon=True).start()
+    _publish_csv_ack(machine_code, filename, transfer_id, "processing")
+    if start_import:
+        threading.Thread(target=_import_completed_csv, args=(key,), daemon=True).start()
 
 
 def on_message(client, userdata, msg):
@@ -409,8 +476,9 @@ def on_message(client, userdata, msg):
         except Exception as exc:
             machine_code = str(raw.get("id", ""))
             filename = str(raw.get("file", ""))
+            transfer_id = str(raw.get("transfer_id", ""))
             print(f"[CSV ERROR] {machine_code}/{filename}: {exc}")
-            _publish_csv_ack(machine_code, filename, "error", str(exc))
+            _publish_csv_ack(machine_code, filename, transfer_id, "error", str(exc))
         return
 
     if msg.topic == "retort/system":
