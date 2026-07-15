@@ -37,6 +37,23 @@ function TempBar({ temperature }) {
   );
 }
 
+function MvBar({ mv }) {
+  const pct = Math.min(Math.max(mv, 0), 100);
+  const color =
+    mv > 80 ? 'from-orange-500 to-red-500' :
+    mv > 0  ? 'from-emerald-500 to-emerald-400' :
+              'from-slate-600 to-slate-400';
+
+  return (
+    <div className="relative w-full h-2 bg-slate-700 rounded-full overflow-hidden mt-1">
+      <div
+        className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-700 ease-out`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
 function DataRow({ label, value, unit, children }) {
   return (
     <div className="flex flex-col gap-1 p-4 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 transition-colors">
@@ -87,8 +104,8 @@ export default function StatusPanel({ data, error }) {
       {/* Machine Code */}
       <DataRow label="Machine Code" value={data.machine_code} />
 
-      {/* Temperature */}
-      <DataRow label="Temperature" value={data.temperature.toFixed(1)} unit="°C">
+      {/* PV (Present Value) */}
+      <DataRow label="PV (Suhu Aktual)" value={data.temperature.toFixed(1)} unit="°C">
         <span className="text-2xl font-bold text-slate-100 tabular-nums">
           {data.temperature.toFixed(1)}
           <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
@@ -102,8 +119,22 @@ export default function StatusPanel({ data, error }) {
         </span>
       </DataRow>
 
-      {/* Pressure */}
-      <DataRow label="Pressure" value={data.pressure.toFixed(2)} unit="bar" />
+      {/* SV (Set Value) */}
+      <DataRow label="SV (Target Suhu)" value={data.sv.toFixed(1)} unit="°C" />
+
+      {/* MV (Manipulated Value) */}
+      <DataRow label="MV (Output Pemanas)" value={data.mv.toFixed(1)} unit="%">
+        <span className="text-2xl font-bold text-slate-100 tabular-nums">
+          {data.mv.toFixed(1)}
+          <span className="text-sm font-normal text-slate-400 ml-1">%</span>
+        </span>
+        <MvBar mv={data.mv} />
+      </DataRow>
+
+      {/* Pressure (Optional: fallback mapping since monitoring/live might not have it) */}
+      {data.pressure > 0 && (
+        <DataRow label="Pressure" value={data.pressure.toFixed(2)} unit="bar" />
+      )}
 
       {/* Process Status */}
       <DataRow label="Process Status">

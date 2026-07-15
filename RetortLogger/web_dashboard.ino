@@ -73,15 +73,16 @@ nav a{flex:1 1 auto;text-align:center;padding:10px 4px;font-size:13px}
 </div>
 </div>
 <div class="tg">
+<div style="font-size:14px;color:#666;font-weight:600;margin-bottom:4px">PV (Present Value)</div>
 <div class="tn" id="tbig">--<span>°C</span></div>
 <div class="tbar"><div class="tfill" id="tbar"></div></div>
-<div class="tlbl">Setting <b id="tsp">--°C</b> · <span id="tph">--</span> · <span id="trec">--</span></div>
+<div class="tlbl">SV (Set Value) <b id="tsp">--°C</b> · <span id="tph">--</span> · <span id="trec">--</span></div>
 </div>
 <div class="g">
 <div class="c"><small>WiFi</small><div class="v" id="wifi">--</div></div>
 <div class="c"><small>MQTT</small><div class="v" id="mqtt">--</div></div>
 <div class="c"><small>Status</small><div class="v" id="phase">--</div></div>
-<div class="c"><small>Output MV</small><div class="v" id="mv">--</div></div>
+<div class="c"><small>MV (Manipulated Value)</small><div class="v" id="mv">--</div></div>
 <div class="c sim" id="mvSimCard" style="display:none">
 <small>MV Simulasi</small>
 <div class="v" id="mvSim">OFF</div>
