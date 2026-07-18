@@ -151,19 +151,19 @@ mosquitto_passwd -b /etc/mosquitto/passwd "$MQTT_WEB_USER" "$MQTT_WEB_PASS"
 chown root:mosquitto /etc/mosquitto/passwd
 chmod 640 /etc/mosquitto/passwd
 
-# ACL: ESP publish data + baca cmd; bridge baca data; web publish cmd
+# ACL: ESP publish data/CSV/system + baca cmd/ack; bridge baca + ACK CSV; web publish cmd
 cat > /etc/mosquitto/acl << ACLCONF
 # ESP32 logger
 user ${MQTT_ESP_USER}
 topic write retort/data
 topic write retort/csv/#
+topic write retort/system
 topic read retort/cmd
 topic read retort/csv/ack
 
 # mqtt_bridge (server)
 user ${MQTT_BRIDGE_USER}
-topic read retort/data
-topic read retort/csv/#
+topic read retort/#
 topic write retort/csv/ack
 
 # Laravel web dashboard (kirim START/STOP)
@@ -249,6 +249,9 @@ set_env_var MQTT_PORT 1883
 set_env_var MQTT_USER "$MQTT_WEB_USER"
 set_env_var MQTT_PASSWORD "$MQTT_WEB_PASS"
 set_env_var MQTT_CMD_TOPIC retort/cmd
+
+# mqtt_bridge.py — impor CSV lengkap setelah proses selesai (ESP → MQTT → Laravel)
+set_env_var MQTT_BRIDGE_CSV_API_URL "http://127.0.0.1:${APP_PORT}/api/sessions/import-csv"
 
 # Simpan kredensial untuk referensi (chmod 600)
 cat > "$APP_DIR/.credentials.deploy" << CREDS
@@ -364,6 +367,7 @@ After=network.target mosquitto.service nginx.service postgresql.service
 User=www-data
 WorkingDirectory=${APP_DIR}
 Environment=API_URL=http://127.0.0.1:${APP_PORT}/api/sensor
+Environment=SYSTEM_API_URL=http://127.0.0.1:${APP_PORT}/api/system-event
 Environment=CSV_API_URL=http://127.0.0.1:${APP_PORT}/api/sessions/import-csv
 Environment=MQTT_TOPIC=retort/data
 Environment=MQTT_USER=${MQTT_BRIDGE_USER}
