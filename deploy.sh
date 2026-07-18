@@ -83,6 +83,7 @@ print_deploy_report() {
     echo -e "  Nomor Mesin  : RT-001"
     echo -e "  MQTT Broker  : ${VPS_IP}"
     echo -e "  MQTT Port    : 1883"
+    echo -e "  MQTT off?    : ${YELLOW}bash restart_check.sh${NC} lalu re-flash config.ino"
     echo ""
     [ "${#FAILED_STEPS[@]}" -gt 0 ] && exit 1
 }

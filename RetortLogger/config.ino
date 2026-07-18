@@ -21,13 +21,13 @@ static const char DEFAULT_PASS_HASH[] =
 
 // ============================================================
 //  MQTT broker, port, credentials & topics — SET MANUAL DI SINI sebelum flash.
-//  Harus sama dengan setting Mosquitto di VPS (user retort_esp).
-//  Untuk pindah broker/port: ubah konstanta di bawah lalu RE-FLASH.
+//  Harus sama dengan /var/www/project-indah-mesin/.credentials.deploy di VPS.
+//  Setelah deploy: cat .credentials.deploy → salin MQTT_ESP_PASS, lalu RE-FLASH.
 // ============================================================
 #define MQTT_BROKER     "49.13.233.119"   // IP publik VPS (broker Mosquitto). Web/API ada di :8000, MQTT tetap :1883
-#define MQTT_PORT       1883              // port broker MQTT (BUKAN 8080 — itu port web Laravel)
+#define MQTT_PORT       1883              // port broker MQTT (BUKAN 8000 — itu port web Laravel)
 #define MQTT_USER       "retort_esp"
-#define MQTT_PASS       "RetortEsp_e8cc4a9bd5e6702f"
+#define MQTT_PASS       "RetortEsp_b33f19c8080676bc"
 #define MQTT_PUB_TOPIC  "retort/data"
 #define MQTT_CMD_TOPIC  "retort/cmd"
 #define MQTT_ACK_TOPIC  "retort/csv/ack" // bridge ACK setelah satu CSV selesai diimpor
