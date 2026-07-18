@@ -280,18 +280,19 @@ else
 fi
 npm run build
 
-# Generate key
-php artisan config:clear
-php artisan key:generate --force
+# Generate key (pakai php8.3 — bukan php default sistem yang sering tanpa pgsql)
+PHP_BIN="/usr/bin/php${PHP_VER}"
+"${PHP_BIN}" artisan config:clear
+"${PHP_BIN}" artisan key:generate --force
 
 # Jalankan migrasi + seed (mesin RT-001, user admin/operator)
-php artisan migrate --force
-php artisan db:seed --force
+"${PHP_BIN}" artisan migrate --force
+"${PHP_BIN}" artisan db:seed --force
 
 # Optimasi
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+"${PHP_BIN}" artisan config:cache
+"${PHP_BIN}" artisan route:cache
+"${PHP_BIN}" artisan view:cache
 
 # Permission storage
 chown -R www-data:www-data "$APP_DIR"
