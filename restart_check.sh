@@ -3,8 +3,13 @@
 #  restart_check.sh  –  Sekali jalan: samakan token MQTT ESP,
 #                       restart semua service, dan cek koneksi.
 #  Jalankan di VPS sebagai root/sudo:
-#      sudo bash restart_check.sh
-#
+#      bash restart_check.sh   (JANGAN: sh restart_check.sh)
+# =============================================================
+
+if [ -z "${BASH_VERSION:-}" ]; then
+    exec /bin/bash "$0" "$@"
+fi
+
 #  Untuk apa:
 #    - ESP32 MQTT "off" biasanya karena IP broker / password tak cocok.
 #    - Skrip ini MEMAKSA password user MQTT ESP di broker = nilai di
@@ -13,8 +18,8 @@
 set -u
 
 # ── Konfigurasi — HARUS sama dengan RetortLogger/config.ino ──────────
-VPS_IP="82.153.226.85"          # IP publik VPS (broker MQTT)
-APP_PORT="8080"                 # port web/API Laravel (BUKAN port MQTT)
+VPS_IP="49.13.233.119"          # IP publik VPS (broker MQTT)
+APP_PORT="8000"                 # port web/API Laravel (BUKAN port MQTT)
 MQTT_PORT="1883"                # port broker Mosquitto (dipakai ESP32)
 APP_DIR="/var/www/project-indah-mesin"
 
@@ -45,7 +50,7 @@ echo "=============================================="
 MQTT_BRIDGE_USER=""; MQTT_BRIDGE_PASS=""; SENSOR_API_TOKEN=""
 if [ -f "$CREDS_FILE" ]; then
     # shellcheck disable=SC1090
-    source "$CREDS_FILE"
+    . "$CREDS_FILE"
     ok "Kredensial dibaca dari $CREDS_FILE"
 else
     info "$CREDS_FILE tidak ada — sebagian cek (bridge/API) dilewati."

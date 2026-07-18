@@ -24,7 +24,7 @@ static const char DEFAULT_PASS_HASH[] =
 //  Harus sama dengan setting Mosquitto di VPS (user retort_esp).
 //  Untuk pindah broker/port: ubah konstanta di bawah lalu RE-FLASH.
 // ============================================================
-#define MQTT_BROKER     "82.153.226.85"   // IP publik VPS (broker Mosquitto). Web/API ada di :8080, MQTT tetap :1883
+#define MQTT_BROKER     "49.13.233.119"   // IP publik VPS (broker Mosquitto). Web/API ada di :8000, MQTT tetap :1883
 #define MQTT_PORT       1883              // port broker MQTT (BUKAN 8080 — itu port web Laravel)
 #define MQTT_USER       "retort_esp"
 #define MQTT_PASS       "RetortEsp_e8cc4a9bd5e6702f"
