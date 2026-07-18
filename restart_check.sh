@@ -175,13 +175,18 @@ fi
 echo ""
 info "6) Tes API http://127.0.0.1:${APP_PORT}/api/sensor..."
 if [ -n "${SENSOR_API_TOKEN:-}" ]; then
+    NOW_ISO=$(date -Iseconds)
     CODE=$(curl -s -o /tmp/api.out -w '%{http_code}' -X POST \
         "http://127.0.0.1:${APP_PORT}/api/sensor" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer ${SENSOR_API_TOKEN}" \
-        -d '{"machine_code":"RT-001","temperature":99.9,"pressure":1.0,"process_status":"idle"}')
+        -d "{\"machine_code\":\"RT-001\",\"temperature\":99.9,\"pressure\":1.0,\"process_status\":\"idle\",\"recorded_at\":\"${NOW_ISO}\"}")
     if [ "$CODE" = "200" ] || [ "$CODE" = "201" ]; then
-        ok "API balas HTTP ${CODE}."
+        if grep -q '"success":true' /tmp/api.out 2>/dev/null; then
+            ok "API balas HTTP ${CODE} — token valid ($(head -c 80 /tmp/api.out))."
+        else
+            fail "API HTTP ${CODE} tapi success!=true: $(head -c 160 /tmp/api.out)"
+        fi
     else
         fail "API HTTP ${CODE}: $(head -c 160 /tmp/api.out)"
     fi
