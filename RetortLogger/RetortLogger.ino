@@ -252,6 +252,8 @@ void tnlFormatPs(char* out, size_t outLen) {
 // --- Forward Declarations ---
 void loadConfig();
 void saveConfig();
+void saveWatchdogPending(bool pending);
+bool loadWatchdogPending();
 void setupWiFiAP();
 void loopWiFiAP();
 void setupMQTT();
@@ -335,7 +337,16 @@ void setup() {
 
   esp_reset_reason_t reason = esp_reset_reason();
   gResetReason = getResetReasonStr(reason);
-  gBootEventPending = isWatchdogReset(reason);
+
+  loadConfig();
+
+  if (isWatchdogReset(reason)) {
+    saveWatchdogPending(true);
+    gBootEventPending = true;
+  } else {
+    gBootEventPending = loadWatchdogPending();
+  }
+
   Serial.printf("Reset reason: %s%s\n", gResetReason,
                 gBootEventPending ? " (watchdog event pending)" : "");
 
@@ -359,7 +370,6 @@ void setup() {
   state.sdReady       = false;
   state.logging       = false;
 
-  loadConfig();
   loadWebSession();
   mvSimLoad();
   forwardSetup();

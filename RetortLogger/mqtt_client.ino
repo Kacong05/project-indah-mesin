@@ -15,6 +15,8 @@ extern volatile bool gFwdHasBacklog;
 extern bool gBootEventPending;
 extern const char* gResetReason;
 
+void saveWatchdogPending(bool pending);
+
 static WiFiClient   mqttWifi;
 static PubSubClient mqtt(mqttWifi);
 
@@ -73,6 +75,26 @@ static void mqttCb(char* topic, byte* payload, unsigned int len) {
   else if (strcmp(buf, "STATUS") == 0) mqttPublishState();
 }
 
+static bool mqttPublishWatchdogEvent() {
+  if (!gBootEventPending || !mqtt.connected()) return false;
+
+  char bootBuf[192];
+  snprintf(bootBuf, sizeof(bootBuf),
+    "{\"id\":\"%s\",\"event\":\"watchdog\",\"reason\":\"%s\",\"iso\":\"%s\",\"ts\":\"%s\"}",
+    cfg.machineId, gResetReason, gLastIso, gLastTs);
+
+  if (!mqtt.publish("retort/system", bootBuf, false)) {
+    Serial.println(F("[MQTT] Watchdog publish FAILED — retry"));
+    return false;
+  }
+
+  gBootEventPending = false;
+  saveWatchdogPending(false);
+  Serial.printf("[MQTT] Watchdog event published: %s @ %s\n", gResetReason, gLastTs);
+  mqttPublishState();
+  return true;
+}
+
 static bool mqttRecon() {
   if (WiFi.status() != WL_CONNECTED) return false;
   bool ok;
@@ -86,16 +108,7 @@ static bool mqttRecon() {
     gLastMqttState = 0;
     Serial.printf("[MQTT] Connected. Sub: %s + %s\n", cfg.mqttCmdTopic, MQTT_ACK_TOPIC);
 
-    if (gBootEventPending) {
-      char bootBuf[192];
-      snprintf(bootBuf, sizeof(bootBuf),
-        "{\"id\":\"%s\",\"event\":\"watchdog\",\"reason\":\"%s\",\"iso\":\"%s\",\"ts\":\"%s\"}",
-        cfg.machineId, gResetReason, gLastIso, gLastTs);
-      mqtt.publish("retort/system", bootBuf, false);
-      gBootEventPending = false;
-      Serial.printf("[MQTT] Watchdog event published: %s @ %s\n", gResetReason, gLastTs);
-      mqttPublishState();
-    }
+    mqttPublishWatchdogEvent();
   } else {
     if (mqttFailStreak < 255) mqttFailStreak++;
     state.mqttConnected = false;
@@ -134,6 +147,13 @@ void loopMQTT() {
   }
   mqtt.loop();
   unsigned long now = millis();
+  if (gBootEventPending) {
+    static unsigned long lastWdtRetry = 0;
+    if (now - lastWdtRetry >= 5000) {
+      lastWdtRetry = now;
+      mqttPublishWatchdogEvent();
+    }
+  }
   if (now - lastPub >= 1000) {
     lastPub = now;
     mqttPublishState();

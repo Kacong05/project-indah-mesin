@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\WatchdogEventService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -29,11 +30,17 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+        $user?->loadMissing('machine');
+        $machineCode = $user?->machine?->machine_code;
+
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
+                'machineCode' => $machineCode,
             ],
+            'latestWdtEvent' => fn () => WatchdogEventService::latestForMachine($machineCode),
         ];
     }
 }

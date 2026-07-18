@@ -80,6 +80,9 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
 
         if (payload.latestWdtEvent !== undefined) {
             setWdtEvent(payload.latestWdtEvent);
+            if (payload.latestWdtEvent) {
+                window.dispatchEvent(new CustomEvent('retort:wdt', { detail: payload.latestWdtEvent }));
+            }
         }
     }, []);
 

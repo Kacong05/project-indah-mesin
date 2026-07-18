@@ -14,6 +14,7 @@ extern Preferences prefs;
 #define K_COOL_RATE   "cool_rate"
 #define K_MACHINE_ID  "machine_id"
 #define K_PASS_HASH   "pass_hash"
+#define K_WDT_PENDING "wdt_pend"
 
 // Default password hash: SHA256("retort123")
 static const char DEFAULT_PASS_HASH[] =
@@ -105,4 +106,17 @@ void saveConfigField(const char* key, uint32_t val) {
   prefs.begin(PREF_NS, false);
   prefs.putUInt(key, val);
   prefs.end();
+}
+
+void saveWatchdogPending(bool pending) {
+  prefs.begin(PREF_NS, false);
+  prefs.putBool(K_WDT_PENDING, pending);
+  prefs.end();
+}
+
+bool loadWatchdogPending() {
+  prefs.begin(PREF_NS, true);
+  bool v = prefs.getBool(K_WDT_PENDING, false);
+  prefs.end();
+  return v;
 }

@@ -61,9 +61,9 @@ def _read_laravel_env() -> dict:
 
 _laravel_env = _read_laravel_env()
 
-_default_api = "http://127.0.0.1:8080/api/sensor"
+_default_api = "http://127.0.0.1:8000/api/sensor"
 API_URL = os.getenv("API_URL") or _laravel_env.get("MQTT_BRIDGE_API_URL") or _default_api
-_system_api = "http://127.0.0.1:8080/api/system-event"
+_system_api = "http://127.0.0.1:8000/api/system-event"
 SYSTEM_API_URL = os.getenv("SYSTEM_API_URL") or _laravel_env.get("MQTT_BRIDGE_SYSTEM_API_URL") or _system_api
 CSV_API_URL = os.getenv("CSV_API_URL") or _laravel_env.get("MQTT_BRIDGE_CSV_API_URL") or "http://127.0.0.1:8080/api/sessions/import-csv"
 SENSOR_API_TOKEN = os.getenv("SENSOR_API_TOKEN") or _laravel_env.get("SENSOR_API_TOKEN", "")

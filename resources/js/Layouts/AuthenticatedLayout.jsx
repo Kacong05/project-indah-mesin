@@ -4,6 +4,7 @@ import { Menu, LogOut, Maximize, Minimize } from 'lucide-react';
 import NavbarMenu from '@/Components/NavbarMenu';
 import MobileBlock from '@/Components/MobileBlock';
 import ThemeToggle from '@/Components/ThemeToggle';
+import WatchdogNotification from '@/Components/WatchdogNotification';
 
 export default function AuthenticatedLayout({ header, children }) {
     const user = usePage().props.auth.user;
@@ -76,6 +77,8 @@ export default function AuthenticatedLayout({ header, children }) {
 
                         {/* Theme Toggle — di kiri profil */}
                         <ThemeToggle />
+
+                        {user.role === 'operator' && <WatchdogNotification />}
 
                         {/* User Dropdown */}
                         <div className="relative ml-2" ref={dropdownRef}>

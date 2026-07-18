@@ -105,10 +105,19 @@ ok "Broker: ${MQTT_ESP_USER}, ${MQTT_BRIDGE_USER}, ${MQTT_WEB_USER} disinkronkan
 # ─────────────────────────────────────────────────────────────
 echo ""
 info "2) Sinkron mqtt-bridge.service..."
+APP_PORT="${APP_PORT:-8000}"
 if [ -f "$BRIDGE_SERVICE" ]; then
     sed -i "s|^Environment=MQTT_PASS=.*|Environment=MQTT_PASS=${MQTT_BRIDGE_PASS}|" "$BRIDGE_SERVICE"
     if [ -n "${SENSOR_API_TOKEN:-}" ]; then
         sed -i "s|^Environment=SENSOR_API_TOKEN=.*|Environment=SENSOR_API_TOKEN=${SENSOR_API_TOKEN}|" "$BRIDGE_SERVICE"
+    fi
+    if grep -q '^Environment=API_URL=' "$BRIDGE_SERVICE"; then
+        sed -i "s|^Environment=API_URL=.*|Environment=API_URL=http://127.0.0.1:${APP_PORT}/api/sensor|" "$BRIDGE_SERVICE"
+    fi
+    if grep -q '^Environment=SYSTEM_API_URL=' "$BRIDGE_SERVICE"; then
+        sed -i "s|^Environment=SYSTEM_API_URL=.*|Environment=SYSTEM_API_URL=http://127.0.0.1:${APP_PORT}/api/system-event|" "$BRIDGE_SERVICE"
+    else
+        sed -i "/^Environment=SENSOR_API_TOKEN=/a Environment=SYSTEM_API_URL=http://127.0.0.1:${APP_PORT}/api/system-event" "$BRIDGE_SERVICE"
     fi
     systemctl daemon-reload
     ok "mqtt-bridge.service Environment diperbarui."
