@@ -176,6 +176,19 @@ def _normalize_recorded_at(raw: dict) -> str | None:
             f"T{h:02d}:{int(mi):02d}:{int(s):02d}+07:00"
         )
 
+    # Human ESP: DD-MM-YYYY HH:MM:SS WIB
+    m = re.match(
+        r"^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(WIB)?$",
+        ts,
+        re.IGNORECASE,
+    )
+    if m:
+        d, mo, y, h, mi, s, _wib = m.groups()
+        return (
+            f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+            f"T{int(h):02d}:{int(mi):02d}:{int(s):02d}+07:00"
+        )
+
     return None
 
 
@@ -256,35 +269,35 @@ def _post_worker(worker_id: int):
 
             recorded_at = payload.get("recorded_at", "")
             machine_code = payload.get("machine_code", "")
+            ts_txt = f" @ {recorded_at}" if recorded_at else ""
 
-            # ACK ke ESP: sukses simpan, duplikat, live preview, atau backfill tersimpan
-            if (
-                body.get("recorded")
-                or body.get("duplicate")
-                or body.get("live")
-                or body.get("backfill_ack")
-            ):
-                # Live preview tidak memakai ACK per baris.
-                pass
-            elif body.get("ignored"):
-                print(
-                    f"[WARN] no ack — ignored {machine_code} @ {recorded_at} "
-                    f"({body.get('message', '')[:60]})"
-                )
-            else:
-                print(
-                    f"[WARN] no ack — response {machine_code} @ {recorded_at} "
-                    f"keys={list(body.keys())}"
-                )
-
-            if body.get("recorded") and not body.get("duplicate"):
+            if body.get("live"):
                 sv = payload.get("sv")
                 sv_txt = f" | SV {sv}°C" if sv is not None else ""
-                ts_txt = f" @ {recorded_at}" if recorded_at else ""
+                print(
+                    f"[LIVE] {machine_code} | "
+                    f"{payload['temperature']}°C{sv_txt} | "
+                    f"{payload.get('process_status', '')}{ts_txt}"
+                )
+            elif body.get("recorded") and not body.get("duplicate"):
+                sv = payload.get("sv")
+                sv_txt = f" | SV {sv}°C" if sv is not None else ""
                 print(
                     f"[OK] {machine_code} | "
                     f"{payload['temperature']}°C{sv_txt} | "
-                    f"{payload['process_status']}{ts_txt}"
+                    f"{payload.get('process_status', '')}{ts_txt}"
+                )
+            elif body.get("ignored"):
+                print(
+                    f"[WARN] ignored {machine_code}{ts_txt} "
+                    f"({body.get('message', '')[:60]})"
+                )
+            elif not (
+                body.get("duplicate")
+                or body.get("backfill_ack")
+            ):
+                print(
+                    f"[WARN] response {machine_code}{ts_txt} keys={list(body.keys())}"
                 )
         finally:
             _POST_QUEUE.task_done()

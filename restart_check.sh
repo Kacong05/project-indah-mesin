@@ -20,6 +20,7 @@ APP_PORT="8000"
 MQTT_PORT="1883"
 APP_DIR="/var/www/project-indah-mesin"
 MQTT_DATA_TOPIC="retort/data"
+PHP_BIN="/usr/bin/php8.3"
 
 CREDS_FILE="${APP_DIR}/.credentials.deploy"
 ENV_FILE="${APP_DIR}/.env"
@@ -63,6 +64,20 @@ done
 
 if [ -z "${SENSOR_API_TOKEN:-}" ] && [ -f "$ENV_FILE" ]; then
     SENSOR_API_TOKEN=$(grep -E '^SENSOR_API_TOKEN=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '" ')
+fi
+
+# Reset cache live lama (sering dari tes curl) agar ESP langsung sinkron ke web
+if [ -x "$PHP_BIN" ] && [ -f "${APP_DIR}/artisan" ]; then
+    echo ""
+    info "0) Reset cache monitoring live RT-001..."
+    if (cd "$APP_DIR" && "${PHP_BIN}" artisan tinker --execute="
+\$m = \\App\\Models\\RetortMachine::where('machine_code', 'RT-001')->first();
+if (\$m) { \\App\\Services\\MonitoringLiveCache::clearMachine(\$m->id); echo 'ok'; }
+" 2>/dev/null | grep -q ok); then
+        ok "Cache monitoring dikosongkan — siap terima data ESP."
+    else
+        info "Lewati reset cache (tinker tidak tersedia)."
+    fi
 fi
 
 # ─────────────────────────────────────────────────────────────

@@ -41,7 +41,7 @@ class MonitoringLiveCache
     }
 
     /**
-     * Terima hanya jika recorded_at ≥ snapshot terakhir (ISO-8601).
+     * Terima jika recorded_at ≥ snapshot, atau toleransi skew jam ESP vs cache tes manual.
      */
     public static function shouldAccept(int $machineId, ?string $recordedAt): bool
     {
@@ -57,7 +57,32 @@ class MonitoringLiveCache
         $incoming = Carbon::parse($recordedAt)->timezone('Asia/Jakarta');
         $current = Carbon::parse($existing['recorded_at'])->timezone('Asia/Jakarta');
 
-        return $incoming->gte($current);
+        return self::shouldAcceptIncoming($incoming, $current);
+    }
+
+    /**
+     * Bandingkan timestamp masuk vs yang sudah ada — toleransi skew ESP/server.
+     */
+    private static function shouldAcceptIncoming(Carbon $incoming, Carbon $current): bool
+    {
+        if ($incoming->gte($current)) {
+            return true;
+        }
+
+        $now = now('Asia/Jakarta');
+        $skewSeconds = $current->diffInSeconds($incoming);
+
+        // Cache kemungkinan dari tes curl/restart_check (timestamp server di depan ESP)
+        if ($current->gt($now->copy()->addMinutes(1))) {
+            return true;
+        }
+
+        // Paket ESP masih relevan (≤5 menit) — toleransi skew jam ≤3 menit
+        if ($skewSeconds <= 180 && $incoming->gte($now->copy()->subMinutes(5))) {
+            return true;
+        }
+
+        return false;
     }
 
     public static function get(int $machineId): ?array
@@ -171,7 +196,15 @@ class MonitoringLiveCache
         $last = Carbon::parse($buf[array_key_last($buf)]['recorded_at'])->timezone('Asia/Jakarta');
         $incoming = Carbon::parse($recordedAt)->timezone('Asia/Jakarta');
 
-        return $incoming->gte($last);
+        return self::shouldAcceptIncoming($incoming, $last);
+    }
+
+    /** Kosongkan cache live + grafik untuk satu mesin (mis. setelah pindah VPS). */
+    public static function clearMachine(int $machineId): void
+    {
+        Cache::forget(self::cacheKey($machineId));
+        Cache::forget(self::chartKey($machineId));
+        Cache::forget(MonitoringBroadcast::cacheKey($machineId));
     }
 
     /**

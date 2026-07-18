@@ -70,6 +70,10 @@ class SensorController extends Controller
         ];
 
         if (! MonitoringLiveCache::shouldAccept($machine->id, $liveData['recorded_at'])) {
+            // Tetap catat heartbeat agar web tahu ESP hidup meski paket di-skip
+            $machine->update(['last_heartbeat_at' => now()]);
+            MonitoringBroadcast::tick($machine->id);
+
             return response()->json([
                 'success' => true,
                 'recorded' => false,
