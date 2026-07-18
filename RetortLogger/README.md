@@ -79,16 +79,18 @@ Read Input Registers (FC04) membaca blok kontigu `0x03E8`–`0x03ED`:
 PV dan SV memakai skala decimal point yang sama (mis. `dp=1` → /10).
 MV memakai skala tetap (`raw / 10 = %`). `state.mv` = MV terbesar (heating/cooling).
 
-Transaksi program (mirror **P/S, TOT, STP**) — FC04 + FC03:
+Transaksi program (mirror **P/S, TOT, STP**) — satu FC04 `0x03E8` × 24 register:
 
-| PDU | Isi |
-|-----|-----|
-| `0x03FB` | Pattern aktif |
-| `0x03FC` | Step aktif |
-| `0x03FD` | Total waktu proses pattern → **TOT M:S** |
-| `0x03FF` | Sisa waktu step; **STP M:S** = `STEP_TIM` − rest (`FC03 0x00CD` + 2×(step−1)) |
+| Offset | PDU | Isi |
+|--------|-----|-----|
+| +0 | `0x03E8` | PV, dp, SV, MV |
+| +14 | `0x03F6` | RUN/STOP monitoring (`0=RUN`) |
+| +19 | `0x03FB` | Pattern aktif |
+| +20 | `0x03FC` | Step aktif |
+| +21 | `0x03FD` | **TOT** (Program_Process_Time) |
+| +23 | `0x03FF` | **STP** (Program_Rest_Time, sisa step) |
 
-Transaksi lain: **status RUN/STOP** FC03 holding `0x0000` (`0=RUN`, `1=STOP`).
+Satuan waktu: FC03 `0x00C8` (400201). Hanya valid saat **Mode PROG** + mesin **RUN**.
 
 > SV live read-only ada di input register `0x03EB` (FC04), bukan di `0x0000`.
 

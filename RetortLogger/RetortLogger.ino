@@ -83,7 +83,7 @@ struct RetortState {
   uint8_t pattern;    // TNL Program_PATN_CURR (FC04 0x03FB)
   uint8_t step;       // TNL Program_Step_CURR (FC04 0x03FC)
   char totMs[8];      // TNL Program_Process_Time — mirror TOT M:S
-  char stpMs[8];      // waktu step berjalan — mirror STP M:S
+  char stpMs[8];      // sisa waktu step (Program_Rest_Time) — mirror STP M:S
   unsigned long phaseStartMs;
   bool wifiConnected;
   bool mqttConnected;
@@ -140,6 +140,10 @@ const char* getResetReasonStr(esp_reset_reason_t r) {
     case ESP_RST_SDIO: return "SDIO";
     default: return "UNKNOWN";
   }
+}
+
+bool isWatchdogReset(esp_reset_reason_t r) {
+  return r == ESP_RST_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT;
 }
 
 // --- SHA256 ---
@@ -331,8 +335,9 @@ void setup() {
 
   esp_reset_reason_t reason = esp_reset_reason();
   gResetReason = getResetReasonStr(reason);
-  gBootEventPending = true;
-  Serial.printf("Reset reason: %s\n", gResetReason);
+  gBootEventPending = isWatchdogReset(reason);
+  Serial.printf("Reset reason: %s%s\n", gResetReason,
+                gBootEventPending ? " (watchdog event pending)" : "");
 
   // Turunkan clock CPU: 160 MHz cukup cepat untuk web + Modbus,
   // mengurangi panas & konsumsi daya ESP32-S3.

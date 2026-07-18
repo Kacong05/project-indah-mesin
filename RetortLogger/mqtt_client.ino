@@ -87,12 +87,14 @@ static bool mqttRecon() {
     Serial.printf("[MQTT] Connected. Sub: %s + %s\n", cfg.mqttCmdTopic, MQTT_ACK_TOPIC);
 
     if (gBootEventPending) {
-      char bootBuf[128];
+      char bootBuf[192];
       snprintf(bootBuf, sizeof(bootBuf),
-        "{\"id\":\"%s\",\"event\":\"boot\",\"reason\":\"%s\",\"iso\":\"%s\"}",
-        cfg.machineId, gResetReason, gLastIso);
+        "{\"id\":\"%s\",\"event\":\"watchdog\",\"reason\":\"%s\",\"iso\":\"%s\",\"ts\":\"%s\"}",
+        cfg.machineId, gResetReason, gLastIso, gLastTs);
       mqtt.publish("retort/system", bootBuf, false);
       gBootEventPending = false;
+      Serial.printf("[MQTT] Watchdog event published: %s @ %s\n", gResetReason, gLastTs);
+      mqttPublishState();
     }
   } else {
     if (mqttFailStreak < 255) mqttFailStreak++;

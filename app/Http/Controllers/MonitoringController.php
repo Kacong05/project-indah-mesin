@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ProvidesMachineData;
+use App\Models\SystemEvent;
 use App\Services\MonitoringBroadcast;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -107,18 +108,42 @@ class MonitoringController extends Controller
 
         $latestWdtEvent = null;
         if ($machine) {
-            $latestWdtEvent = \App\Models\SystemEvent::where('machine_code', $machine->machine_code)
-                ->where('event', 'boot')
-                ->where('reason', 'WDT')
-                ->where('created_at', '>=', now()->subMinutes(30))
+            $row = SystemEvent::where('machine_code', $machine->machine_code)
+                ->whereIn('reason', ['WDT', 'INT_WDT', 'TASK_WDT'])
+                ->where(function ($query) {
+                    $query->where('event', 'watchdog')
+                        ->orWhere('event', 'boot');
+                })
+                ->where('created_at', '>=', now()->subHours(24))
                 ->latest()
                 ->first();
+
+            $latestWdtEvent = $this->formatWdtEventForDisplay($row);
         }
 
         return [
             'stats' => $this->getMachineStats($machine, null, $today),
             'chartData' => $this->getTemperatureChartData($machine),
             'latestWdtEvent' => $latestWdtEvent,
+        ];
+    }
+
+    protected function formatWdtEventForDisplay(?SystemEvent $event): ?array
+    {
+        if (! $event) {
+            return null;
+        }
+
+        $at = $event->iso
+            ? Carbon::parse($event->iso)->timezone('Asia/Jakarta')
+            : $event->created_at->copy()->timezone('Asia/Jakarta');
+
+        return [
+            'id' => $event->id,
+            'reason' => $event->reason,
+            'iso' => $event->iso,
+            'displayAt' => $at->format('d/m/Y H:i:s').' WIB',
+            'created_at' => $event->created_at->toIso8601String(),
         ];
     }
 }

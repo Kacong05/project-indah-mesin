@@ -500,6 +500,7 @@ def on_message(client, userdata, msg):
             "event": raw.get("event", ""),
             "reason": raw.get("reason", ""),
             "iso": raw.get("iso", ""),
+            "ts": raw.get("ts", ""),
         }
         threading.Thread(target=_post_system, args=(payload,), daemon=True).start()
         return

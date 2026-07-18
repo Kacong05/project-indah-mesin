@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
-import { TrendingUp, ZoomIn, ZoomOut, RotateCcw, AlertTriangle } from 'lucide-react';
+import { TrendingUp, ZoomIn, ZoomOut, RotateCcw, AlertTriangle, X } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -34,10 +34,11 @@ ChartJS.register(
 /** Safety net di browser — server sudah decimate ke ~360 titik. */
 const CHART_DECIMATION_SAMPLES = 360;
 
-export default function MonitoringIndex({ stats: initialStats, chartData: initialChartData, machineName, latestWdtEvent }) {
+export default function MonitoringIndex({ stats: initialStats, chartData: initialChartData, machineName, machineCode, latestWdtEvent }) {
     const [stats, setStats] = useState(initialStats);
     const [chartData, setChartData] = useState(initialChartData);
     const [wdtEvent, setWdtEvent] = useState(latestWdtEvent);
+    const [wdtDismissedId, setWdtDismissedId] = useState(null);
     const lastSeqRef = useRef(0);
     const lastLiveAtRef = useRef('');
     const chartRef = useRef(null);
@@ -279,15 +280,25 @@ export default function MonitoringIndex({ stats: initialStats, chartData: initia
             <Head title="Monitoring" />
 
             <div className="space-y-6">
-                {wdtEvent && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl relative flex items-center gap-3">
-                        <AlertTriangle className="w-5 h-5 text-red-500" />
-                        <div>
+                {wdtEvent && wdtDismissedId !== wdtEvent.id && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl relative flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
                             <strong className="font-semibold block">Peringatan: Watchdog Reset Terdeteksi</strong>
-                            <span className="block text-sm">
-                                Perangkat IoT melakukan restart otomatis (Watchdog) pada {new Date(wdtEvent.created_at).toLocaleTimeString('id-ID')}. Kemungkinan terjadi overheat atau sistem macet sesaat.
+                            <span className="block text-sm mt-1">
+                                ESP {machineCode || 'IoT'} restart otomatis ({wdtEvent.reason || 'WDT'}) pada{' '}
+                                <strong>{wdtEvent.displayAt || wdtEvent.iso || wdtEvent.created_at}</strong>.
+                                Kemungkinan terjadi overheat atau sistem macet sesaat.
                             </span>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => setWdtDismissedId(wdtEvent.id)}
+                            className="shrink-0 p-1 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-100 transition-colors"
+                            aria-label="Tutup peringatan"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
                     </div>
                 )}
 
