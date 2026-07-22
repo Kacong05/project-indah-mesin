@@ -108,5 +108,109 @@ void loop() {
 }
 ```
 
+## Arsitektur RetortLogger: Akuisisi Async & Jaminan Zero-Loss
+
+Bagian ini mendokumentasikan bagaimana firmware **RetortLogger** (ESP32-S3) membaca
+data dari TN Controller lewat Modbus, mengirimnya secara *asynchronous* ke dashboard
+dan MQTT, serta menjamin **tidak ada satu detik data pun yang hilang** selama sesi
+sterilisasi. Dirangkum dari rangkaian perbaikan watchdog dan *zero-loss logging guard*.
+
+### Prinsip utama
+
+Data sterilisasi sangat berharga: kehilangan 1 baris berarti proses harus diulang
+dari nol. Karena itu firmware memisahkan **jalur akuisisi/penyimpanan** (kritis, tidak
+boleh telat) dari **jalur jaringan** (boleh lambat) ke task dan core yang berbeda.
+
+```mermaid
+flowchart LR
+    tnl[TN Controller] -->|"Modbus RTU FC04 (RS485)"| logger["loggerTask (core 1, prio 3)"]
+    logger -->|"tiap 1 dtk"| sd[(Kartu MicroSD CSV)]
+    logger -->|"baca dari RAM"| dash["Dashboard /api/status (tiap 2 dtk)"]
+    logger -->|"baca dari RAM"| mqtt["MQTT retort/data (tiap 1 dtk)"]
+    sd -.->|"setelah sesi selesai"| upload["Upload CSV: meta/chunk/end"]
+```
+
+Poin kunci: **dashboard dan MQTT membaca dari RAM (`state.*`), bukan dari kartu SD.**
+Jadi tampilan live tetap real-time tanpa delay, sementara sumber kebenaran data tetap
+di kartu MicroSD.
+
+### Pembagian task & core
+
+| Konteks | Core | Prioritas | Tugas |
+| --- | --- | --- | --- |
+| `loggerTask` | 1 | 3 (tinggi) | Baca Modbus PV/SV/MV + tulis 1 baris CSV, tepat tiap 1000 ms (`vTaskDelayUntil`) |
+| `loop()` Arduino | 1 | 1 | WiFi, MQTT, NTP, upload CSV — boleh lambat |
+| AsyncTCP | 0 | - | Web server (dashboard, settings, storage) |
+| WiFi/TCP stack | 0 | - | Internal Espressif |
+
+Karena `loggerTask` berprioritas lebih tinggi, walau `loop()` mandek oleh jaringan,
+pengambilan dan penulisan data **tetap jalan tepat waktu**.
+
+### Alur data asynchronous
+
+1. **Akuisisi (1 dtk):** `loggerTask` melakukan satu transaksi Modbus FC04
+   (`0x03E8` × 24 register) untuk PV, SV, MV, RUN/STOP, Pattern/Step, TOT, STP,
+   lalu menyimpannya ke `state.*` di RAM.
+2. **Penyimpanan utama (1 dtk):** baris CSV ditulis ke kartu MicroSD
+   `/retort/YYYYMMDD_HHMMSS.csv` di task yang sama (satu konteks, dilindungi mutex).
+3. **Live monitoring:** dashboard menarik `state.*` dari RAM tiap 2 dtk; MQTT
+   `retort/data` mengirim tiap 1 dtk. Keduanya **tidak menyentuh kartu SD**.
+4. **Upload setelah selesai:** saat sesi berhenti, file ditutup dan diberi marker
+   `.ready`. Firmware lalu mengirim CSV lengkap via `retort/csv/meta` → `chunk` → `end`;
+   bridge memverifikasi SHA-256 lalu impor dalam satu transaksi dan membalas ACK.
+
+### Perbaikan Watchdog (anti-reboot saat blocking)
+
+Watchdog reset (`TASK_WDT`/`INT_WDT`) terjadi bila sebuah task tertahan terlalu lama.
+Semua *blocking call* panjang di `loop()` dihilangkan:
+
+| Penyebab lama | Perbaikan |
+| --- | --- |
+| Sinkron NTP memblok `loop()` hingga ~18 dtk | NTP dibuat **non-blocking**: `rtcSyncNtp()` hanya *arm*, hasil dipoll `rtcSyncNtpTick()` (timeout 0), menyerah setelah 20 dtk |
+| `mqtt.connect()` blok ~6 dtk saat broker mati | `MQTT_SOCKET_TIMEOUT_S` diturunkan `6 → 2` dtk |
+| Hashing SHA-256 seluruh CSV sekaligus (tahan mutex SD) | Hashing **bertahap** ~8 KB per tick, mutex dilepas antar potongan |
+| `Serial.printf` blok saat host USB tidak membaca | `Serial.setTxTimeoutMs(0)` |
+| Hang benar-benar terjadi | **Task WDT eksplisit** (10 dtk, `panic=true`) sebagai pemulihan otomatis; `loop()` dan `loggerTask` di-*feed* `esp_task_wdt_reset()` |
+
+### Jaminan Zero-Loss saat perekaman
+
+Selama `state.logging == true`, dua lapis pertahanan menjaga agar tidak ada baris
+yang hilang senyap:
+
+1. **Blokir akses web ke SD saat logging.** Endpoint `/api/stor`, `/api/stor/dl`,
+   `/api/stor/del`, dan `/api/dl` menolak akses (pesan "sedang merekam") sehingga
+   task AsyncTCP di core 0 tidak berebut bus SPI dengan `loggerTask`.
+2. **Ring buffer RAM (~300 baris ≈ 5 menit).** Baris CSV diformat **lebih dulu**
+   (timestamp akurat), lalu:
+   - Jika bus SD sesaat sibuk (`sdLock` gagal / tulis gagal) → baris diparkir di
+     antrean RAM, **bukan dibuang**.
+   - Saat SD siap → antrean di-*flush* lebih dulu (urut kronologis) sebelum baris
+     detik berjalan ditulis.
+   - Jika antrean sampai penuh, counter `gCsvDropped` naik dan tampil mencolok di
+     kartu **SD Card** dashboard (`OK` / `OK (buf N)` / `DROP N`) — tanda kartu SD
+     harus diganti, bukan lagi masalah software.
+
+```mermaid
+flowchart TD
+    tick["Tiap 1 dtk: format baris CSV (timestamp saat ini)"] --> lock{"Dapat kunci SD?"}
+    lock -->|Tidak| park["Parkir ke ring buffer RAM"]
+    lock -->|Ya| flush["Flush baris tertunda (FIFO, urut waktu)"]
+    flush --> write{"Tulis baris sekarang berhasil?"}
+    write -->|Ya| ok["Tersimpan di kartu MicroSD"]
+    write -->|Tidak| park
+    park --> full{"Ring penuh?"}
+    full -->|Tidak| safe["Aman, disusulkan tick berikutnya"]
+    full -->|Ya| drop["gCsvDropped++ (peringatan: ganti kartu SD)"]
+```
+
+### Ringkasan efek
+
+- **Dashboard & MQTT live:** tetap real-time dari RAM, tanpa delay.
+- **Penulisan per detik ke SD:** lebih andal (tidak ada web yang berebut bus saat rekam).
+- **Buffer RAM:** hanya menunda *masuknya baris ke kartu* beberapa detik saat SD sibuk,
+  lalu langsung disusulkan — tidak terlihat di dashboard karena dashboard baca dari RAM.
+- **Watchdog:** menjadi jaring pengaman terakhir untuk hang hardware murni, bukan lagi
+  dipicu oleh blocking software.
+
 ---
 *Gunakan file-file di folder ini untuk mempelajari masing-masing register secara detail.*
