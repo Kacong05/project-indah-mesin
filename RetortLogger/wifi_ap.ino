@@ -112,5 +112,6 @@ void loopWiFiAP() {
 
   if (connected) {
     rtcSyncNtp(false);
+    rtcSyncNtpTick();
   }
 }

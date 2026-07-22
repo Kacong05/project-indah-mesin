@@ -12,6 +12,8 @@ extern char gLastTs[32];
 extern char gLastClock[32];
 extern char gLastIso[26];
 extern char sessionToken[65];
+extern volatile uint16_t gRingDepth;
+extern volatile uint32_t gCsvDropped;
 
 static const char DASH_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head>
@@ -129,7 +131,14 @@ document.getElementById('tsp').textContent=sp!=null?sp.toFixed(1)+'°C':'--°C';
 document.getElementById('tph').textContent=d.phase||'--';
 var rec=document.getElementById('trec');rec.textContent=d.log?'● REC':(d.run?'RUN':'idle');
 var mv=document.getElementById('mv');mv.textContent=d.mv!=null?Number(d.mv).toFixed(1)+'%':'--';mv.className='v '+(d.mv>0?'wr':'');
-var s=document.getElementById('sd');s.textContent=d.sd?'OK':'N/A';s.className='v '+(d.sd?'ok':'er');
+var s=document.getElementById('sd');
+if(d.sd){
+var st='OK';
+if(d.buf>0)st+=' (buf '+d.buf+')';
+if(d.drop>0)st='DROP '+d.drop;
+s.textContent=st;
+s.className='v '+(d.drop>0?'er':(d.buf>0?'wr':'ok'));
+}else{s.textContent='N/A';s.className='v er';}
 document.getElementById('ps').textContent=d.ps||'--';
 document.getElementById('tot').textContent=d.tot||'00:00';
 document.getElementById('stp').textContent=d.stp||'00:00';
@@ -226,6 +235,8 @@ void setupWebDashboard() {
     doc["run"]   = state.ctrlRun;
     doc["sd"]    = state.sdReady;
     doc["log"]   = state.logging;
+    doc["buf"]   = gRingDepth;
+    doc["drop"]  = gCsvDropped;
     char psBuf[8];
     tnlFormatPs(psBuf, sizeof(psBuf));
     doc["ps"]    = psBuf;

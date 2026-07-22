@@ -13,6 +13,9 @@ static RTC_DS3231 rtcModule;
 static bool rtcOk = false;
 static bool rtcNtpSynced = false;
 static unsigned long rtcLastNtpTry = 0;
+static bool gNtpPending = false;
+static unsigned long gNtpStartMs = 0;
+static const unsigned long NTP_GIVEUP_MS = 20000UL;
 
 // WIB = UTC+7, Indonesia tidak pakai DST
 static const long WIB_OFFSET_SEC = 7L * 3600L;
@@ -39,9 +42,10 @@ void setupRTC() {
 
 void loopRTC() {}
 
-// Sinkron DS3231 dari NTP (Asia/Jakarta / WIB). Dipanggil saat WiFi STA connect.
+// Arm NTP sync (non-blocking). Poll hasil lewat rtcSyncNtpTick() di loop().
 void rtcSyncNtp(bool force) {
   if (!rtcOk || WiFi.status() != WL_CONNECTED) return;
+  if (gNtpPending) return;
 
   unsigned long nowMs = millis();
   if (!force && rtcNtpSynced && (nowMs - rtcLastNtpTry < 3600000UL)) return;
@@ -49,22 +53,33 @@ void rtcSyncNtp(bool force) {
   rtcLastNtpTry = nowMs;
 
   configTime(WIB_OFFSET_SEC, 0, "id.pool.ntp.org", "pool.ntp.org", "time.google.com");
+  gNtpPending = true;
+  gNtpStartMs = nowMs;
+}
+
+// Poll NTP tanpa blocking loop() — cegah Task WDT saat NTP lambat/tak terjangkau.
+void rtcSyncNtpTick() {
+  if (!gNtpPending || !rtcOk || WiFi.status() != WL_CONNECTED) return;
 
   struct tm timeinfo;
-  for (int i = 0; i < 30; i++) {
-    if (getLocalTime(&timeinfo, 500)) {
+  if (getLocalTime(&timeinfo, 0)) {
+    if (timeinfo.tm_year + 1900 >= 2021) {
       rtcModule.adjust(DateTime(
         timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
       rtcNtpSynced = true;
+      gNtpPending = false;
       Serial.printf("[RTC] NTP→WIB OK: %04d-%02d-%02d %02d:%02d:%02d\n",
         timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
       return;
     }
-    delay(100);
   }
-  Serial.println(F("[RTC] NTP sync gagal — pakai waktu RTC hardware"));
+
+  if (millis() - gNtpStartMs >= NTP_GIVEUP_MS) {
+    gNtpPending = false;
+    Serial.println(F("[RTC] NTP sync gagal — pakai waktu RTC hardware"));
+  }
 }
 
 // Satu baca I2C RTC — isi clock (WIB) + ISO sekaligus (hemat vs 2× now()).
@@ -123,6 +138,7 @@ bool rtcNtpIsSynced() { return false; }
 void setupRTC() {}
 void loopRTC() {}
 void rtcSyncNtp(bool) {}
+void rtcSyncNtpTick() {}
 
 void fillTimestampFromRtc(char* clockBuf, size_t clockLen, char* isoBuf, size_t isoLen) {
   unsigned long s = millis() / 1000;

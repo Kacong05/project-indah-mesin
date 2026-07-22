@@ -120,6 +120,11 @@ if(r.status==401){location='/login';return null}return r.json()
 }).then(function(d){document.getElementById('wb').style.display='none';if(!d)return;
 if(d.busy){document.getElementById('wb').textContent='SD sibuk, coba lagi…';
 document.getElementById('wb').style.display='block';setTimeout(function(){go(p);},800);return;}
+if(d.logging){document.getElementById('wb').textContent='Sedang merekam — daftar/aksi file dinonaktifkan sampai proses selesai.';
+document.getElementById('wb').style.background='#fef3c7';document.getElementById('wb').style.color='#92400e';
+document.getElementById('wb').style.display='block';document.getElementById('bl').style.display='none';
+document.getElementById('ca').textContent='';document.getElementById('tb').textContent='';return;}
+document.getElementById('wb').style.background='#dbeafe';document.getElementById('wb').style.color='#1e40af';
 if(!d.sd){document.getElementById('w').style.display='block';
 document.getElementById('bl').style.display='none';return;}
 var ca=document.getElementById('ca');ca.textContent='';
@@ -201,6 +206,10 @@ void setupWebStorage() {
     }
 #if USE_SD
     if (!state.sdReady) { req->send(200, "application/json", "{\"sd\":false}"); return; }
+    if (state.logging) {
+      req->send(200, "application/json", "{\"sd\":true,\"logging\":true}");
+      return;
+    }
     String path = "/retort";
     if (req->hasParam("path")) path = req->getParam("path")->value();
     if (path.indexOf("..") >= 0) { req->send(403, "application/json", "{\"ok\":false}"); return; }
@@ -262,6 +271,10 @@ void setupWebStorage() {
   server.on("/api/stor/dl", HTTP_GET, [](AsyncWebServerRequest* req) {
     if (!isSessionValid(req)) { req->send(401, "text/plain", "Unauthorized"); return; }
 #if USE_SD
+    if (state.logging) {
+      req->send(503, "application/json", "{\"ok\":false,\"logging\":true}");
+      return;
+    }
     if (!req->hasParam("path")) { req->send(400, "text/plain", "No path"); return; }
     sendCsvDownload(req, req->getParam("path")->value());
 #else
@@ -273,6 +286,10 @@ void setupWebStorage() {
     if (!isSessionValid(req)) { req->send(401, "application/json", "{\"ok\":false}"); return; }
 #if USE_SD
     if (!state.sdReady) { req->send(503, "application/json", "{\"ok\":false}"); return; }
+    if (state.logging) {
+      req->send(503, "application/json", "{\"ok\":false,\"logging\":true}");
+      return;
+    }
     if (!req->hasParam("path", true)) { req->send(400, "application/json", "{\"ok\":false}"); return; }
     String p = req->getParam("path", true)->value();
     if (p.indexOf("..") >= 0 || p.length() == 0) {

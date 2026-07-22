@@ -15,6 +15,7 @@ extern void sdUnlock();
 // Kirim file CSV sebagai attachment (browser HP & desktop).
 void sendCsvDownload(AsyncWebServerRequest* req, const String& p) {
   if (!state.sdReady) { req->send(503, "text/plain", "SD error"); return; }
+  if (state.logging) { req->send(503, "text/plain", "SD sedang dipakai merekam"); return; }
   if (p.length() == 0 || p.indexOf("..") >= 0 || !p.startsWith("/retort/")) {
     req->send(403, "text/plain", "Forbidden");
     return;
@@ -72,6 +73,10 @@ void setupWebLogs() {
       return;
     }
 #if USE_SD
+    if (state.logging) {
+      req->send(503, "text/plain", "SD sedang dipakai merekam");
+      return;
+    }
     if (req->hasParam("latest")) {
       String latest = findLatestCsv();
       if (latest.length() == 0) { req->send(404, "text/plain", "No files"); return; }

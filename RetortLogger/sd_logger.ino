@@ -21,12 +21,62 @@ extern float mvSimEffectivePercent();
 extern const char* phaseName(RetortPhase p);
 
 #define SD_LOG_DIR "/retort"
+#define CSV_RING_N     300
+#define CSV_LINE_MAX   96
 
 static File logFile;
 static char logPath[48] = {0};
 
+// Ring buffer baris CSV — jaring bila SD sesaat sibuk (anti-drop saat logging).
+static char gRing[CSV_RING_N][CSV_LINE_MAX];
+static uint16_t gRingHead = 0;
+static uint16_t gRingCount = 0;
+volatile uint16_t gRingDepth = 0;
+volatile uint32_t gCsvDropped = 0;
+
 // Path file log aktif. Setelah ditutup dibuat marker .ready untuk uploader CSV.
 const char* sdCurrentLogPath() { return logPath; }
+
+static void ringReset() {
+  gRingHead = 0;
+  gRingCount = 0;
+  gRingDepth = 0;
+}
+
+static void formatCsvLine(char* line, size_t len) {
+  snprintf(line, len, "%s,%.1f,%.1f,%s,%s,%.1f,%d,%d\n",
+           gLastClock, state.temperature, state.setpoint,
+           gLastIso, phaseName(state.phase), mvSimEffectivePercent(),
+           state.ctrlRun ? 1 : 0, state.logging ? 1 : 0);
+}
+
+static void ringPush(const char* line) {
+  if (gRingCount >= CSV_RING_N) {
+    gCsvDropped++;
+    Serial.println(F("[SD] Ring penuh — baris CSV dibuang (ganti kartu SD)"));
+    return;
+  }
+  uint16_t idx = (uint16_t)((gRingHead + gRingCount) % CSV_RING_N);
+  strncpy(gRing[idx], line, CSV_LINE_MAX - 1);
+  gRing[idx][CSV_LINE_MAX - 1] = '\0';
+  gRingCount++;
+  gRingDepth = gRingCount;
+}
+
+static bool ringWriteLine(const char* line) {
+  if (!logFile) return false;
+  return logFile.print(line) > 0;
+}
+
+static void ringFlush() {
+  while (gRingCount > 0 && logFile) {
+    if (!ringWriteLine(gRing[gRingHead])) break;
+    logFile.flush();
+    gRingHead = (uint16_t)((gRingHead + 1) % CSV_RING_N);
+    gRingCount--;
+    gRingDepth = gRingCount;
+  }
+}
 
 static void ensureDir() {
   if (!SD.exists(SD_LOG_DIR)) SD.mkdir(SD_LOG_DIR);
@@ -80,30 +130,36 @@ void loopSDLogger() {}
 // Tulis satu baris CSV. Dipanggil sdServiceLog (sudah memegang kunci SD).
 void sdLogEntry() {
   if (!state.sdReady || !logFile) return;
-  // CSV: Tanggal Jam, Actual, Setting, ISO, Phase, MV, Run, Logging
-  // ISO + Phase + MV + Run + Logging dipakai forwarder untuk merekonstruksi
-  // payload MQTT identik dengan publish live (recorded_at = ISO baris ini).
-  logFile.printf("%s,%.1f,%.1f,%s,%s,%.1f,%d,%d\n",
-                 gLastClock, state.temperature, state.setpoint,
-                 gLastIso, phaseName(state.phase), mvSimEffectivePercent(),
-                 state.ctrlRun ? 1 : 0, state.logging ? 1 : 0);
-  logFile.flush();
+  char line[CSV_LINE_MAX];
+  formatCsvLine(line, sizeof(line));
+  if (ringWriteLine(line)) logFile.flush();
 }
 
 // Dipanggil tiap 1 detik dari loggerTask. Menangani start/stop rekam dan
 // menulis baris CSV, SEMUA di bawah kunci SD (aman terhadap akses web).
 void sdServiceLog() {
   if (!state.sdReady) return;
-  if (!sdLock(2000)) return;  // tunggu lebih lama — hindari loncat detik saat SD sibuk
+
+  char line[CSV_LINE_MAX] = {0};
+  const bool hasLine = state.logging;
+  if (hasLine) formatCsvLine(line, sizeof(line));
+
+  if (!sdLock(2000)) {
+    if (hasLine) ringPush(line);
+    return;
+  }
 
   if (gLogStartReq) {
     gLogStartReq = false;
+    ringReset();
+    gCsvDropped = 0;
     if (logFile) { logFile.flush(); logFile.close(); }
     openNewLog();
   }
   if (gLogStopReq) {
     gLogStopReq = false;
     if (logFile) {
+      ringFlush();
       logFile.flush();
       logFile.close();
       Serial.printf("[SD] Log closed: %s\n", logPath);
@@ -118,15 +174,24 @@ void sdServiceLog() {
         Serial.printf("[SD] Gagal membuat marker upload: %s\n", readyPath);
       }
     }
+    ringReset();
   }
-  if (state.logging && logFile) {
-    sdLogEntry();
+  if (hasLine && logFile) {
+    ringFlush();
+    if (!ringWriteLine(line)) {
+      ringPush(line);
+    } else {
+      logFile.flush();
+    }
   }
 
   sdUnlock();
 }
 
 #else
+
+volatile uint16_t gRingDepth = 0;
+volatile uint32_t gCsvDropped = 0;
 
 void setupSDLogger() {}
 void loopSDLogger() {}

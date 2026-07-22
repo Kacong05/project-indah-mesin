@@ -20,8 +20,8 @@ void saveWatchdogPending(bool pending);
 static WiFiClient   mqttWifi;
 static PubSubClient mqtt(mqttWifi);
 
-// Cepat dulu (3s), naik ke sedang (8s) setelah gagal berulang; timeout socket titik tengah 6s.
-#define MQTT_SOCKET_TIMEOUT_S   6
+// Cepat dulu (3s), naik ke sedang (8s) setelah gagal berulang; timeout socket 2s.
+#define MQTT_SOCKET_TIMEOUT_S   2
 #define MQTT_RECON_FAST_MS      3000
 #define MQTT_RECON_MED_MS       8000
 #define MQTT_FAIL_TO_MED        4

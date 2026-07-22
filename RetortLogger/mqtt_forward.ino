@@ -38,11 +38,28 @@ static bool gCsvEndSent = false;
 static unsigned long gCsvEndSentAt = 0;
 static unsigned long gCsvLastSendAt = 0;
 
+// Hashing SHA-256 bertahap — hindari block loop() saat file CSV besar.
+static mbedtls_sha256_context gHashCtx;
+static bool gHashInProgress = false;
+static uint32_t gHashOffset = 0;
+#define CSV_HASH_CHUNK 8192
+
+static void csvAbortHash() {
+  if (gHashInProgress) {
+    mbedtls_sha256_free(&gHashCtx);
+    gHashInProgress = false;
+  }
+  gHashOffset = 0;
+}
+
 static void csvResetTransfer() {
+  csvAbortHash();
   snprintf(gCsvTransferId, sizeof(gCsvTransferId), "%08lx%08lx",
            (unsigned long)millis(), (unsigned long)esp_random());
   gCsvOffset = 0;
   gCsvChunk = 0;
+  gCsvSize = 0;
+  gCsvSha256[0] = '\0';
   gCsvMetaSent = false;
   gCsvEndSent = false;
   gCsvEndSentAt = 0;
@@ -85,36 +102,65 @@ static bool csvFindReady() {
 }
 
 static bool csvPrepareMetadata() {
-  if (!sdLock(2000)) return false;
+  if (gCsvSize > 0 && !gHashInProgress && gCsvSha256[0] != '\0') return true;
+
+  if (!gHashInProgress) {
+    if (!sdLock(1200)) return false;
+    File file = SD.open(gCsvPath, FILE_READ);
+    if (!file) {
+      sdUnlock();
+      return false;
+    }
+    gCsvSize = file.size();
+    file.close();
+    sdUnlock();
+    if (gCsvSize == 0) return false;
+
+    mbedtls_sha256_init(&gHashCtx);
+    mbedtls_sha256_starts(&gHashCtx, 0);
+    gHashOffset = 0;
+    gHashInProgress = true;
+    gCsvSha256[0] = '\0';
+  }
+
+  if (!sdLock(1200)) return false;
   File file = SD.open(gCsvPath, FILE_READ);
   if (!file) {
     sdUnlock();
     return false;
   }
-
-  gCsvSize = file.size();
-  mbedtls_sha256_context ctx;
-  mbedtls_sha256_init(&ctx);
-  mbedtls_sha256_starts(&ctx, 0);
+  file.seek(gHashOffset);
   uint8_t buf[512];
-  while (file.available()) {
+  size_t totalRead = 0;
+  while (totalRead < CSV_HASH_CHUNK && file.available()) {
     size_t count = file.read(buf, sizeof(buf));
-    if (count) mbedtls_sha256_update(&ctx, buf, count);
+    if (count) {
+      mbedtls_sha256_update(&gHashCtx, buf, count);
+      gHashOffset += count;
+      totalRead += count;
+    } else {
+      break;
+    }
   }
-  uint8_t digest[32];
-  mbedtls_sha256_finish(&ctx, digest);
-  mbedtls_sha256_free(&ctx);
+  bool done = !file.available();
   file.close();
   sdUnlock();
 
-  for (uint8_t i = 0; i < 32; i++) {
-    snprintf(gCsvSha256 + (i * 2), 3, "%02x", digest[i]);
+  if (done) {
+    uint8_t digest[32];
+    mbedtls_sha256_finish(&gHashCtx, digest);
+    mbedtls_sha256_free(&gHashCtx);
+    gHashInProgress = false;
+    for (uint8_t i = 0; i < 32; i++) {
+      snprintf(gCsvSha256 + (i * 2), 3, "%02x", digest[i]);
+    }
+    return gCsvSize > 0;
   }
-  return gCsvSize > 0;
+  return false;
 }
 
 static bool csvSendMeta() {
-  if (!gCsvSize && !csvPrepareMetadata()) return false;
+  if (!csvPrepareMetadata()) return false;
   char payload[260];
   StaticJsonDocument<256> doc;
   doc["id"] = cfg.machineId;

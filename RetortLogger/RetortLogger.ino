@@ -14,6 +14,27 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include "mbedtls/sha256.h"
+#include "esp_task_wdt.h"
+#include "esp_idf_version.h"
+
+// Task WDT: recovery otomatis saat hang (panic → reboot, reason TASK_WDT).
+#define WDT_TIMEOUT_MS 10000
+
+static void setupWatchdog() {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+  esp_task_wdt_config_t twdt = {
+    .timeout_ms = WDT_TIMEOUT_MS,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  if (esp_task_wdt_reconfigure(&twdt) != ESP_OK) {
+    esp_task_wdt_init(&twdt);
+  }
+#else
+  esp_task_wdt_init(WDT_TIMEOUT_MS / 1000, true);
+#endif
+  esp_task_wdt_add(NULL);
+}
 
 // --- Feature Flags ---
 #define USE_FAKE_SENSOR false  // Simulasi sensor (set true HANYA tanpa Modbus)
@@ -273,6 +294,7 @@ void getTimestampFile(char* buf, size_t len);
 void getTimestampIso(char* buf, size_t len);
 void fillTimestampFromRtc(char* clockBuf, size_t clockLen, char* isoBuf, size_t isoLen);
 void rtcSyncNtp(bool force);
+void rtcSyncNtpTick();
 bool rtcIsOk();
 bool rtcNtpIsSynced();
 void setupSDLogger();
@@ -313,6 +335,7 @@ void forwardOnMqttLost();
 //  walaupun loop() ke-block oleh mqtt.connect()/web, sampling tetap jalan.
 // ============================================================
 static void loggerTask(void* pv) {
+  esp_task_wdt_add(NULL);
   TickType_t last = xTaskGetTickCount();
   const TickType_t period = pdMS_TO_TICKS(1000);
   for (;;) {
@@ -326,12 +349,14 @@ static void loggerTask(void* pv) {
 #if USE_SD
     sdServiceLog();    // tangani start/stop rekam + tulis 1 baris CSV
 #endif
+    esp_task_wdt_reset();
     vTaskDelayUntil(&last, period);  // jaga periode tepat 1000 ms
   }
 }
 
 void setup() {
   Serial.begin(115200);
+  Serial.setTxTimeoutMs(0);
   delay(300);
   Serial.println(F("\n=== RetortLogger ==="));
 
@@ -409,12 +434,14 @@ void setup() {
 
   // Task logger di core 1, prioritas 3 (di atas loop Arduino = prioritas 1).
   // Stack 8 KB cukup untuk SD + snprintf.
+  setupWatchdog();
   xTaskCreatePinnedToCore(loggerTask, "logger", 8192, NULL, 3, NULL, 1);
 
   Serial.println(F("=== Ready ==="));
 }
 
 void loop() {
+  esp_task_wdt_reset();
   loopWiFiAP();
   loopMQTT();
 #if USE_RTC
